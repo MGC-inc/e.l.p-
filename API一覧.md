@@ -13,6 +13,7 @@
 | Google API | <!-- TODO: 用途を特定（Maps/Calendar等） --> | https://console.cloud.google.com | ローカル `.env` の `GOOGLE_API_KEY` | |
 | LINE | 通知・顧客連絡 | | | |
 | GitHub | このリポジトリ | https://github.com/MGC-inc/e.l.p- | | |
+| Supabase（elp） | 組織データDB（タスク/日報/営業成績/議事録/通話ログ） | https://supabase.com/dashboard/project/xhkcptfyjdbilhrpwcau | ローカル `.env` の `ELP_SUPABASE_*` | MGC |
 | <!-- TODO --> | | | | |
 
 ## イノベラ Web API 技術仕様（仕様書 2024-10-23版より）
@@ -30,7 +31,7 @@
 ## シークレットの保管ルール
 
 - キー値は**リポジトリ直下の `.env`（.gitignoreで除外済み）**に置く
-- 変数名: `INNOVERA_HOST` / `INNOVERA_API_KEY` / `GOOGLE_API_KEY`
+- 変数名: `INNOVERA_HOST` / `INNOVERA_API_KEY` / `GOOGLE_API_KEY` / `ELP_SUPABASE_URL` / `ELP_SUPABASE_ANON_KEY` / `ELP_SUPABASE_SERVICE_ROLE_KEY` / `ELP_SUPABASE_DB_PASSWORD`
 - サーバー側で自動化を動かす際はMGCのDopplerへ移行する
 
 ## 2. 記載ルール
