@@ -26,7 +26,7 @@ CELLS = [
     {"label": "日報", "sub": "REPORT", "text": "日報"},
     {"label": "タスク", "sub": "TASK", "text": "タスク"},
     {"label": "成績", "sub": "SALES", "text": "成績"},
-    {"label": "通話", "sub": "CALLS", "text": "通話"},
+    {"label": "タスク登録", "sub": "ADD TASK", "text": "タスク登録"},
 ]
 # 交互のエメラルド濃淡（アプリのテーマに合わせる）
 BG = [(5, 122, 85), (4, 108, 75), (5, 122, 85), (4, 108, 75)]
@@ -63,13 +63,22 @@ def draw_icon(d, kind, cx, cy, c=(255, 255, 255)):
         d.arc([cx - 80, cy - 80, cx + 80, cy + 80], start=20, end=200, fill=c, width=lw + 6)
         d.ellipse([cx - 90, cy - 6, cx - 58, cy + 26], fill=c)
         d.ellipse([cx + 58, cy - 6, cx + 90, cy + 26], fill=c)
+    elif kind == "タスク登録":  # 書類＋プラス
+        d.rounded_rectangle([cx - 78, cy - 90, cx + 52, cy + 90], radius=14, outline=c, width=lw)
+        for i in range(2):
+            y = cy - 44 + i * 34
+            d.line([cx - 50, y, cx + 20, y], fill=c, width=lw - 3)
+        # 右下のプラス（追加を示す）
+        px, py = cx + 56, cy + 56
+        d.ellipse([px - 40, py - 40, px + 40, py + 40], fill=ACCENT)
+        d.line([px - 20, py, px + 20, py], fill=(255, 255, 255), width=lw + 1)
+        d.line([px, py - 20, px, py + 20], fill=(255, 255, 255), width=lw + 1)
 
 
 def make_image():
     img = Image.new("RGB", (W, H), (255, 255, 255))
     d = ImageDraw.Draw(img)
     cw = W // 4
-    f_label = ImageFont.truetype(FONT, 120)
     f_sub = ImageFont.truetype(FONT, 42)
     for i, cell in enumerate(CELLS):
         x0 = i * cw
@@ -78,9 +87,13 @@ def make_image():
             d.line([x0, 60, x0, H - 60], fill=(255, 255, 255), width=3)
         cx = x0 + cw // 2
         draw_icon(d, cell["label"], cx, 300)
-        # ラベル中央寄せ
-        tb = d.textbbox((0, 0), cell["label"], font=f_label)
-        d.text((cx - (tb[2] - tb[0]) / 2, 470), cell["label"], font=f_label, fill=(255, 255, 255))
+        # ラベルは文字数に応じてフォントサイズを調整（長い語も収める）
+        label = cell["label"]
+        size = 120 if len(label) <= 3 else 78
+        f_label = ImageFont.truetype(FONT, size)
+        ly = 470 if len(label) <= 3 else 500
+        tb = d.textbbox((0, 0), label, font=f_label)
+        d.text((cx - (tb[2] - tb[0]) / 2, ly), label, font=f_label, fill=(255, 255, 255))
         sb = d.textbbox((0, 0), cell["sub"], font=f_sub)
         d.text((cx - (sb[2] - sb[0]) / 2, 640), cell["sub"], font=f_sub, fill=(180, 230, 210))
     img.save(IMG_PATH, "PNG")
