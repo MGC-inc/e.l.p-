@@ -1,0 +1,15 @@
+# OS
+.DS_Store
+
+# シークレット類（誤コミット防止）
+.env
+.env.*
+*.key
+*.pem
+credentials*
+*環境情報*.xlsx
+
+# ローカル個人メモ
+CLAUDE.local.md
+.claude/settings.local.json
+.claude/memory-db/
