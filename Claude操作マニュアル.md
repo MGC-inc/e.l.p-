@@ -33,6 +33,36 @@
 
 ---
 
+## 1.5 クローン後のセットアップ（リポジトリだけでは動かない）
+
+GitHub のコードには鍵(`.env`)を含めていないため、**クローン直後は動かない**。次で動く。
+
+### A. 同じ E.L.P 環境を引き継ぐ場合（最短）
+```bash
+# Webアプリ
+cd elp-goals
+cp .env.example .env.local      # 値を記入（Supabase service_role キー）
+npm install
+npm run dev                     # ローカル起動（本番は git push で自動デプロイ）
+
+# スクリプト
+cd ../e.l.p-
+cp .env.example .env            # 値を記入（Innovera/Gemini/Supabase/LINE）
+```
+- Supabase・Vercel・LINE Bot は**既存をそのまま使う**ので新規構築は不要（DBのマイグレーションも適用済み）。
+- 鍵の値は現行の `.env` / Vercel環境変数 / 各管理画面から取得し、**安全な経路で共有**する（リポジトリには絶対入れない）。
+
+### B. まったく別環境に複製する場合
+- Supabase 新規プロジェクト作成 → `supabase db push` でマイグレーション適用
+- Vercel 新規プロジェクト ＋ 環境変数登録
+- LINE 新規チャネル作成 ＋ Webhook URL 設定 ＋ リッチメニュー登録
+- Innovera / Gemini の各キー発行
+
+> 本番サイト（https://elp-goals.vercel.app）は GitHub 連携で動いているので、
+> ローカルにクローンしなくても **push さえできれば反映される**。
+
+---
+
 ## 2. データベースを読む・書く（Claudeの標準手段）
 
 **経路: service-role キー + Supabase REST（PostgREST）を Python から叩く。**

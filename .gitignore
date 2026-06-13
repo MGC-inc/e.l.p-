@@ -4,6 +4,7 @@
 # シークレット類（誤コミット防止）
 .env
 .env.*
+!.env.example
 *.key
 *.pem
 credentials*
