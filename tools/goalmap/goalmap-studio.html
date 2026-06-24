@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>ゴールマップ・スタジオ — 週次MTG用</title>
+<!--
+  週次MTGで使う、開くだけのインタラクティブ図解エディタ。
+  左で編集（チェック／ステージ／ゴール）→ 右の図解と達成率が即更新。
+  保存はブラウザ(localStorage)＋JSON書き出し。図解はPNG/印刷で出力。
+  図解仕様は ../../ゴールマップ運用.md / tools/goalmap/generate_goalmap.py と同一。
+-->
+<style>
+  :root{
+    --done:#1D9E75; --done-bg:#E7F5EF;
+    --now:#EF9F27;  --now-bg:#FDF3E2;
+    --future:#9AA3AD; --future-bg:#F2F4F6;
+    --goal:#6357CC; --goal-bg:#EEECFA;
+    --ink:#1F2933; --sub:#67707A; --line:#E3E7EB;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:"Hiragino Sans","Noto Sans CJK JP","Yu Gothic",sans-serif;
+    color:var(--ink);background:#F7F8FA}
+  header{display:flex;align-items:center;gap:10px;padding:10px 16px;background:#fff;
+    border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5;flex-wrap:wrap}
+  header h1{font-size:15px;margin:0 12px 0 0}
+  select,button,input{font-family:inherit;font-size:13px}
+  button{border:1px solid var(--line);background:#fff;border-radius:8px;padding:6px 12px;cursor:pointer}
+  button:hover{background:#F2F4F6}
+  button.primary{background:var(--goal);color:#fff;border-color:var(--goal)}
+  .wrap{display:grid;grid-template-columns:420px 1fr;gap:0;align-items:start}
+  .editor{padding:16px;border-right:1px solid var(--line);height:calc(100vh - 52px);overflow:auto}
+  .canvas{padding:20px;height:calc(100vh - 52px);overflow:auto;background:#fff}
+  .field{margin-bottom:10px}
+  .field label{display:block;font-size:11px;color:var(--sub);margin-bottom:3px}
+  .field input[type=text]{width:100%;padding:6px 8px;border:1px solid var(--line);border-radius:6px}
+  .stage-pick{display:flex;gap:4px;flex-wrap:wrap}
+  .stage-pick button{padding:5px 8px}
+  .stage-pick button.on{background:var(--now);color:#fff;border-color:var(--now)}
+  .phase{border:1px solid var(--line);border-radius:10px;padding:10px;margin-bottom:10px;background:#fff}
+  .phase.now{border-color:var(--now);box-shadow:0 0 0 1px var(--now)}
+  .phase-head{display:flex;align-items:center;gap:6px;margin-bottom:6px}
+  .phase-head .badge{font-size:11px;font-weight:700;padding:2px 7px;border-radius:10px}
+  .task{display:flex;align-items:center;gap:6px;margin:4px 0}
+  .task input[type=text]{flex:1;padding:4px 6px;border:1px solid var(--line);border-radius:6px}
+  .task input[type=checkbox]{width:16px;height:16px;accent-color:var(--done)}
+  .task .del{border:none;background:none;color:var(--sub);cursor:pointer;font-size:15px;padding:2px 4px}
+  .addtask{font-size:12px;color:var(--goal);background:none;border:none;cursor:pointer;padding:2px}
+  .doneDef{width:100%;padding:4px 6px;border:1px dashed var(--line);border-radius:6px;font-size:12px;margin-top:4px}
+  .hint{font-size:11px;color:var(--sub);margin:2px 0 12px}
+  svg{max-width:100%;height:auto;border:1px solid var(--line);border-radius:8px}
+  @media print{header,.editor{display:none}.wrap{grid-template-columns:1fr}.canvas{height:auto;border:none}svg{border:none}}
+</style>
+</head>
+<body>
+<header>
+  <h1>🧭 ゴールマップ・スタジオ</h1>
+  <label class="hint">メンバー:</label>
+  <select id="member"></select>
+  <button id="new">＋新規</button>
+  <label class="hint" style="margin-left:8px">読込:</label>
+  <input type="file" id="import" accept="application/json" style="font-size:12px;width:170px" />
+  <button id="exportJson">JSON保存</button>
+  <button id="exportPng" class="primary">PNG出力</button>
+  <button id="print">印刷/PDF</button>
+  <span id="saved" class="hint" style="margin-left:auto"></span>
+</header>
+<div class="wrap">
+  <div class="editor" id="editor"></div>
+  <div class="canvas" id="canvas"></div>
+</div>
+
+<script>
+const STAGE_NAMES = ["①型を知る","②練習","③実践","④振り返り","⑤自走"];
+const COL = {done:"#1D9E75",doneBg:"#E7F5EF",now:"#EF9F27",nowBg:"#FDF3E2",
+  future:"#9AA3AD",futureBg:"#F2F4F6",goal:"#6357CC",goalBg:"#EEECFA",ink:"#1F2933",sub:"#67707A"};
+const FONT = "Hiragino Sans, 'Noto Sans CJK JP', 'Yu Gothic', sans-serif";
+
+function template(name){
+  return {name:name||"新規メンバー",note:"",theme:"テーマ",goal:"観察できる状態でゴールを書く",
+    why:"",currentStage:1,
+    phases:[
+      {name:"型を知る",doneDef:"観察できる完了の状態",tasks:[]},
+      {name:"練習",doneDef:"観察できる完了の状態",tasks:[]},
+      {name:"実践",doneDef:"観察できる完了の状態",tasks:[]},
+      {name:"振り返り",doneDef:"観察できる完了の状態",tasks:[]},
+      {name:"自走",doneDef:"観察できる完了の状態",tasks:[]},
+    ]};
+}
+// 同梱デモ（岡野）。初回起動時の例として読み込む。
+const DEMO = {name:"岡野",note:"wanny",theme:"契約を安定させる（クローザー）",
+  goal:"客層を問わず自分の型で契約まで運び、成約が安定する",why:"成約率が客層で振れる。型を固めて安定させたい",currentStage:2,
+  phases:[
+    {name:"型を知る",doneDef:"自分の勝ち負けを言語化できる",tasks:[
+      {name:"直近の成約・失注を5件ずつ振り返る",done:true},
+      {name:"勝ち／負けパターンを言語化する",done:true},
+      {name:"型を本／動画で学ぶ",done:true}]},
+    {name:"練習",doneDef:"苦手ケースでも型どおり切り返せる",tasks:[
+      {name:"録音して聞き返す",done:true},
+      {name:"上司と週2回ロープレ",done:true},
+      {name:"苦手ケースの切り返しをロープレ",done:false}]},
+    {name:"実践",doneDef:"商談で型を意図的に使えている",tasks:[
+      {name:"商談前に型の要点を確認する",done:false},
+      {name:"ネック処理を意図的に試す",done:false}]},
+    {name:"振り返り",doneDef:"失注の共通要因を自分で抽出できる",tasks:[
+      {name:"失注の共通要因を抽出する",done:false},
+      {name:"次の一手を言語化する",done:false}]},
+    {name:"自走",doneDef:"指導なしで型を回し、人に教えられる",tasks:[
+      {name:"メンバーのロープレを主催し再発見に使う",done:false},
+      {name:"勝ち型をwannyの標準トークに言語化・共有",done:false}]},
+  ]};
+
+// ───────── localStorage ─────────
+const KEY = n => "goalmap:"+n;
+function listMembers(){return Object.keys(localStorage).filter(k=>k.startsWith("goalmap:")).map(k=>k.slice(8)).sort();}
+function save(d){localStorage.setItem(KEY(d.name),JSON.stringify(d));flash("保存しました ✓");}
+function load(n){const v=localStorage.getItem(KEY(n));return v?JSON.parse(v):null;}
+let saveTimer;function flash(msg){document.getElementById("saved").textContent=msg;clearTimeout(saveTimer);saveTimer=setTimeout(()=>document.getElementById("saved").textContent="",1500);}
+
+let data;
+
+// ───────── SVG描画（Python版と同一仕様）─────────
+const esc = s => String(s==null?"":s).replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
+const wrap = (t,n) => {t=String(t||"");const r=[];for(let i=0;i<t.length;i+=n)r.push(t.slice(i,i+n));return r.length?r:[""];};
+const phaseH = n => Math.max(60, 24 + 18*n);
+
+function buildSvg(d){
+  const W=680, PHASE_X=130, PHASE_W=210, PILL_X=20, PILL_W=58, TASK_X=360,
+        HEADER_H=70, GAP=26, GOAL_H=70, PAD=28, LH=18;
+  const phases=d.phases, cur=+d.currentStage||1;
+  const all=phases.flatMap(p=>p.tasks||[]); const done=all.filter(t=>t.done).length;
+  const total=all.length, rate=total?Math.round(done/total*100):0;
+  const order=[4,3,2,1,0];
+  const hts={}; order.forEach(i=>hts[i]=phaseH((phases[i].tasks||[]).length));
+  const H=HEADER_H+GOAL_H+GAP+order.reduce((s,i)=>s+hts[i]+GAP,0)+PAD;
+  const cx=PHASE_X+PHASE_W/2;
+  const o=[];
+  o.push(`<svg xmlns="http://www.w3.org/2000/svg" id="gm" viewBox="0 0 ${W} ${H}" font-family="${FONT}" width="${W}" height="${H}">`);
+  o.push(`<rect x="0" y="0" width="${W}" height="${H}" fill="#fff"/>`);
+  let head=esc(d.name||"")+(d.note?`（${esc(d.note)}）`:"")+`｜${esc(d.theme||"")}`;
+  o.push(`<text x="20" y="34" font-size="19" font-weight="700" fill="${COL.ink}">${head}</text>`);
+  const bx=W-210, bw=150;
+  o.push(`<text x="${W-20}" y="26" text-anchor="end" font-size="13" fill="${COL.sub}">達成率</text>`);
+  o.push(`<text x="${bx-8}" y="50" text-anchor="end" font-size="20" font-weight="700" fill="${COL.done}">${rate}%</text>`);
+  o.push(`<rect x="${bx}" y="38" width="${bw}" height="12" rx="6" fill="${COL.futureBg}"/>`);
+  o.push(`<rect x="${bx}" y="38" width="${Math.round(bw*rate/100)}" height="12" rx="6" fill="${COL.done}"/>`);
+  const pill=(cy,label,fg,bg)=>{o.push(`<rect x="${PILL_X}" y="${cy-11}" width="${PILL_W}" height="22" rx="11" fill="${bg}" stroke="${fg}"/>`);
+    o.push(`<text x="${PILL_X+PILL_W/2}" y="${cy+4}" text-anchor="middle" font-size="11" font-weight="700" fill="${fg}">${esc(label)}</text>`);};
+  const arrow=(yb,yt)=>{o.push(`<line x1="${cx}" y1="${yb}" x2="${cx}" y2="${yt+6}" stroke="${COL.future}" stroke-width="2"/>`);
+    o.push(`<path d="M${cx-5},${yt+8} L${cx},${yt+2} L${cx+5},${yt+8} Z" fill="${COL.future}"/>`);};
+  // ゴール箱
+  const gy=HEADER_H;
+  o.push(`<rect x="${PHASE_X}" y="${gy}" width="${PHASE_W}" height="${GOAL_H}" rx="10" fill="${COL.goalBg}" stroke="${COL.goal}" stroke-width="2"/>`);
+  o.push(`<text x="${PHASE_X+14}" y="${gy+22}" font-size="12" font-weight="700" fill="${COL.goal}">ゴール</text>`);
+  wrap(d.goal,13).slice(0,2).forEach((l,k)=>o.push(`<text x="${PHASE_X+14}" y="${gy+42+k*16}" font-size="13" fill="${COL.ink}">${esc(l)}</text>`));
+  pill(gy+GOAL_H/2,"達成",COL.goal,COL.goalBg);
+  let y=gy+GOAL_H+GAP; arrow(y,gy+GOAL_H); let weeks=0;
+  order.forEach(idx=>{
+    const p=phases[idx], h=hts[idx], sn=idx+1, tasks=p.tasks||[];
+    let st,fg,bg,pl;
+    if(sn<cur){st="done";fg=COL.done;bg=COL.doneBg;pl="クリア";}
+    else if(sn===cur){st="now";fg=COL.now;bg=COL.nowBg;pl="今";}
+    else{weeks++;st="future";fg=COL.future;bg=COL.futureBg;pl="＋"+weeks+"週";}
+    const sw=st==="now"?2:1;
+    o.push(`<rect x="${PHASE_X}" y="${y}" width="${PHASE_W}" height="${h}" rx="10" fill="${bg}" stroke="${fg}" stroke-width="${sw}"/>`);
+    const mcy=y+20;
+    o.push(`<circle cx="${PHASE_X-12}" cy="${mcy}" r="9" fill="${fg}"/>`);
+    if(st==="done")o.push(`<path d="M${PHASE_X-16},${mcy} l3,3 l6,-7" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`);
+    o.push(`<text x="${PHASE_X+12}" y="${y+22}" font-size="14" font-weight="700" fill="${COL.ink}">${esc(STAGE_NAMES[idx])}</text>`);
+    wrap("完了："+(p.doneDef||""),15).slice(0,2).forEach((l,k)=>o.push(`<text x="${PHASE_X+12}" y="${y+40+k*15}" font-size="11" fill="${COL.sub}">${esc(l)}</text>`));
+    pill(y+h/2,pl,fg,bg);
+    tasks.forEach((t,j)=>{const ty=y+16+j*LH, dn=!!t.done, bc=dn?COL.done:COL.future;
+      o.push(`<rect x="${TASK_X}" y="${ty-11}" width="14" height="14" rx="3" fill="${dn?COL.done:"#fff"}" stroke="${bc}" stroke-width="1.5"/>`);
+      if(dn)o.push(`<path d="M${TASK_X+3},${ty-4} l3,3 l5,-6" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`);
+      o.push(`<text x="${TASK_X+22}" y="${ty}" font-size="12.5" fill="${dn?COL.sub:COL.ink}"${dn?' text-decoration="line-through"':''}>${esc(t.name)}</text>`);});
+    const yn=y+h+GAP; if(idx!==0)arrow(yn,y+h); y=yn;
+  });
+  o.push("</svg>");
+  return o.join("\n");
+}
+
+// ───────── エディタ描画 ─────────
+function renderEditor(){
+  const e=document.getElementById("editor");
+  const stageBtns=[1,2,3,4,5].map(s=>`<button data-stage="${s}" class="${data.currentStage==s?'on':''}">${STAGE_NAMES[s-1]}</button>`).join("");
+  let html=`
+    <div class="field"><label>名前</label><input type="text" data-f="name" value="${esc(data.name)}"></div>
+    <div class="field"><label>補足（肩書/状況）</label><input type="text" data-f="note" value="${esc(data.note)}"></div>
+    <div class="field"><label>テーマ</label><input type="text" data-f="theme" value="${esc(data.theme)}"></div>
+    <div class="field"><label>ゴール（観察できる状態）</label><input type="text" data-f="goal" value="${esc(data.goal)}"></div>
+    <div class="field"><label>現在ステージ（今ここ）</label><div class="stage-pick">${stageBtns}</div></div>
+    <p class="hint">MT中：できたタスクにチェック → 図解と達成率が即更新。終われば翌週の図解が完成。</p>`;
+  // フェーズは図解と同じ並び（⑤→①）
+  [4,3,2,1,0].forEach(idx=>{
+    const p=data.phases[idx]; const isNow=data.currentStage==idx+1;
+    const badgeC = isNow?COL.now:(idx+1<data.currentStage?COL.done:COL.future);
+    const tasks=(p.tasks||[]).map((t,j)=>`
+      <div class="task">
+        <input type="checkbox" data-task="${idx}:${j}" ${t.done?"checked":""}>
+        <input type="text" data-taskname="${idx}:${j}" value="${esc(t.name)}">
+        <button class="del" data-deltask="${idx}:${j}" title="削除">×</button>
+      </div>`).join("");
+    html+=`
+      <div class="phase ${isNow?'now':''}">
+        <div class="phase-head">
+          <span class="badge" style="background:${badgeC};color:#fff">${STAGE_NAMES[idx]}</span>
+          <input type="text" data-phasename="${idx}" value="${esc(p.name)}" style="flex:1;border:none;font-weight:700;font-size:13px">
+        </div>
+        ${tasks}
+        <button class="addtask" data-addtask="${idx}">＋ タスクを追加</button>
+        <input class="doneDef" data-donedef="${idx}" value="${esc(p.doneDef)}" placeholder="完了の定義（観察できる状態）">
+      </div>`;
+  });
+  e.innerHTML=html;
+}
+
+function renderCanvas(){document.getElementById("canvas").innerHTML=buildSvg(data);}
+function refreshMemberSelect(){
+  const sel=document.getElementById("member");
+  const members=listMembers();
+  sel.innerHTML=members.map(m=>`<option ${m===data.name?"selected":""}>${esc(m)}</option>`).join("")||`<option>${esc(data.name)}</option>`;
+}
+function renderAll(){renderEditor();renderCanvas();refreshMemberSelect();}
+function persist(){save(data);renderCanvas();}
+
+// ───────── イベント ─────────
+document.getElementById("editor").addEventListener("input",ev=>{
+  const t=ev.target;
+  if(t.dataset.f){data[t.dataset.f]=t.value;}
+  else if(t.dataset.phasename!=null){data.phases[+t.dataset.phasename].name=t.value;}
+  else if(t.dataset.donedef!=null){data.phases[+t.dataset.donedef].doneDef=t.value;}
+  else if(t.dataset.taskname){const[i,j]=t.dataset.taskname.split(":").map(Number);data.phases[i].tasks[j].name=t.value;}
+  else if(t.dataset.task){const[i,j]=t.dataset.task.split(":").map(Number);data.phases[i].tasks[j].done=t.checked;}
+  else return;
+  persist();
+  if(t.dataset.task)renderEditor(); // チェックで取り消し線等を反映
+});
+document.getElementById("editor").addEventListener("click",ev=>{
+  const t=ev.target;
+  if(t.dataset.stage){data.currentStage=+t.dataset.stage;persist();renderEditor();}
+  else if(t.dataset.addtask!=null){data.phases[+t.dataset.addtask].tasks.push({name:"新しいタスク",done:false});persist();renderEditor();}
+  else if(t.dataset.deltask){const[i,j]=t.dataset.deltask.split(":").map(Number);data.phases[i].tasks.splice(j,1);persist();renderEditor();}
+});
+document.getElementById("member").addEventListener("change",ev=>{const d=load(ev.target.value);if(d){data=d;renderAll();}});
+document.getElementById("new").addEventListener("click",()=>{const n=prompt("メンバー名は？");if(!n)return;data=template(n);save(data);renderAll();});
+document.getElementById("import").addEventListener("change",ev=>{
+  const f=ev.target.files[0];if(!f)return;const r=new FileReader();
+  r.onload=()=>{try{data=JSON.parse(r.result);save(data);renderAll();}catch(e){alert("JSONの読み込みに失敗: "+e);}};r.readAsText(f);});
+document.getElementById("exportJson").addEventListener("click",()=>{
+  const blob=new Blob([JSON.stringify(data,null,2)],{type:"application/json"});
+  const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=data.name+".json";a.click();});
+document.getElementById("print").addEventListener("click",()=>window.print());
+document.getElementById("exportPng").addEventListener("click",()=>{
+  const svg=document.getElementById("gm");
+  const xml=new XMLSerializer().serializeToString(svg);
+  const img=new Image();
+  img.onload=()=>{const s=2,c=document.createElement("canvas");
+    c.width=svg.viewBox.baseVal.width*s;c.height=svg.viewBox.baseVal.height*s;
+    const ctx=c.getContext("2d");ctx.fillStyle="#fff";ctx.fillRect(0,0,c.width,c.height);
+    ctx.scale(s,s);ctx.drawImage(img,0,0);
+    const a=document.createElement("a");a.href=c.toDataURL("image/png");a.download=data.name+".png";a.click();};
+  img.src="data:image/svg+xml;charset=utf-8,"+encodeURIComponent(xml);});
+
+// ───────── 起動 ─────────
+(function init(){
+  const members=listMembers();
+  if(members.length){data=load(members[0]);}
+  else{data=DEMO;save(DEMO);} // 初回はデモを投入
+  renderAll();
+})();
+</script>
+</body>
+</html>
