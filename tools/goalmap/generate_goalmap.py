@@ -54,6 +54,13 @@ TASK_LH = 18                    # タスク1行の高さ
 STAGE_NAMES = ["①型を知る", "②練習", "③実践", "④振り返り", "⑤自走"]
 
 
+def load_member_data(src: str) -> dict:
+    """members/<名前>.json を読み込む。'-' なら標準入力。"""
+    if src == "-":
+        return json.load(sys.stdin)
+    return json.loads(Path(src).read_text(encoding="utf-8"))
+
+
 def esc(s) -> str:
     return escape(str(s if s is not None else ""))
 
@@ -238,12 +245,8 @@ def main(argv: list[str]) -> int:
         print(__doc__)
         return 1
     src = args[0]
-    if src == "-":
-        data = json.load(sys.stdin)
-        stem = data.get("name", "goalmap")
-    else:
-        data = json.loads(Path(src).read_text(encoding="utf-8"))
-        stem = Path(src).stem
+    data = load_member_data(src)
+    stem = data.get("name", "goalmap") if src == "-" else Path(src).stem
 
     out_base = None
     if "-o" in opts:
