@@ -4,51 +4,52 @@
   "theme": "契約を安定させる（クローザー）",
   "goal": "客層を問わず自分の型で契約まで運び、成約が安定する",
   "why": "成約率が客層で振れる。型を固めて安定させたい",
-  "focus": "苦手ケースの切り返しをロープレで固める",
-  "next": "今週中に苦手パターン3つの切り返しを用意",
+  "focus": "苦手ケースの切り返しをロープレで固める（②練習・進行中）",
+  "next": "③実践へ：商談前に型の要点を確認する",
   "currentStage": 2,
-  "_source": "ヘッダーはNotion目標マップ実値（2026-06-24時点）。タスクは契約安定クローザーのテンプレ。done=ステータス完了。",
+  "_source": "Notion『GMタスクDB』の実タスク・実ステータスのミラー（2026-06-24時点）。done=ステータス『完了』。statusに実値を保持。",
   "phases": [
     {
       "name": "型を知る",
       "doneDef": "自分の勝ち負けを言語化できる",
       "tasks": [
-        { "name": "直近の成約・失注を5件ずつ振り返る", "done": true },
-        { "name": "勝ち／負けパターンを言語化する", "done": true },
-        { "name": "型を本／動画で学ぶ", "done": true }
+        { "name": "直近の成約・失注を5件ずつ振り返る", "status": "完了", "done": true },
+        { "name": "勝ち／負けパターンを言語化する", "status": "完了", "done": true }
       ]
     },
     {
       "name": "練習",
       "doneDef": "苦手ケースでも型どおり切り返せる",
       "tasks": [
-        { "name": "録音して聞き返す", "done": true },
-        { "name": "上司と週2回ロープレ", "done": true },
-        { "name": "苦手ケースの切り返しをロープレ", "done": false }
+        { "name": "苦手ケースの切り返しをロープレ", "status": "進行中", "done": false },
+        { "name": "トップ商談の録音を聞く", "status": "未着手", "done": false }
       ]
     },
     {
       "name": "実践",
       "doneDef": "商談で型を意図的に使えている",
       "tasks": [
-        { "name": "商談前に型の要点を確認する", "done": false },
-        { "name": "ネック処理を意図的に試す", "done": false }
+        { "name": "商談前に型の要点を確認する", "status": "未着手", "done": false },
+        { "name": "ネック処理を意図的に試す", "status": "未着手", "done": false }
       ]
     },
     {
       "name": "振り返り",
-      "doneDef": "失注の共通要因を自分で抽出できる",
+      "doneDef": "失注の共通要因を抽出し、wany全体に展開できる",
       "tasks": [
-        { "name": "失注の共通要因を抽出する", "done": false },
-        { "name": "次の一手を言語化する", "done": false }
+        { "name": "週次で成約率の推移を確認", "status": "未着手", "done": false },
+        { "name": "失注の共通要因を抽出する", "status": "未着手", "done": false },
+        { "name": "wannyメンバーの失注商談を1件レビューし、要因を自分の型と照合", "status": "未着手", "done": false }
       ]
     },
     {
       "name": "自走",
-      "doneDef": "指導なしで型を回し、人に教えられる",
+      "doneDef": "指導なしで型を回し、wanyの標準トークに言語化できる",
       "tasks": [
-        { "name": "メンバーのロープレを主催し再発見に使う", "done": false },
-        { "name": "勝ち型をwannyの標準トークに言語化・共有", "done": false }
+        { "name": "苦手客層を指名で担当する", "status": "未着手", "done": false },
+        { "name": "自分の型を後輩に共有する", "status": "未着手", "done": false },
+        { "name": "勝ち型をwannyの標準トークに言語化・共有する", "status": "未着手", "done": false },
+        { "name": "メンバーのロープレを主催し、教えて詰まった点を自分の再発見に使う", "status": "未着手", "done": false }
       ]
     }
   ]
