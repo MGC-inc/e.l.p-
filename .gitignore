@@ -14,3 +14,7 @@ credentials*
 CLAUDE.local.md
 .claude/settings.local.json
 .claude/memory-db/
+
+# Python
+__pycache__/
+*.pyc
