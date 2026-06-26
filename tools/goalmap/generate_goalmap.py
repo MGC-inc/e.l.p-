@@ -97,6 +97,12 @@ def build_svg(d: dict, font: str = FONT) -> str:
         f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {WIDTH} {H}" '
         f'font-family="{font}" width="{WIDTH}" height="{H}">'
     )
+    out.append(
+        '<defs><linearGradient id="goalGrad" x1="0" y1="0" x2="1" y2="1">'
+        '<stop offset="0" stop-color="#5B4BE0"/>'
+        '<stop offset="0.5" stop-color="#B14BE0"/>'
+        '<stop offset="1" stop-color="#FFC24B"/></linearGradient></defs>'
+    )
     out.append(f'<rect x="0" y="0" width="{WIDTH}" height="{H}" fill="#FFFFFF"/>')
 
     # ── ヘッダー ─────────────────────────────
@@ -135,23 +141,31 @@ def build_svg(d: dict, font: str = FONT) -> str:
             f'<path d="M{cx-5},{y_top+8} L{cx},{y_top+2} L{cx+5},{y_top+8} Z" fill="{C_FUTURE}"/>'
         )
 
-    # ── ゴール箱（最上部・パープル・2px枠）──────────────
+    # ── ゴール箱（最上部・輝くグラデーション・金枠）──────────────
     gy = HEADER_H
     out.append(
         f'<rect x="{PHASE_X}" y="{gy}" width="{PHASE_W}" height="{GOAL_H}" rx="10" '
-        f'fill="{C_GOAL_BG}" stroke="{C_GOAL}" stroke-width="2"/>'
+        f'fill="url(#goalGrad)" stroke="#FFD36E" stroke-width="2.5"/>'
+    )
+    # 上半分のグロス（白を薄く重ねて“ツヤ”を出す）
+    out.append(
+        f'<rect x="{PHASE_X}" y="{gy}" width="{PHASE_W}" height="{GOAL_H/2}" rx="10" '
+        f'fill="#FFFFFF" opacity="0.16"/>'
     )
     out.append(
         f'<text x="{PHASE_X+14}" y="{gy+22}" font-size="12" font-weight="700" '
-        f'fill="{C_GOAL}">ゴール</text>'
+        f'fill="#FFFFFF">🏆 ゴール</text>'
+    )
+    out.append(
+        f'<text x="{PHASE_X+PHASE_W-12}" y="{gy+24}" text-anchor="end" font-size="15">✨</text>'
     )
     for k, line in enumerate(wrap(d.get("goal", ""), 13)[:2]):
         out.append(
-            f'<text x="{PHASE_X+14}" y="{gy+42+k*16}" font-size="13" '
-            f'fill="{C_INK}">{esc(line)}</text>'
+            f'<text x="{PHASE_X+14}" y="{gy+42+k*16}" font-size="13" font-weight="600" '
+            f'fill="#FFFFFF">{esc(line)}</text>'
         )
-    # 時間軸ピル「達成」
-    _pill(out, gy + GOAL_H / 2, "達成", C_GOAL, C_GOAL_BG)
+    # 時間軸ピル「達成」（ゴールに合わせて金）
+    _pill(out, gy + GOAL_H / 2, "達成", "#B7791F", "#FFF3D6")
 
     # ── フェーズ箱（⑤→①）─────────────────────
     y = gy + GOAL_H + GAP

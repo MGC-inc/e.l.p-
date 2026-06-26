@@ -58,6 +58,7 @@
   <label class="hint">メンバー:</label>
   <select id="member"></select>
   <button id="new">＋新規</button>
+  <button id="reset" title="このメンバーを内蔵の初期値に戻す">↺ 初期化</button>
   <label class="hint" style="margin-left:8px">読込:</label>
   <input type="file" id="import" accept="application/json" style="font-size:12px;width:170px" />
   <button id="exportJson">JSON保存</button>
@@ -87,28 +88,58 @@ function template(name){
       {name:"自走",doneDef:"観察できる完了の状態",tasks:[]},
     ]};
 }
-// 同梱デモ（岡野）。初回起動時の例として読み込む。
-const DEMO = {name:"岡野",note:"wanny",theme:"契約を安定させる（クローザー）",
-  goal:"客層を問わず自分の型で契約まで運び、成約が安定する",why:"成約率が客層で振れる。型を固めて安定させたい",currentStage:2,
-  phases:[
-    {name:"型を知る",doneDef:"自分の勝ち負けを言語化できる",tasks:[
-      {name:"直近の成約・失注を5件ずつ振り返る",done:true},
-      {name:"勝ち／負けパターンを言語化する",done:true},
-      {name:"型を本／動画で学ぶ",done:true}]},
-    {name:"練習",doneDef:"苦手ケースでも型どおり切り返せる",tasks:[
-      {name:"録音して聞き返す",done:true},
-      {name:"上司と週2回ロープレ",done:true},
-      {name:"苦手ケースの切り返しをロープレ",done:false}]},
-    {name:"実践",doneDef:"商談で型を意図的に使えている",tasks:[
-      {name:"商談前に型の要点を確認する",done:false},
-      {name:"ネック処理を意図的に試す",done:false}]},
-    {name:"振り返り",doneDef:"失注の共通要因を自分で抽出できる",tasks:[
-      {name:"失注の共通要因を抽出する",done:false},
-      {name:"次の一手を言語化する",done:false}]},
-    {name:"自走",doneDef:"指導なしで型を回し、人に教えられる",tasks:[
-      {name:"メンバーのロープレを主催し再発見に使う",done:false},
-      {name:"勝ち型をwannyの標準トークに言語化・共有",done:false}]},
-  ]};
+// ───────── 同梱メンバーデータ（members/*.json のミラー）─────────
+// ファイル単体で配布できるよう、実メンバーをここに内蔵する。初回起動時に
+// localStorage へ取り込み、ドロップダウンに全員が並ぶ。各人の最新編集は
+// localStorage 側が正（ここは初期値／「↺ 初期化」で戻せる工場出荷値）。
+const EMBEDDED = [
+  {name:"岡野",note:"wanny",theme:"契約を安定させる（クローザー）",
+   goal:"客層を問わず自分の型で契約まで運び、成約が安定する",
+   why:"成約率が客層で振れる。型を固めて安定させたい",currentStage:2,
+   phases:[
+     {name:"型を知る",doneDef:"自分の勝ち負けを言語化できる",tasks:[
+       {name:"直近の成約・失注を5件ずつ振り返る",done:true},
+       {name:"勝ち／負けパターンを言語化する",done:true}]},
+     {name:"練習",doneDef:"苦手ケースでも型どおり切り返せる",tasks:[
+       {name:"苦手ケースの切り返しをロープレ",done:false},
+       {name:"トップ商談の録音を聞く",done:false}]},
+     {name:"実践",doneDef:"商談で型を意図的に使えている",tasks:[
+       {name:"商談前に型の要点を確認する",done:false},
+       {name:"ネック処理を意図的に試す",done:false}]},
+     {name:"振り返り",doneDef:"失注の共通要因を抽出し、wany全体に展開できる",tasks:[
+       {name:"週次で成約率の推移を確認",done:false},
+       {name:"失注の共通要因を抽出する",done:false},
+       {name:"wannyメンバーの失注商談を1件レビューし、要因を自分の型と照合",done:false}]},
+     {name:"自走",doneDef:"指導なしで型を回し、wanyの標準トークに言語化できる",tasks:[
+       {name:"苦手客層を指名で担当する",done:false},
+       {name:"自分の型を後輩に共有する",done:false},
+       {name:"勝ち型をwannyの標準トークに言語化・共有する",done:false},
+       {name:"メンバーのロープレを主催し、教えて詰まった点を自分の再発見に使う",done:false}]},
+   ]},
+  {name:"宮腰",note:"wanny・戸田指導",theme:"契約を安定させる（クローザー）",
+   goal:"客層を問わず自分の型で契約まで運び、成約が安定する",
+   why:"自分の成約を安定させつつ、戸田に型を教えられる状態を目指す",currentStage:2,
+   phases:[
+     {name:"型を知る",doneDef:"自分の勝ち負けを言語化できる",tasks:[
+       {name:"直近の成約・失注を5件ずつ振り返る",done:true},
+       {name:"勝ち／負けパターンを言語化する",done:true}]},
+     {name:"練習",doneDef:"苦手ケースでも型どおり切り返せる",tasks:[
+       {name:"苦手ケースの切り返しをロープレ",done:false},
+       {name:"トップ商談の録音を聞く",done:false}]},
+     {name:"実践",doneDef:"商談で型を意図的に使えている",tasks:[
+       {name:"商談前に型の要点を確認する",done:false},
+       {name:"ネック処理を意図的に試す",done:false}]},
+     {name:"振り返り",doneDef:"失注の共通要因を、戸田に教える前提で言語化できる",tasks:[
+       {name:"週次で成約率の推移を確認",done:false},
+       {name:"戸田と一緒に失注を振り返り、教える前提で言語化",done:false}]},
+     {name:"自走",doneDef:"指導なしで型を回し、戸田に教えられる",tasks:[
+       {name:"戸田に自分の型を教える",done:false},
+       {name:"戸田の商談に同行してFBする",done:false}]},
+   ]},
+];
+const clone = x => JSON.parse(JSON.stringify(x));
+const embeddedNames = () => EMBEDDED.map(m=>m.name);
+const findEmbedded = n => { const m=EMBEDDED.find(x=>x.name===n); return m?clone(m):null; };
 
 // ───────── localStorage ─────────
 const KEY = n => "goalmap:"+n;
@@ -136,6 +167,7 @@ function buildSvg(d){
   const cx=PHASE_X+PHASE_W/2;
   const o=[];
   o.push(`<svg xmlns="http://www.w3.org/2000/svg" id="gm" viewBox="0 0 ${W} ${H}" font-family="${FONT}" width="${W}" height="${H}">`);
+  o.push(`<defs><linearGradient id="goalGrad" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#5B4BE0"/><stop offset="0.5" stop-color="#B14BE0"/><stop offset="1" stop-color="#FFC24B"/></linearGradient></defs>`);
   o.push(`<rect x="0" y="0" width="${W}" height="${H}" fill="#fff"/>`);
   let head=esc(d.name||"")+(d.note?`（${esc(d.note)}）`:"")+`｜${esc(d.theme||"")}`;
   o.push(`<text x="20" y="34" font-size="19" font-weight="700" fill="${COL.ink}">${head}</text>`);
@@ -148,12 +180,14 @@ function buildSvg(d){
     o.push(`<text x="${PILL_X+PILL_W/2}" y="${cy+4}" text-anchor="middle" font-size="11" font-weight="700" fill="${fg}">${esc(label)}</text>`);};
   const arrow=(yb,yt)=>{o.push(`<line x1="${cx}" y1="${yb}" x2="${cx}" y2="${yt+6}" stroke="${COL.future}" stroke-width="2"/>`);
     o.push(`<path d="M${cx-5},${yt+8} L${cx},${yt+2} L${cx+5},${yt+8} Z" fill="${COL.future}"/>`);};
-  // ゴール箱
+  // ゴール箱（輝くグラデーション＝到達点を一目で“ごほうび”に見せる）
   const gy=HEADER_H;
-  o.push(`<rect x="${PHASE_X}" y="${gy}" width="${PHASE_W}" height="${GOAL_H}" rx="10" fill="${COL.goalBg}" stroke="${COL.goal}" stroke-width="2"/>`);
-  o.push(`<text x="${PHASE_X+14}" y="${gy+22}" font-size="12" font-weight="700" fill="${COL.goal}">ゴール</text>`);
-  wrap(d.goal,13).slice(0,2).forEach((l,k)=>o.push(`<text x="${PHASE_X+14}" y="${gy+42+k*16}" font-size="13" fill="${COL.ink}">${esc(l)}</text>`));
-  pill(gy+GOAL_H/2,"達成",COL.goal,COL.goalBg);
+  o.push(`<rect x="${PHASE_X}" y="${gy}" width="${PHASE_W}" height="${GOAL_H}" rx="10" fill="url(#goalGrad)" stroke="#FFD36E" stroke-width="2.5"/>`);
+  o.push(`<rect x="${PHASE_X}" y="${gy}" width="${PHASE_W}" height="${GOAL_H/2}" rx="10" fill="#ffffff" opacity="0.16"/>`);
+  o.push(`<text x="${PHASE_X+14}" y="${gy+22}" font-size="12" font-weight="700" fill="#fff">🏆 ゴール</text>`);
+  o.push(`<text x="${PHASE_X+PHASE_W-12}" y="${gy+24}" text-anchor="end" font-size="15">✨</text>`);
+  wrap(d.goal,13).slice(0,2).forEach((l,k)=>o.push(`<text x="${PHASE_X+14}" y="${gy+42+k*16}" font-size="13" font-weight="600" fill="#fff">${esc(l)}</text>`));
+  pill(gy+GOAL_H/2,"達成","#B7791F","#FFF3D6");
   let y=gy+GOAL_H+GAP; arrow(y,gy+GOAL_H); let weeks=0;
   order.forEach(idx=>{
     const p=phases[idx], h=hts[idx], sn=idx+1, tasks=p.tasks||[];
@@ -185,9 +219,9 @@ function renderEditor(){
   const stageBtns=[1,2,3,4,5].map(s=>`<button data-stage="${s}" class="${data.currentStage==s?'on':''}">${STAGE_NAMES[s-1]}</button>`).join("");
   let html=`
     <div class="field"><label>名前</label><input type="text" data-f="name" value="${esc(data.name)}"></div>
-    <div class="field"><label>補足（肩書/状況）</label><input type="text" data-f="note" value="${esc(data.note)}"></div>
-    <div class="field"><label>テーマ</label><input type="text" data-f="theme" value="${esc(data.theme)}"></div>
-    <div class="field"><label>ゴール（観察できる状態）</label><input type="text" data-f="goal" value="${esc(data.goal)}"></div>
+    <div class="field"><label>所属</label><input type="text" data-f="note" value="${esc(data.note)}"></div>
+    <div class="field"><label>テーマ（分野の見出し・任意）</label><input type="text" data-f="theme" value="${esc(data.theme)}"></div>
+    <div class="field"><label>ゴール（観察できる状態・今期の到達点）</label><input type="text" data-f="goal" value="${esc(data.goal)}"></div>
     <div class="field"><label>現在ステージ（今ここ）</label><div class="stage-pick">${stageBtns}</div></div>
     <p class="hint">MT中：できたタスクにチェック → 図解と達成率が即更新。終われば翌週の図解が完成。</p>`;
   // フェーズは図解と同じ並び（⑤→①）
@@ -217,8 +251,9 @@ function renderEditor(){
 function renderCanvas(){document.getElementById("canvas").innerHTML=buildSvg(data);}
 function refreshMemberSelect(){
   const sel=document.getElementById("member");
-  const members=listMembers();
-  sel.innerHTML=members.map(m=>`<option ${m===data.name?"selected":""}>${esc(m)}</option>`).join("")||`<option>${esc(data.name)}</option>`;
+  // localStorage のメンバー ∪ 内蔵メンバー（重複除去・五十音順）
+  const members=[...new Set([...listMembers(),...embeddedNames(),data.name])].filter(Boolean).sort();
+  sel.innerHTML=members.map(m=>`<option ${m===data.name?"selected":""}>${esc(m)}</option>`).join("");
 }
 function renderAll(){renderEditor();renderCanvas();refreshMemberSelect();}
 function persist(){save(data);renderCanvas();}
@@ -241,7 +276,12 @@ document.getElementById("editor").addEventListener("click",ev=>{
   else if(t.dataset.addtask!=null){data.phases[+t.dataset.addtask].tasks.push({name:"新しいタスク",done:false});persist();renderEditor();}
   else if(t.dataset.deltask){const[i,j]=t.dataset.deltask.split(":").map(Number);data.phases[i].tasks.splice(j,1);persist();renderEditor();}
 });
-document.getElementById("member").addEventListener("change",ev=>{const d=load(ev.target.value);if(d){data=d;renderAll();}});
+document.getElementById("member").addEventListener("change",ev=>{const n=ev.target.value;const d=load(n)||findEmbedded(n);if(d){data=d;save(data);renderAll();}});
+document.getElementById("reset").addEventListener("click",()=>{
+  const base=findEmbedded(data.name);
+  if(!base){alert("このメンバーは内蔵の初期値がありません（手元のJSONから読み込んでください）");return;}
+  if(!confirm(`「${data.name}」を内蔵の初期値に戻します。今の編集内容は消えます。よろしいですか？`))return;
+  data=base;save(data);renderAll();});
 document.getElementById("new").addEventListener("click",()=>{const n=prompt("メンバー名は？");if(!n)return;data=template(n);save(data);renderAll();});
 document.getElementById("import").addEventListener("change",ev=>{
   const f=ev.target.files[0];if(!f)return;const r=new FileReader();
@@ -263,9 +303,10 @@ document.getElementById("exportPng").addEventListener("click",()=>{
 
 // ───────── 起動 ─────────
 (function init(){
+  // 内蔵メンバーで、まだlocalStorageに無いものを初期投入（既存の編集は上書きしない）
+  EMBEDDED.forEach(m=>{ if(!load(m.name)) localStorage.setItem(KEY(m.name),JSON.stringify(m)); });
   const members=listMembers();
-  if(members.length){data=load(members[0]);}
-  else{data=DEMO;save(DEMO);} // 初回はデモを投入
+  data=load(members[0])||clone(EMBEDDED[0]);
   renderAll();
 })();
 </script>
