@@ -249,13 +249,18 @@ def bird_markup(form: int, cx: float, cy: float, s: float, phase_done: int, gen:
         o.append(star(cx - 27 * s, cy - 9 * s, 2.6 * s, "#FFF1B8"))
         o.append(star(cx + 28 * s, cy - 3 * s, 2.2 * s, "#FFF1B8"))
         o.append(star(cx + 20 * s, cy + 15 * s, 2 * s, "#FFE7A0"))
-    # 周回バッジ：2周目以降は番号を表示（卵に戻ってもリセット感を出さない＝何羽目か一目で分かる）
+    # 周回番号：2周目以降、卵や鳥の胸（不死鳥は黄金の胸当て）に番号を刻む。
+    # 卵に戻ってもリセット感を出さない＝何羽目の不死鳥かが一目で分かる。
     if gen >= 2:
-        bxp, byp, br = 17, 19, 7.6
-        o.append(f'<circle cx="{X(bxp)}" cy="{Y(byp)}" r="{R(br)}" fill="url(#gold)" '
-                 f'stroke="#fff" stroke-width="{R(1.6)}"/>')
-        o.append(f'<text x="{X(bxp)}" y="{cy+byp*s+3.6*s:.1f}" text-anchor="middle" '
-                 f'font-size="{R(10.5)}" font-weight="800" fill="#7A3E00">{gen}</text>')
+        # フォーム別の胸（卵は本体中央）の位置と紋章サイズ [chx, chy, r]
+        ch = {0: (0, 4, 6.4), 1: (0, 3, 5.4), 2: (0, 5, 6.0),
+              3: (0, 6, 6.4), 4: (0, 7, 6.8), 5: (0, 9, 5.8)}.get(form, (0, 5, 6.2))
+        chx, chy, cr = ch
+        o.append(f'<circle cx="{X(chx)}" cy="{Y(chy)}" r="{R(cr)}" fill="#7A3E00" opacity="0.92"/>')
+        o.append(f'<circle cx="{X(chx)}" cy="{Y(chy)}" r="{R(cr)}" fill="none" '
+                 f'stroke="#F2C230" stroke-width="{R(1)}"/>')
+        o.append(f'<text x="{X(chx)}" y="{cy+chy*s+cr*0.52*s:.1f}" text-anchor="middle" '
+                 f'font-size="{R(cr*1.5)}" font-weight="800" fill="#FFF3D6">{gen}</text>')
     return "".join(o)
 
 
