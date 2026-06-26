@@ -191,33 +191,44 @@ def bird_markup(form: int, cx: float, cy: float, s: float, phase_done: int) -> s
         beak(13, -8, 7); eye(8, -11)
         o.append(star(cx + 15 * s, cy - 16 * s, 3.4 * s, "#FFFFFF"))
     else:
-        # 最終進化：クジャク風（青緑〜金のイリデッセント・特大の羽・目玉模様の大扇・輝き）
+        # 最終進化：クジャク×黄金のゴージャス版（青緑〜金イリデッセント・特大の羽・目玉の大扇・黄金の装飾）
+        rays = [(31, 0), (22, 22), (0, 31), (-22, 22), (-31, 0), (-22, -22), (0, -31), (22, -22)]
+        for i, (rx, ry) in enumerate(rays):
+            o.append(f'<line x1="{X(0)}" y1="{Y(0)}" x2="{X(rx)}" y2="{Y(ry)}" '
+                     f'stroke="#F2C230" stroke-width="{R(1.4 if i % 2 else 2.4)}" '
+                     f'stroke-linecap="round" opacity="0.28"/>')
         o.append(f'<circle cx="{X(0)}" cy="{Y(0)}" r="{R(30)}" fill="#2BD0C0" opacity="0.10"/>')
-        o.append(f'<circle cx="{X(0)}" cy="{Y(0)}" r="{R(21)}" fill="#BFF3EC" opacity="0.16"/>')
+        o.append(f'<circle cx="{X(0)}" cy="{Y(0)}" r="{R(24)}" fill="none" '
+                 f'stroke="#F2C230" stroke-width="{R(1.4)}" opacity="0.45"/>')
+        o.append(f'<circle cx="{X(0)}" cy="{Y(0)}" r="{R(20)}" fill="#FFF6D8" opacity="0.14"/>')
         uf = [(-0.914, -0.407), (-0.695, -0.719), (-0.375, -0.927), (0, -1),
               (0.375, -0.927), (0.695, -0.719), (0.914, -0.407)]
         rf, bx, by = 32, 0, 6
         for dx, dy in uf:
             tx, ty = bx + dx * rf, by + dy * rf
             mx, my = bx + dx * rf * 0.55, by + dy * rf * 0.55
-            path(M(bx, by) + Q(mx, my, tx, ty), None, "#1E9E8A", 2.2)
-            circ(tx, ty, 5, "#C9A227"); circ(tx, ty, 3.4, "#1FA6A0"); circ(tx, ty, 2, "#173A8C")
+            path(M(bx, by) + Q(mx, my, tx, ty), None, "#C9A227", 2.4)
+            circ(tx, ty, 6, "#E6B422"); circ(tx, ty, 4.4, "#C9A227")
+            circ(tx, ty, 3.2, "#1FA6A0"); circ(tx, ty, 1.9, "#173A8C")
             o.append(f'<circle cx="{X(tx-0.6)}" cy="{Y(ty-0.6)}" r="{R(0.7)}" fill="#FFFFFF"/>')
         path(M(-3, 0) + Q(-22, -6, -35, -16) + Q(-20, -12, -5, -5) + "Z", "url(#pcock)")
         path(M(-3, 3) + Q(-24, 2, -35, -3) + Q(-18, -2, -5, -1) + "Z", "#1746A0")
+        path(M(-3, 0) + Q(-22, -6, -35, -16), None, "#F2C230", 1.6)
         path(M(3, 0) + Q(22, -6, 35, -16) + Q(20, -12, 5, -5) + "Z", "url(#pcock)")
         path(M(3, 3) + Q(24, 2, 35, -3) + Q(18, -2, 5, -1) + "Z", "#1746A0")
+        path(M(3, 0) + Q(22, -6, 35, -16), None, "#F2C230", 1.6)
         ell(0, 6, 12, 15, "url(#pcock)")
-        o.append(f'<ellipse cx="{X(-3)}" cy="{Y(2)}" rx="{R(5)}" ry="{R(9)}" fill="#BFFAF2" opacity="0.45"/>')
+        o.append(f'<ellipse cx="{X(0)}" cy="{Y(9)}" rx="{R(6)}" ry="{R(9.5)}" fill="url(#gold)" opacity="0.95"/>')
+        o.append(f'<ellipse cx="{X(-2)}" cy="{Y(5)}" rx="{R(2.4)}" ry="{R(4.5)}" fill="#FFF6D8" opacity="0.55"/>')
         circ(0, -9, 7.5, "#1C4FB0")
-        line(-2.5, -15, -4, -23, "#1E9E8A", 1.4); circ(-4, -23, 1.3, "#173A8C")
-        line(0, -16, 0, -25, "#1E9E8A", 1.4); circ(0, -25, 1.3, "#173A8C")
-        line(2.5, -15, 4, -23, "#1E9E8A", 1.4); circ(4, -23, 1.3, "#173A8C")
+        path(M(-5, -15) + L(-4, -21) + L(-2, -16) + L(0, -22)
+             + L(2, -16) + L(4, -21) + L(5, -15) + "Z", "url(#gold)")
+        circ(0, -22.5, 1.5, "#FFF0A8")
         beak(7, -9, 7, "#E8E0C8"); eye(3, -11)
         o.append(star(cx, cy - 13 * s, 2 * s, "#FFFFFF"))
-        o.append(star(cx - 27 * s, cy - 9 * s, 2.6 * s, "#FFF6D0"))
-        o.append(star(cx + 28 * s, cy - 3 * s, 2.2 * s, "#FFF6D0"))
-        o.append(star(cx + 20 * s, cy + 15 * s, 2 * s, "#BFF3EC"))
+        o.append(star(cx - 27 * s, cy - 9 * s, 2.6 * s, "#FFF1B8"))
+        o.append(star(cx + 28 * s, cy - 3 * s, 2.2 * s, "#FFF1B8"))
+        o.append(star(cx + 20 * s, cy + 15 * s, 2 * s, "#FFE7A0"))
     return "".join(o)
 
 
@@ -263,6 +274,10 @@ def build_svg(d: dict, font: str = FONT) -> str:
         '<stop offset="0" stop-color="#2BD0C0"/>'
         '<stop offset="0.55" stop-color="#2E8FD0"/>'
         '<stop offset="1" stop-color="#2E4BB0"/></linearGradient>'
+        '<linearGradient id="gold" x1="0" y1="0" x2="0" y2="1">'
+        '<stop offset="0" stop-color="#FFF0A8"/>'
+        '<stop offset="0.5" stop-color="#F2C230"/>'
+        '<stop offset="1" stop-color="#C8901A"/></linearGradient>'
         '</defs>'
     )
     out.append(f'<rect x="0" y="0" width="{WIDTH}" height="{H}" fill="#FFFFFF"/>')
