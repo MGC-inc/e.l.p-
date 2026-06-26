@@ -82,6 +82,10 @@
 
 <script>
 const STAGE_NAMES = ["①型を知る","②練習","③実践","④振り返り","⑤自走"];
+function weekLabel(weeksAhead){
+  const d=new Date(); d.setDate(d.getDate()+weeksAhead*7);
+  return (d.getMonth()+1)+"月第"+Math.ceil(d.getDate()/7)+"週";
+}
 const COL = {done:"#1D9E75",doneBg:"#E7F5EF",now:"#EF9F27",nowBg:"#FDF3E2",
   future:"#9AA3AD",futureBg:"#F2F4F6",goal:"#6357CC",goalBg:"#EEECFA",ink:"#1F2933",sub:"#67707A"};
 const FONT = "Hiragino Sans, 'Noto Sans CJK JP', 'Yu Gothic', sans-serif";
@@ -400,7 +404,7 @@ function buildAvatarCard(d){
 }
 
 function buildSvg(d){
-  const W=680, PHASE_X=130, PHASE_W=210, PILL_X=20, PILL_W=58, TASK_X=360,
+  const W=680, PHASE_X=130, PHASE_W=210, PILL_X=16, PILL_W=80, TASK_X=360,
         HEADER_H=70, GAP=26, GOAL_H=70, PAD=28, LH=18;
   const phases=d.phases, cur=+d.currentStage||1;
   const all=phases.flatMap(p=>p.tasks||[]); const done=all.filter(t=>t.done).length;
@@ -442,13 +446,14 @@ function buildSvg(d){
   }else{
     o.push(`<text x="${tx}" y="${ccy+2}" font-size="13" font-weight="700" fill="#C2410C">覚醒！全タスク完了</text>`);
   }
-  let y=gy+GOAL_H+GAP; arrow(y,gy+GOAL_H); let weeks=0;
+  o.push(`<text x="${PILL_X}" y="62" font-size="10" fill="${COL.sub}">目標時期</text>`);
+  let y=gy+GOAL_H+GAP; arrow(y,gy+GOAL_H);
   order.forEach(idx=>{
     const p=phases[idx], h=hts[idx], sn=idx+1, tasks=p.tasks||[];
     let st,fg,bg,pl;
     if(sn<cur){st="done";fg=COL.done;bg=COL.doneBg;pl="クリア";}
-    else if(sn===cur){st="now";fg=COL.now;bg=COL.nowBg;pl="今";}
-    else{weeks++;st="future";fg=COL.future;bg=COL.futureBg;pl="＋"+weeks+"週";}
+    else if(sn===cur){st="now";fg=COL.now;bg=COL.nowBg;pl="今週";}
+    else{st="future";fg=COL.future;bg=COL.futureBg;pl=weekLabel(sn-cur);}
     const sw=st==="now"?2:1;
     o.push(`<rect x="${PHASE_X}" y="${y}" width="${PHASE_W}" height="${h}" rx="10" fill="${bg}" stroke="${fg}" stroke-width="${sw}"/>`);
     const mcy=y+20;
