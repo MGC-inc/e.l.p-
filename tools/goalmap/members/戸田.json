@@ -13,41 +13,88 @@
       "name": "型を知る",
       "doneDef": "自分の勝ち負けを言語化できる",
       "tasks": [
-        { "name": "直近の成約・失注を5件ずつ振り返る", "status": "未着手", "done": false },
-        { "name": "勝ち／負けパターンを言語化する", "status": "未着手", "done": false }
-      ]
+        {
+          "name": "直近の成約・失注を5件ずつ振り返る",
+          "status": "未着手",
+          "done": false
+        },
+        {
+          "name": "勝ち／負けパターンを言語化する",
+          "status": "未着手",
+          "done": false
+        }
+      ],
+      "due": "2026-07-17"
     },
     {
       "name": "練習",
       "doneDef": "苦手ケースでも型どおり切り返せる",
       "tasks": [
-        { "name": "苦手ケースの切り返しを宮腰とロープレ", "status": "未着手", "done": false },
-        { "name": "トップ商談の録音を聞く", "status": "未着手", "done": false }
-      ]
+        {
+          "name": "苦手ケースの切り返しを宮腰とロープレ",
+          "status": "未着手",
+          "done": false
+        },
+        {
+          "name": "トップ商談の録音を聞く",
+          "status": "未着手",
+          "done": false
+        }
+      ],
+      "due": "2026-07-27"
     },
     {
       "name": "実践",
       "doneDef": "商談で型を意図的に使えている",
       "tasks": [
-        { "name": "商談前に型の要点を確認する", "status": "未着手", "done": false },
-        { "name": "ネック処理を意図的に試す", "status": "未着手", "done": false }
-      ]
+        {
+          "name": "商談前に型の要点を確認する",
+          "status": "未着手",
+          "done": false
+        },
+        {
+          "name": "ネック処理を意図的に試す",
+          "status": "未着手",
+          "done": false
+        }
+      ],
+      "due": "2026-08-07"
     },
     {
       "name": "振り返り",
       "doneDef": "失注の共通要因を抽出できる",
       "tasks": [
-        { "name": "週次で成約率の推移を確認", "status": "未着手", "done": false },
-        { "name": "失注を宮腰と振り返り、要因を言語化", "status": "未着手", "done": false }
-      ]
+        {
+          "name": "週次で成約率の推移を確認",
+          "status": "未着手",
+          "done": false
+        },
+        {
+          "name": "失注を宮腰と振り返り、要因を言語化",
+          "status": "未着手",
+          "done": false
+        }
+      ],
+      "due": "2026-08-17"
     },
     {
       "name": "自走",
       "doneDef": "指導なしで型を回せる",
       "tasks": [
-        { "name": "指導なしで1商談を型どおり完遂する", "status": "未着手", "done": false },
-        { "name": "自分の勝ち型を言語化する", "status": "未着手", "done": false }
-      ]
+        {
+          "name": "指導なしで1商談を型どおり完遂する",
+          "status": "未着手",
+          "done": false
+        },
+        {
+          "name": "自分の勝ち型を言語化する",
+          "status": "未着手",
+          "done": false
+        }
+      ],
+      "due": "2026-08-28"
     }
-  ]
+  ],
+  "startDate": "2026-07-06",
+  "dueDate": "2026-08-28"
 }

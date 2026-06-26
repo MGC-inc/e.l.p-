@@ -47,6 +47,12 @@
   .task .del{border:none;background:none;color:var(--sub);cursor:pointer;font-size:15px;padding:2px 4px}
   .addtask{font-size:12px;color:var(--goal);background:none;border:none;cursor:pointer;padding:2px}
   .doneDef{width:100%;padding:4px 6px;border:1px dashed var(--line);border-radius:6px;font-size:12px;margin-top:4px}
+  .duein{font-size:11px;border:1px solid var(--line);border-radius:6px;padding:1px 4px;color:var(--ink)}
+  .duein.late{border-color:#DC2626;color:#DC2626;background:#FEE2E2}
+  .phase.late{border-color:#DC2626;box-shadow:0 0 0 1px #DC2626}
+  .lateflag{font-size:11px;font-weight:700;color:#DC2626;margin:2px 0 4px}
+  .dueplus{font-size:10px;padding:2px 6px;border:1px solid var(--line);border-radius:6px;background:#fff;cursor:pointer;white-space:nowrap}
+  .dueplus:hover{background:#F2F4F6}
   .hint{font-size:11px;color:var(--sub);margin:2px 0 12px}
   svg{max-width:100%;height:auto;border:1px solid var(--line);border-radius:8px}
   .roster{display:flex;gap:8px;overflow-x:auto;padding:8px 14px;background:#fff;border-bottom:1px solid var(--line)}
@@ -86,6 +92,9 @@ function weekLabel(weeksAhead){
   const d=new Date(); d.setDate(d.getDate()+weeksAhead*7);
   return (d.getMonth()+1)+"月第"+Math.ceil(d.getDate()/7)+"週";
 }
+function weekLabelDate(s){const d=new Date(s+"T00:00:00");return (d.getMonth()+1)+"月第"+Math.ceil(d.getDate()/7)+"週";}
+function isoOf(d){return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");}
+function todayISO(){return isoOf(new Date());}
 const COL = {done:"#1D9E75",doneBg:"#E7F5EF",now:"#EF9F27",nowBg:"#FDF3E2",
   future:"#9AA3AD",futureBg:"#F2F4F6",goal:"#6357CC",goalBg:"#EEECFA",ink:"#1F2933",sub:"#67707A"};
 const FONT = "Hiragino Sans, 'Noto Sans CJK JP', 'Yu Gothic', sans-serif";
@@ -116,23 +125,23 @@ function template(name){
 const EMBEDDED = [
   {name:"岡野",note:"wanny",theme:"契約を安定させる（クローザー）",
    goal:"客層を問わず自分の型で契約まで運び、成約が安定する",
-   why:"成約率が客層で振れる。型を固めて安定させたい",currentStage:2,
+   why:"成約率が客層で振れる。型を固めて安定させたい",currentStage:2,startDate:"2026-06-11",dueDate:"2026-07-23",
    phases:[
-     {name:"型を知る",doneDef:"自分の勝ち負けを言語化できる",tasks:[
+     {name:"型を知る",doneDef:"自分の勝ち負けを言語化できる",due:"2026-06-19",tasks:[
        {name:"直近の成約・失注を5件ずつ振り返る",done:true},
        {name:"勝ち／負けパターンを言語化する",done:true}]},
-     {name:"練習",doneDef:"苦手ケースでも型どおり切り返せる",tasks:[
+     {name:"練習",doneDef:"苦手ケースでも型どおり切り返せる",due:"2026-06-28",tasks:[
        {name:"苦手ケースの切り返しをロープレ",done:false},
        {name:"トップ商談の録音を聞く",done:false}]},
-     {name:"実践",doneDef:"商談で型を意図的に使えている",tasks:[
+     {name:"実践",doneDef:"商談で型を意図的に使えている",due:"2026-07-06",tasks:[
        {name:"商談前に型の要点を確認する",done:false},
        {name:"ネック処理を意図的に試す",done:false}]},
-     {name:"振り返り",doneDef:"失注の共通要因を抽出し、wany全体に展開できる",tasks:[
+     {name:"振り返り",doneDef:"失注の共通要因を抽出し、wany全体に展開できる",due:"2026-07-15",tasks:[
        {name:"週次で成約率の推移を確認",done:false},
        {name:"失注の共通要因を抽出する",done:false},
        {name:"wannyメンバーの失注商談を1件レビューし、要因を自分の型と照合",done:false},
        {name:"【管理】wany全体の成約率を把握し、底上げ対象メンバーを決める",done:false}]},
-     {name:"自走",doneDef:"指導なしで型を回し、wanyの標準トークに言語化できる",tasks:[
+     {name:"自走",doneDef:"指導なしで型を回し、wanyの標準トークに言語化できる",due:"2026-07-23",tasks:[
        {name:"苦手客層を指名で担当する",done:false},
        {name:"自分の型を後輩に共有する",done:false},
        {name:"勝ち型をwannyの標準トークに言語化・共有する",done:false},
@@ -141,62 +150,62 @@ const EMBEDDED = [
    ]},
   {name:"宮腰",note:"wanny・戸田指導",theme:"契約を安定させる（クローザー）",
    goal:"客層を問わず自分の型で契約まで運び、成約が安定する",
-   why:"自分の成約を安定させつつ、戸田に型を教えられる状態を目指す",currentStage:2,
+   why:"自分の成約を安定させつつ、戸田に型を教えられる状態を目指す",currentStage:2,startDate:"2026-06-11",dueDate:"2026-07-23",
    phases:[
-     {name:"型を知る",doneDef:"自分の勝ち負けを言語化できる",tasks:[
+     {name:"型を知る",doneDef:"自分の勝ち負けを言語化できる",due:"2026-06-19",tasks:[
        {name:"直近の成約・失注を5件ずつ振り返る",done:true},
        {name:"勝ち／負けパターンを言語化する",done:true}]},
-     {name:"練習",doneDef:"苦手ケースでも型どおり切り返せる",tasks:[
+     {name:"練習",doneDef:"苦手ケースでも型どおり切り返せる",due:"2026-06-28",tasks:[
        {name:"苦手ケースの切り返しをロープレ",done:false},
        {name:"トップ商談の録音を聞く",done:false}]},
-     {name:"実践",doneDef:"商談で型を意図的に使えている",tasks:[
+     {name:"実践",doneDef:"商談で型を意図的に使えている",due:"2026-07-06",tasks:[
        {name:"商談前に型の要点を確認する",done:false},
        {name:"ネック処理を意図的に試す",done:false}]},
-     {name:"振り返り",doneDef:"失注の共通要因を、戸田に教える前提で言語化できる",tasks:[
+     {name:"振り返り",doneDef:"失注の共通要因を、戸田に教える前提で言語化できる",due:"2026-07-15",tasks:[
        {name:"週次で成約率の推移を確認",done:false},
        {name:"戸田と一緒に失注を振り返り、教える前提で言語化",done:false}]},
-     {name:"自走",doneDef:"指導なしで型を回し、戸田に教えられる",tasks:[
+     {name:"自走",doneDef:"指導なしで型を回し、戸田に教えられる",due:"2026-07-23",tasks:[
        {name:"戸田に自分の型を教える",done:false},
        {name:"戸田の商談に同行してFBする",done:false}]},
    ]},
   {name:"今川",note:"E.L.P・営業部長",theme:"チームの成約を仕組み化する（マネジメント）",
    goal:"各メンバーの型を引き出し、チーム全体の成約率を底上げできている",
-   why:"個人の勢い頼みから、再現性あるチームの仕組みへ移行する",currentStage:1,
+   why:"個人の勢い頼みから、再現性あるチームの仕組みへ移行する",currentStage:1,startDate:"2026-07-06",dueDate:"2026-08-28",
    phases:[
-     {name:"型を知る",doneDef:"各メンバーの勝ち負けと現在ステージを把握できている",tasks:[
+     {name:"型を知る",doneDef:"各メンバーの勝ち負けと現在ステージを把握できている",due:"2026-07-17",tasks:[
        {name:"メンバー各人の勝ち／負けパターンを把握する",done:false},
        {name:"各人の現在ステージを見立てる",done:false}]},
-     {name:"練習",doneDef:"引き出すための問いかけ・観点が用意できている",tasks:[
+     {name:"練習",doneDef:"引き出すための問いかけ・観点が用意できている",due:"2026-07-27",tasks:[
        {name:"1on1の問いかけ設計を用意する",done:false},
        {name:"ロープレの観点表を作る",done:false}]},
-     {name:"実践",doneDef:"週次で各人のフォーカスを握れている",tasks:[
+     {name:"実践",doneDef:"週次で各人のフォーカスを握れている",due:"2026-08-07",tasks:[
        {name:"週次で各人の今週フォーカスを握る",done:false},
        {name:"商談同席でフィードバックする",done:false}]},
-     {name:"振り返り",doneDef:"チームの成約率と詰まりの要因を抽出できる",tasks:[
+     {name:"振り返り",doneDef:"チームの成約率と詰まりの要因を抽出できる",due:"2026-08-17",tasks:[
        {name:"チームの成約率推移をレビューする",done:false},
        {name:"詰まりの共通要因を抽出する",done:false}]},
-     {name:"自走",doneDef:"各人が自走し、勝ち型がチームに展開されている",tasks:[
+     {name:"自走",doneDef:"各人が自走し、勝ち型がチームに展開されている",due:"2026-08-28",tasks:[
        {name:"勝ち型をチームの標準トークに展開する",done:false},
        {name:"各人が自走できる仕組みにする",done:false}]},
    ]},
   {name:"門田",note:"ピタサチ・役員兼営業",theme:"契約を安定させる（クローザー）",
    goal:"客層を問わず自分の型で契約まで運び、成約が安定する",
-   why:"成約を安定させ、チームに型を示せる状態を目指す",currentStage:1,
+   why:"成約を安定させ、チームに型を示せる状態を目指す",currentStage:1,startDate:"2026-07-06",dueDate:"2026-08-28",
    phases:[
-     {name:"型を知る",doneDef:"自分の勝ち負けを言語化できる",tasks:[
+     {name:"型を知る",doneDef:"自分の勝ち負けを言語化できる",due:"2026-07-17",tasks:[
        {name:"直近の成約・失注を5件ずつ振り返る",done:false},
        {name:"勝ち／負けパターンを言語化する",done:false}]},
-     {name:"練習",doneDef:"苦手ケースでも型どおり切り返せる",tasks:[
+     {name:"練習",doneDef:"苦手ケースでも型どおり切り返せる",due:"2026-07-27",tasks:[
        {name:"苦手ケースの切り返しをロープレ",done:false},
        {name:"トップ商談の録音を聞く",done:false}]},
-     {name:"実践",doneDef:"商談で型を意図的に使えている",tasks:[
+     {name:"実践",doneDef:"商談で型を意図的に使えている",due:"2026-08-07",tasks:[
        {name:"商談前に型の要点を確認する",done:false},
        {name:"ネック処理を意図的に試す",done:false}]},
-     {name:"振り返り",doneDef:"失注の共通要因を抽出できる",tasks:[
+     {name:"振り返り",doneDef:"失注の共通要因を抽出できる",due:"2026-08-17",tasks:[
        {name:"週次で成約率の推移を確認",done:false},
        {name:"失注の共通要因を抽出する",done:false},
        {name:"【管理】ピタサチ全体の成約率を把握し、底上げ対象を決める",done:false}]},
-     {name:"自走",doneDef:"指導なしで型を回し、代理店メンバーを育てられる",tasks:[
+     {name:"自走",doneDef:"指導なしで型を回し、代理店メンバーを育てられる",due:"2026-08-28",tasks:[
        {name:"自分の型を後輩に共有する",done:false},
        {name:"勝ち型を標準トークに言語化・共有する",done:false},
        {name:"【管理】ピタサチメンバーと1on1し、各人のフォーカスを握る",done:false},
@@ -204,61 +213,61 @@ const EMBEDDED = [
    ]},
   {name:"三浦",note:"ピタサチ・営業",theme:"契約を安定させる（クローザー）",
    goal:"客層を問わず自分の型で契約まで運び、成約が安定する",
-   why:"型を固めて成約率を安定させたい",currentStage:1,
+   why:"型を固めて成約率を安定させたい",currentStage:1,startDate:"2026-07-06",dueDate:"2026-08-28",
    phases:[
-     {name:"型を知る",doneDef:"自分の勝ち負けを言語化できる",tasks:[
+     {name:"型を知る",doneDef:"自分の勝ち負けを言語化できる",due:"2026-07-17",tasks:[
        {name:"直近の成約・失注を5件ずつ振り返る",done:false},
        {name:"勝ち／負けパターンを言語化する",done:false}]},
-     {name:"練習",doneDef:"苦手ケースでも型どおり切り返せる",tasks:[
+     {name:"練習",doneDef:"苦手ケースでも型どおり切り返せる",due:"2026-07-27",tasks:[
        {name:"苦手ケースの切り返しをロープレ",done:false},
        {name:"トップ商談の録音を聞く",done:false}]},
-     {name:"実践",doneDef:"商談で型を意図的に使えている",tasks:[
+     {name:"実践",doneDef:"商談で型を意図的に使えている",due:"2026-08-07",tasks:[
        {name:"商談前に型の要点を確認する",done:false},
        {name:"ネック処理を意図的に試す",done:false}]},
-     {name:"振り返り",doneDef:"失注の共通要因を抽出できる",tasks:[
+     {name:"振り返り",doneDef:"失注の共通要因を抽出できる",due:"2026-08-17",tasks:[
        {name:"週次で成約率の推移を確認",done:false},
        {name:"失注の共通要因を抽出する",done:false}]},
-     {name:"自走",doneDef:"指導なしで型を回し、人に教えられる",tasks:[
+     {name:"自走",doneDef:"指導なしで型を回し、人に教えられる",due:"2026-08-28",tasks:[
        {name:"自分の型を後輩に共有する",done:false},
        {name:"勝ち型を標準トークに言語化・共有する",done:false}]},
    ]},
   {name:"藤江",note:"ピタサチ・営業",theme:"契約を安定させる（クローザー）",
    goal:"客層を問わず自分の型で契約まで運び、成約が安定する",
-   why:"型を固めて成約率を安定させたい",currentStage:1,
+   why:"型を固めて成約率を安定させたい",currentStage:1,startDate:"2026-07-06",dueDate:"2026-08-28",
    phases:[
-     {name:"型を知る",doneDef:"自分の勝ち負けを言語化できる",tasks:[
+     {name:"型を知る",doneDef:"自分の勝ち負けを言語化できる",due:"2026-07-17",tasks:[
        {name:"直近の成約・失注を5件ずつ振り返る",done:false},
        {name:"勝ち／負けパターンを言語化する",done:false}]},
-     {name:"練習",doneDef:"苦手ケースでも型どおり切り返せる",tasks:[
+     {name:"練習",doneDef:"苦手ケースでも型どおり切り返せる",due:"2026-07-27",tasks:[
        {name:"苦手ケースの切り返しをロープレ",done:false},
        {name:"トップ商談の録音を聞く",done:false}]},
-     {name:"実践",doneDef:"商談で型を意図的に使えている",tasks:[
+     {name:"実践",doneDef:"商談で型を意図的に使えている",due:"2026-08-07",tasks:[
        {name:"商談前に型の要点を確認する",done:false},
        {name:"ネック処理を意図的に試す",done:false}]},
-     {name:"振り返り",doneDef:"失注の共通要因を抽出できる",tasks:[
+     {name:"振り返り",doneDef:"失注の共通要因を抽出できる",due:"2026-08-17",tasks:[
        {name:"週次で成約率の推移を確認",done:false},
        {name:"失注の共通要因を抽出する",done:false}]},
-     {name:"自走",doneDef:"指導なしで型を回し、人に教えられる",tasks:[
+     {name:"自走",doneDef:"指導なしで型を回し、人に教えられる",due:"2026-08-28",tasks:[
        {name:"自分の型を後輩に共有する",done:false},
        {name:"勝ち型を標準トークに言語化・共有する",done:false}]},
    ]},
   {name:"戸田",note:"wanny・宮腰指導",theme:"契約を安定させる（クローザー）",
    goal:"客層を問わず自分の型で契約まで運び、成約が安定する",
-   why:"宮腰の指導を受けながら、自分の型を固めて成約を安定させる",currentStage:1,
+   why:"宮腰の指導を受けながら、自分の型を固めて成約を安定させる",currentStage:1,startDate:"2026-07-06",dueDate:"2026-08-28",
    phases:[
-     {name:"型を知る",doneDef:"自分の勝ち負けを言語化できる",tasks:[
+     {name:"型を知る",doneDef:"自分の勝ち負けを言語化できる",due:"2026-07-17",tasks:[
        {name:"直近の成約・失注を5件ずつ振り返る",done:false},
        {name:"勝ち／負けパターンを言語化する",done:false}]},
-     {name:"練習",doneDef:"苦手ケースでも型どおり切り返せる",tasks:[
+     {name:"練習",doneDef:"苦手ケースでも型どおり切り返せる",due:"2026-07-27",tasks:[
        {name:"苦手ケースの切り返しを宮腰とロープレ",done:false},
        {name:"トップ商談の録音を聞く",done:false}]},
-     {name:"実践",doneDef:"商談で型を意図的に使えている",tasks:[
+     {name:"実践",doneDef:"商談で型を意図的に使えている",due:"2026-08-07",tasks:[
        {name:"商談前に型の要点を確認する",done:false},
        {name:"ネック処理を意図的に試す",done:false}]},
-     {name:"振り返り",doneDef:"失注の共通要因を抽出できる",tasks:[
+     {name:"振り返り",doneDef:"失注の共通要因を抽出できる",due:"2026-08-17",tasks:[
        {name:"週次で成約率の推移を確認",done:false},
        {name:"失注を宮腰と振り返り、要因を言語化",done:false}]},
-     {name:"自走",doneDef:"指導なしで型を回せる",tasks:[
+     {name:"自走",doneDef:"指導なしで型を回せる",due:"2026-08-28",tasks:[
        {name:"指導なしで1商談を型どおり完遂する",done:false},
        {name:"自分の勝ち型を言語化する",done:false}]},
    ]},
@@ -447,13 +456,20 @@ function buildSvg(d){
     o.push(`<text x="${tx}" y="${ccy+2}" font-size="13" font-weight="700" fill="#C2410C">覚醒！全タスク完了</text>`);
   }
   o.push(`<text x="${PILL_X}" y="62" font-size="10" fill="${COL.sub}">目標時期</text>`);
+  const todayIso=todayISO(); let overdueAny=false;
   let y=gy+GOAL_H+GAP; arrow(y,gy+GOAL_H);
   order.forEach(idx=>{
     const p=phases[idx], h=hts[idx], sn=idx+1, tasks=p.tasks||[];
-    let st,fg,bg,pl;
-    if(sn<cur){st="done";fg=COL.done;bg=COL.doneBg;pl="クリア";}
-    else if(sn===cur){st="now";fg=COL.now;bg=COL.nowBg;pl="今週";}
-    else{st="future";fg=COL.future;bg=COL.futureBg;pl=weekLabel(sn-cur);}
+    let st,fg,bg;
+    if(sn<cur){st="done";fg=COL.done;bg=COL.doneBg;}
+    else if(sn===cur){st="now";fg=COL.now;bg=COL.nowBg;}
+    else{st="future";fg=COL.future;bg=COL.futureBg;}
+    // 目標時期ピル（終了日から固定。未完了かつ期限超過＝遅れは赤）
+    const complete=tasks.length>0 && tasks.every(t=>t.done);
+    const due=p.due; let pl,pf,pb;
+    if(sn<cur||complete){pl="クリア";pf=COL.done;pb=COL.doneBg;}
+    else if(due && due<todayIso){pl="⚠"+weekLabelDate(due);pf="#DC2626";pb="#FEE2E2";overdueAny=true;}
+    else{pl=due?weekLabelDate(due):"—";pf=(st==="now")?COL.now:COL.future;pb=(st==="now")?COL.nowBg:COL.futureBg;}
     const sw=st==="now"?2:1;
     o.push(`<rect x="${PHASE_X}" y="${y}" width="${PHASE_W}" height="${h}" rx="10" fill="${bg}" stroke="${fg}" stroke-width="${sw}"/>`);
     const mcy=y+20;
@@ -461,13 +477,17 @@ function buildSvg(d){
     if(st==="done")o.push(`<path d="M${PHASE_X-16},${mcy} l3,3 l6,-7" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`);
     o.push(`<text x="${PHASE_X+12}" y="${y+22}" font-size="14" font-weight="700" fill="${COL.ink}">${esc(STAGE_NAMES[idx])}</text>`);
     wrap("完了："+(p.doneDef||""),15).slice(0,2).forEach((l,k)=>o.push(`<text x="${PHASE_X+12}" y="${y+40+k*15}" font-size="11" fill="${COL.sub}">${esc(l)}</text>`));
-    pill(y+h/2,pl,fg,bg);
+    pill(y+h/2,pl,pf,pb);
     tasks.forEach((t,j)=>{const ty=y+16+j*LH, dn=!!t.done, bc=dn?COL.done:COL.future;
       o.push(`<rect x="${TASK_X}" y="${ty-11}" width="14" height="14" rx="3" fill="${dn?COL.done:"#fff"}" stroke="${bc}" stroke-width="1.5"/>`);
       if(dn)o.push(`<path d="M${TASK_X+3},${ty-4} l3,3 l5,-6" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`);
       o.push(`<text x="${TASK_X+22}" y="${ty}" font-size="12.5" fill="${dn?COL.sub:COL.ink}"${dn?' text-decoration="line-through"':''}>${esc(t.name)}</text>`);});
     const yn=y+h+GAP; if(idx!==0)arrow(yn,y+h); y=yn;
   });
+  if(overdueAny){
+    o.push(`<rect x="268" y="10" width="156" height="22" rx="11" fill="#DC2626"/>`);
+    o.push(`<text x="346" y="25" text-anchor="middle" font-size="12" font-weight="700" fill="#fff">⚠ 期限に遅れあり</text>`);
+  }
   o.push("</svg>");
   return o.join("\n");
 }
@@ -482,11 +502,14 @@ function renderEditor(){
     <div class="field"><label>テーマ（分野の見出し・任意）</label><input type="text" data-f="theme" value="${esc(data.theme)}"></div>
     <div class="field"><label>ゴール（観察できる状態・今期の到達点）</label><input type="text" data-f="goal" value="${esc(data.goal)}"></div>
     <div class="field"><label>現在ステージ（今ここ）</label><div class="stage-pick">${stageBtns}</div></div>
-    <p class="hint">MT中：できたタスクにチェック → 図解と達成率が即更新。終われば翌週の図解が完成。</p>`;
+    <p class="hint">週次MTの編集：①できたタスクに<b>チェック</b> ②遅れたら<b>期限を延期</b>（日付を変更／「＋1週」で以降もまとめてずらす・赤=超過） ③タスク内容は<b>その場で書き換え・追加・×削除</b> ④ステージが進んだら上のボタンで変更。終了時に「JSON保存」。</p>`;
   // フェーズは図解と同じ並び（⑤→①）
+  const tIso=todayISO();
   [4,3,2,1,0].forEach(idx=>{
     const p=data.phases[idx]; const isNow=data.currentStage==idx+1;
     const badgeC = isNow?COL.now:(idx+1<data.currentStage?COL.done:COL.future);
+    const complete=(p.tasks||[]).length>0 && (p.tasks||[]).every(t=>t.done);
+    const late = p.due && p.due<tIso && !complete && (idx+1>=data.currentStage);
     const tasks=(p.tasks||[]).map((t,j)=>`
       <div class="task">
         <input type="checkbox" data-task="${idx}:${j}" ${t.done?"checked":""}>
@@ -494,11 +517,14 @@ function renderEditor(){
         <button class="del" data-deltask="${idx}:${j}" title="削除">×</button>
       </div>`).join("");
     html+=`
-      <div class="phase ${isNow?'now':''}">
+      <div class="phase ${isNow?'now':''}${late?' late':''}">
         <div class="phase-head">
           <span class="badge" style="background:${badgeC};color:#fff">${STAGE_NAMES[idx]}</span>
           <input type="text" data-phasename="${idx}" value="${esc(p.name)}" style="flex:1;border:none;font-weight:700;font-size:13px">
+          <input type="date" data-due="${idx}" value="${esc(p.due||'')}" class="duein${late?' late':''}" title="このフェーズの期限（延期はここで変更）">
+          <button class="dueplus" data-dueplus="${idx}" title="このフェーズ以降の期限をまとめて1週うしろへ">＋1週</button>
         </div>
+        ${late?'<div class="lateflag">⚠ 期限超過 → 「＋1週」で以降の期限を延期、または日付を直接変更</div>':''}
         ${tasks}
         <button class="addtask" data-addtask="${idx}">＋ タスクを追加</button>
         <input class="doneDef" data-donedef="${idx}" value="${esc(p.doneDef)}" placeholder="完了の定義（観察できる状態）">
@@ -539,15 +565,19 @@ document.getElementById("editor").addEventListener("input",ev=>{
   else if(t.dataset.donedef!=null){data.phases[+t.dataset.donedef].doneDef=t.value;}
   else if(t.dataset.taskname){const[i,j]=t.dataset.taskname.split(":").map(Number);data.phases[i].tasks[j].name=t.value;}
   else if(t.dataset.task){const[i,j]=t.dataset.task.split(":").map(Number);data.phases[i].tasks[j].done=t.checked;}
+  else if(t.dataset.due!=null){data.phases[+t.dataset.due].due=t.value;}
   else return;
   persist();
-  if(t.dataset.task)renderEditor(); // チェックで取り消し線等を反映
+  if(t.dataset.task||t.dataset.due!=null)renderEditor(); // チェック/期限変更で表示を反映
 });
 document.getElementById("editor").addEventListener("click",ev=>{
   const t=ev.target;
   if(t.dataset.stage){data.currentStage=+t.dataset.stage;persist();renderEditor();}
   else if(t.dataset.addtask!=null){data.phases[+t.dataset.addtask].tasks.push({name:"新しいタスク",done:false});persist();renderEditor();}
   else if(t.dataset.deltask){const[i,j]=t.dataset.deltask.split(":").map(Number);data.phases[i].tasks.splice(j,1);persist();renderEditor();}
+  else if(t.dataset.dueplus!=null){const i=+t.dataset.dueplus;
+    for(let j=i;j<data.phases.length;j++){const p=data.phases[j];const d=p.due?new Date(p.due+"T00:00:00"):new Date();d.setDate(d.getDate()+7);p.due=isoOf(d);}
+    persist();renderEditor();}
 });
 document.getElementById("member").addEventListener("change",ev=>{const n=ev.target.value;const d=load(n)||findEmbedded(n);if(d){data=d;save(data);renderAll();}});
 document.getElementById("roster").addEventListener("click",ev=>{

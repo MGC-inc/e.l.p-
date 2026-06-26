@@ -42,6 +42,8 @@ C_GOAL = "#6357CC"      # ゴール（パープル）
 C_GOAL_BG = "#EEECFA"
 C_INK = "#1F2933"
 C_SUB = "#67707A"
+C_LATE = "#DC2626"      # 遅れ（赤）
+C_LATE_BG = "#FEE2E2"
 
 # レイアウト
 PHASE_X, PHASE_W = 130, 210     # フェーズ箱
@@ -59,6 +61,12 @@ STAGE_NAMES = ["①型を知る", "②練習", "③実践", "④振り返り", "
 def week_label(weeks_ahead: int) -> str:
     """weeks_ahead 週後を「○月第○週」で返す（1フェーズ＝約1週の目安）。"""
     d = date.today() + timedelta(weeks=weeks_ahead)
+    return f"{d.month}月第{math.ceil(d.day / 7)}週"
+
+
+def week_label_date(s: str) -> str:
+    """ISO日付文字列を「○月第○週」で返す（その月の第何週か）。"""
+    d = date.fromisoformat(s)
     return f"{d.month}月第{math.ceil(d.day / 7)}週"
 
 
@@ -250,6 +258,8 @@ def build_svg(d: dict, font: str = FONT) -> str:
     done_tasks = [t for t in all_tasks if t.get("done")]
     total = len(all_tasks)
     rate = round(len(done_tasks) / total * 100) if total else 0
+    today_iso = date.today().isoformat()
+    overdue_any = False
 
     # 各箱の高さを先に計算して総高さを決める（描画は上→下: goal,⑤,④,③,②,①）
     order = [4, 3, 2, 1, 0]  # phases index、上から
@@ -384,12 +394,22 @@ def build_svg(d: dict, font: str = FONT) -> str:
         tasks = p.get("tasks", [])
 
         if stage_no < cur:
-            state, fg, bg, pill = "done", C_DONE, C_DONE_BG, "クリア"
+            state, fg, bg = "done", C_DONE, C_DONE_BG
         elif stage_no == cur:
-            state, fg, bg, pill = "now", C_NOW, C_NOW_BG, "今週"
+            state, fg, bg = "now", C_NOW, C_NOW_BG
         else:
-            # 現在ステージからの距離＝先に来る順に1週ずつ（③が先、⑤が後）
-            state, fg, bg, pill = "future", C_FUTURE, C_FUTURE_BG, week_label(stage_no - cur)
+            state, fg, bg = "future", C_FUTURE, C_FUTURE_BG
+        # 目標時期ピル（終了日から固定。未完了かつ期限超過＝遅れは赤で強調）
+        phase_complete = bool(tasks) and all(t.get("done") for t in tasks)
+        due = p.get("due")
+        if stage_no < cur or phase_complete:
+            pill, pfg, pbg = "クリア", C_DONE, C_DONE_BG
+        elif due and due < today_iso:
+            pill, pfg, pbg = "⚠" + week_label_date(due), C_LATE, C_LATE_BG
+            overdue_any = True
+        else:
+            pill = week_label_date(due) if due else "—"
+            pfg, pbg = (C_NOW, C_NOW_BG) if state == "now" else (C_FUTURE, C_FUTURE_BG)
 
         sw = 2 if state == "now" else 1  # 今＝2px強調
         out.append(
@@ -414,8 +434,8 @@ def build_svg(d: dict, font: str = FONT) -> str:
                 f'<text x="{PHASE_X+12}" y="{y+40+k*15}" font-size="11" '
                 f'fill="{C_SUB}">{esc(line)}</text>'
             )
-        # 時間軸ピル
-        _pill(out, y + h / 2, pill, fg, bg)
+        # 目標時期ピル
+        _pill(out, y + h / 2, pill, pfg, pbg)
 
         # タスク（箱の右）
         for j, t in enumerate(tasks):
@@ -442,6 +462,15 @@ def build_svg(d: dict, font: str = FONT) -> str:
         if idx != 0:
             up_arrow(y_next, y + h)  # 下の箱上端 → この箱下端
         y = y_next
+
+    # 遅れ告知バナー（赤）
+    if overdue_any:
+        bx2, bw2 = 268, 156
+        out.append(f'<rect x="{bx2}" y="10" width="{bw2}" height="22" rx="11" fill="{C_LATE}"/>')
+        out.append(
+            f'<text x="{bx2+bw2/2}" y="25" text-anchor="middle" font-size="12" '
+            f'font-weight="700" fill="#FFFFFF">⚠ 期限に遅れあり</text>'
+        )
 
     out.append("</svg>")
     return "\n".join(out)
