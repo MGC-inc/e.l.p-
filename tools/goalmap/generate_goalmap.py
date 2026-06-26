@@ -118,8 +118,12 @@ def growth(d: dict) -> dict:
             break
     if nxt is None:
         nxt = per[-1] if per else (0, 0)
+    cycle = max(1, int(d.get("cycle", 1) or 1))
+    # earned＝これまでに孵した不死鳥の数（過去の周回＋今回100%なら今回も）
+    earned = (cycle - 1) + (1 if rate >= 100 else 0)
     return {"rate": rate, "form": form, "allDone": done, "all": all_,
-            "need": max(0, nxt[1] - nxt[0]), "phaseDone": nxt[0], "phaseTotal": nxt[1]}
+            "need": max(0, nxt[1] - nxt[0]), "phaseDone": nxt[0], "phaseTotal": nxt[1],
+            "cycle": cycle, "earned": earned}
 
 
 def star(cx: float, cy: float, r: float, fill: str) -> str:
@@ -129,7 +133,7 @@ def star(cx: float, cy: float, r: float, fill: str) -> str:
     return f'<polygon points="{s}" fill="{fill}"/>'
 
 
-def bird_markup(form: int, cx: float, cy: float, s: float, phase_done: int) -> str:
+def bird_markup(form: int, cx: float, cy: float, s: float, phase_done: int, gen: int = 0) -> str:
     X = lambda v: f"{cx+v*s:.1f}"  # noqa: E731
     Y = lambda v: f"{cy+v*s:.1f}"  # noqa: E731
     R = lambda v: f"{v*s:.1f}"     # noqa: E731
@@ -245,6 +249,13 @@ def bird_markup(form: int, cx: float, cy: float, s: float, phase_done: int) -> s
         o.append(star(cx - 27 * s, cy - 9 * s, 2.6 * s, "#FFF1B8"))
         o.append(star(cx + 28 * s, cy - 3 * s, 2.2 * s, "#FFF1B8"))
         o.append(star(cx + 20 * s, cy + 15 * s, 2 * s, "#FFE7A0"))
+    # 周回バッジ：2周目以降は番号を表示（卵に戻ってもリセット感を出さない＝何羽目か一目で分かる）
+    if gen >= 2:
+        bxp, byp, br = 17, 19, 7.6
+        o.append(f'<circle cx="{X(bxp)}" cy="{Y(byp)}" r="{R(br)}" fill="url(#gold)" '
+                 f'stroke="#fff" stroke-width="{R(1.6)}"/>')
+        o.append(f'<text x="{X(bxp)}" y="{cy+byp*s+3.6*s:.1f}" text-anchor="middle" '
+                 f'font-size="{R(10.5)}" font-weight="800" fill="#7A3E00">{gen}</text>')
     return "".join(o)
 
 
@@ -363,7 +374,8 @@ def build_svg(d: dict, font: str = FONT) -> str:
     # ── 成長キャラ（達成感メーター：1タスク=餌、1フェーズ完食=進化）──
     g = growth(d)
     ccx, ccy, cs, tx = 402, 112, 1.7, 448
-    out.append(bird_markup(g["form"], ccx, ccy, cs, g["phaseDone"]))
+    out.append(bird_markup(g["form"], ccx, ccy, cs, g["phaseDone"],
+                           g["cycle"] if g["cycle"] >= 2 else 0))
     if g["form"] < 5:
         out.append(
             f'<text x="{tx}" y="{ccy-3}" font-size="13" font-weight="700" '
@@ -377,6 +389,13 @@ def build_svg(d: dict, font: str = FONT) -> str:
         out.append(
             f'<text x="{tx}" y="{ccy+2}" font-size="13" font-weight="700" '
             f'fill="#C2410C">覚醒！全タスク完了</text>'
+        )
+    # 周回（何羽目の不死鳥まで来たか）— 2周目以降 or 不死鳥で表示
+    if g["cycle"] >= 2 or g["earned"] > 0:
+        suffix = f'・達成 {g["earned"]}羽' if g["earned"] > 0 else ""
+        out.append(
+            f'<text x="{tx}" y="{ccy+33}" font-size="11" font-weight="700" '
+            f'fill="#B7791F">{g["cycle"]}周目{suffix}</text>'
         )
 
     # 目標時期ピルの列見出し

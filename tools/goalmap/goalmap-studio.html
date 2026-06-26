@@ -53,6 +53,9 @@
   .lateflag{font-size:11px;font-weight:700;color:#DC2626;margin:2px 0 4px}
   .dueplus{font-size:10px;padding:2px 6px;border:1px solid var(--line);border-radius:6px;background:#fff;cursor:pointer;white-space:nowrap}
   .dueplus:hover{background:#F2F4F6}
+  .cycle-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .nextgoal{font-size:12px;font-weight:700;padding:5px 10px;border:1px solid #E0B43A;border-radius:8px;background:linear-gradient(#FFF6D8,#F2C230);color:#7A3E00;cursor:pointer;white-space:nowrap}
+  .nextgoal:hover{filter:brightness(1.04)}
   .hint{font-size:11px;color:var(--sub);margin:2px 0 12px}
   svg{max-width:100%;height:auto;border:1px solid var(--line);border-radius:8px}
   .roster{display:flex;gap:8px;overflow-x:auto;padding:8px 14px;background:#fff;border-bottom:1px solid var(--line)}
@@ -109,7 +112,7 @@ const SVG_DEFS = `<defs>`+
 
 function template(name){
   return {name:name||"新規メンバー",note:"",theme:"テーマ",goal:"観察できる状態でゴールを書く",
-    why:"",currentStage:1,
+    why:"",currentStage:1,cycle:1,
     phases:[
       {name:"型を知る",doneDef:"観察できる完了の状態",tasks:[]},
       {name:"練習",doneDef:"観察できる完了の状態",tasks:[]},
@@ -300,14 +303,18 @@ function growth(d){
   const form=rate>=100?5:Math.min(cleared,4);
   let np=null; for(const p of per){ if(!(p.total>0&&p.done===p.total)){np=p;break;} }
   if(!np)np=per[per.length-1]||{done:0,total:0};
-  return {rate,form,allDone,all,need:Math.max(0,np.total-np.done),phaseDone:np.done,phaseTotal:np.total};
+  const cycle=Math.max(1,Math.floor(+d.cycle||1));
+  // earned＝これまでに孵した不死鳥の数（過去の周回＋今回100%なら今回も）
+  const earned=(cycle-1)+(rate>=100?1:0);
+  return {rate,form,allDone,all,need:Math.max(0,np.total-np.done),phaseDone:np.done,phaseTotal:np.total,cycle,earned};
 }
 function star(cx,cy,r,fill){
   const pts=[[0,-1],[0.24,-0.24],[1,0],[0.24,0.24],[0,1],[-0.24,0.24],[-1,0],[-0.24,-0.24]]
     .map(([x,y])=>`${(cx+x*r).toFixed(1)},${(cy+y*r).toFixed(1)}`).join(" ");
   return `<polygon points="${pts}" fill="${fill}"/>`;
 }
-function birdMarkup(form,cx,cy,s,phaseDone){
+function birdMarkup(form,cx,cy,s,phaseDone,gen){
+  gen=Math.floor(+gen||0);
   const X=v=>(cx+v*s).toFixed(1),Y=v=>(cy+v*s).toFixed(1),R=v=>(v*s).toFixed(1);
   const o=[];
   const line=(x1,y1,x2,y2,c,w)=>o.push(`<line x1="${X(x1)}" y1="${Y(y1)}" x2="${X(x2)}" y2="${Y(y2)}" stroke="${c}" stroke-width="${R(w)}" stroke-linecap="round"/>`);
@@ -390,6 +397,12 @@ function birdMarkup(form,cx,cy,s,phaseDone){
     o.push(star(cx+28*s,cy-3*s,2.2*s,"#FFF1B8"));
     o.push(star(cx+20*s,cy+15*s,2*s,"#FFE7A0"));
   }
+  // 周回バッジ：2周目以降は番号を表示（卵に戻ってもリセット感を出さない＝何羽目か一目で分かる）
+  if(gen>=2){
+    const bxp=17,byp=19,br=7.6;
+    o.push(`<circle cx="${X(bxp)}" cy="${Y(byp)}" r="${R(br)}" fill="url(#gold)" stroke="#fff" stroke-width="${R(1.6)}"/>`);
+    o.push(`<text x="${X(bxp)}" y="${(cy+byp*s+3.6*s).toFixed(1)}" text-anchor="middle" font-size="${R(10.5)}" font-weight="800" fill="#7A3E00">${gen}</text>`);
+  }
   return o.join("");
 }
 
@@ -401,12 +414,18 @@ function buildAvatarCard(d){
   o.push(SVG_DEFS);
   o.push(`<rect x="0" y="0" width="${W}" height="${H}" fill="#fff"/>`);
   o.push(`<rect x="5" y="5" width="${W-10}" height="${H-10}" rx="18" fill="#FFFDF7" stroke="#EFE7D6" stroke-width="1.5"/>`);
-  o.push(birdMarkup(g.form, W/2, 84, 2.35, g.phaseDone));
+  o.push(birdMarkup(g.form, W/2, 84, 2.35, g.phaseDone, g.cycle>=2?g.cycle:0));
+  // 周回リボン（右上に「○周目」＝何羽目の不死鳥を目指しているか）
+  if(g.cycle>=2 || g.earned>0){
+    o.push(`<rect x="${W-92}" y="16" width="76" height="24" rx="12" fill="url(#gold)" stroke="#fff" stroke-width="1.5"/>`);
+    o.push(`<text x="${W-54}" y="32" text-anchor="middle" font-size="12.5" font-weight="800" fill="#7A3E00">${g.cycle}周目</text>`);
+  }
   // 文字の可読性確保の帯（背の高い不死鳥でも名前が読める）
   o.push(`<rect x="14" y="158" width="${W-28}" height="62" rx="12" fill="#FFFDF7" opacity="0.92"/>`);
   o.push(`<text x="${W/2}" y="182" text-anchor="middle" font-size="20" font-weight="700" fill="${ink}">${esc(d.name||"")}</text>`);
   o.push(`<text x="${W/2}" y="202" text-anchor="middle" font-size="15" font-weight="700" fill="${g.form===5?"#C2410C":"#B7791F"}">達成率 ${g.rate}%</text>`);
-  const sub2 = g.form<5 ? `あと${g.need}コで進化（餌 ${g.phaseDone}/${g.phaseTotal}）` : `覚醒！全タスク完了`;
+  let sub2 = g.form<5 ? `あと${g.need}コで進化（餌 ${g.phaseDone}/${g.phaseTotal}）` : `覚醒！全タスク完了`;
+  if(g.earned>0) sub2 += `　通算${g.earned}羽`;
   o.push(`<text x="${W/2}" y="217" text-anchor="middle" font-size="11.5" fill="${sub}">${esc(sub2)}</text>`);
   o.push("</svg>");
   return o.join("\n");
@@ -448,12 +467,16 @@ function buildSvg(d){
   // ── 成長キャラ（達成感メーター：1タスク=餌、1フェーズ完食=進化）──
   const g=growth(d);
   const ccx=402, ccy=112, cs=1.7, tx=ccx+46;
-  o.push(birdMarkup(g.form,ccx,ccy,cs,g.phaseDone));
+  o.push(birdMarkup(g.form,ccx,ccy,cs,g.phaseDone,g.cycle>=2?g.cycle:0));
   if(g.form<5){
     o.push(`<text x="${tx}" y="${ccy-3}" font-size="13" font-weight="700" fill="${COL.ink}">あと${g.need}コで進化</text>`);
     o.push(`<text x="${tx}" y="${ccy+15}" font-size="11" fill="${COL.sub}">餌 ${g.phaseDone}/${g.phaseTotal}　累計 ${g.allDone}/${g.all}</text>`);
   }else{
     o.push(`<text x="${tx}" y="${ccy+2}" font-size="13" font-weight="700" fill="#C2410C">覚醒！全タスク完了</text>`);
+  }
+  // 周回（何羽目の不死鳥まで来たか）— 2周目以降 or 不死鳥で表示
+  if(g.cycle>=2 || g.earned>0){
+    o.push(`<text x="${tx}" y="${ccy+33}" font-size="11" font-weight="700" fill="#B7791F">${g.cycle}周目${g.earned>0?`・達成 ${g.earned}羽`:""}</text>`);
   }
   o.push(`<text x="${PILL_X}" y="62" font-size="10" fill="${COL.sub}">目標時期</text>`);
   const todayIso=todayISO(); let overdueAny=false;
@@ -502,6 +525,13 @@ function renderEditor(){
     <div class="field"><label>テーマ（分野の見出し・任意）</label><input type="text" data-f="theme" value="${esc(data.theme)}"></div>
     <div class="field"><label>ゴール（観察できる状態・今期の到達点）</label><input type="text" data-f="goal" value="${esc(data.goal)}"></div>
     <div class="field"><label>現在ステージ（今ここ）</label><div class="stage-pick">${stageBtns}</div></div>
+    <div class="field"><label>周回（何周目／達成した不死鳥の番号）</label>
+      <div class="cycle-row">
+        <input type="number" min="1" step="1" data-f-cycle value="${Math.max(1,Math.floor(+data.cycle||1))}" style="width:72px">
+        <span class="hint" style="margin:0">アバターに番号が付き、何羽目か一目で分かる</span>
+        <button class="nextgoal" data-nextgoal>🎉 ゴール達成 → 次のゴールへ</button>
+      </div>
+    </div>
     <p class="hint">週次MTの編集：①できたタスクに<b>チェック</b> ②遅れたら<b>期限を延期</b>（日付を変更／「＋1週」で以降もまとめてずらす・赤=超過） ③タスク内容は<b>その場で書き換え・追加・×削除</b> ④ステージが進んだら上のボタンで変更。終了時に「JSON保存」。</p>`;
   // フェーズは図解と同じ並び（⑤→①）
   const tIso=todayISO();
@@ -536,7 +566,7 @@ function renderEditor(){
 function renderCanvas(){document.getElementById("canvas").innerHTML=buildSvg(data);}
 function miniAvatar(d){
   const g=growth(d), S=66;
-  return `<svg viewBox="0 0 ${S} ${S}" width="${S}" height="${S}">${SVG_DEFS}${birdMarkup(g.form,S/2,S/2+5,1.15,g.phaseDone)}</svg>`;
+  return `<svg viewBox="0 0 ${S} ${S}" width="${S}" height="${S}">${SVG_DEFS}${birdMarkup(g.form,S/2,S/2+5,1.15,g.phaseDone,g.cycle>=2?g.cycle:0)}</svg>`;
 }
 function renderRoster(){
   const el=document.getElementById("roster");
@@ -561,6 +591,7 @@ function persist(){save(data);renderCanvas();renderRoster();}
 document.getElementById("editor").addEventListener("input",ev=>{
   const t=ev.target;
   if(t.dataset.f){data[t.dataset.f]=t.value;}
+  else if(t.dataset.fCycle!=null){data.cycle=Math.max(1,Math.floor(+t.value||1));}
   else if(t.dataset.phasename!=null){data.phases[+t.dataset.phasename].name=t.value;}
   else if(t.dataset.donedef!=null){data.phases[+t.dataset.donedef].doneDef=t.value;}
   else if(t.dataset.taskname){const[i,j]=t.dataset.taskname.split(":").map(Number);data.phases[i].tasks[j].name=t.value;}
@@ -578,6 +609,14 @@ document.getElementById("editor").addEventListener("click",ev=>{
   else if(t.dataset.dueplus!=null){const i=+t.dataset.dueplus;
     for(let j=i;j<data.phases.length;j++){const p=data.phases[j];const d=p.due?new Date(p.due+"T00:00:00"):new Date();d.setDate(d.getDate()+7);p.due=isoOf(d);}
     persist();renderEditor();}
+  else if(t.dataset.nextgoal!=null){
+    if(confirm("現在のゴールを達成として、次のゴールに進みます。\n・周回数を+1（アバターに番号が付き、何羽目か分かる）\n・全タスクのチェックを外す（卵に戻る）\n・ステージを①に戻す\n\nゴール文・テーマ・タスク内容は、このあと新しいゴールに手動で書き換えてください。")){
+      data.cycle=Math.max(1,Math.floor(+data.cycle||1))+1;
+      data.currentStage=1;
+      (data.phases||[]).forEach(p=>(p.tasks||[]).forEach(x=>{x.done=false;if("status" in x)x.status="未着手";}));
+      persist();renderEditor();
+    }
+  }
 });
 document.getElementById("member").addEventListener("change",ev=>{const n=ev.target.value;const d=load(n)||findEmbedded(n);if(d){data=d;save(data);renderAll();}});
 document.getElementById("roster").addEventListener("click",ev=>{
