@@ -63,6 +63,7 @@
   <input type="file" id="import" accept="application/json" style="font-size:12px;width:170px" />
   <button id="exportJson">JSON保存</button>
   <button id="exportPng" class="primary">PNG出力</button>
+  <button id="exportAvatar" title="今のアバターだけを画像で書き出す">アバターPNG</button>
   <button id="print">印刷/PDF</button>
   <span id="saved" class="hint" style="margin-left:auto"></span>
 </header>
@@ -76,6 +77,12 @@ const STAGE_NAMES = ["①型を知る","②練習","③実践","④振り返り"
 const COL = {done:"#1D9E75",doneBg:"#E7F5EF",now:"#EF9F27",nowBg:"#FDF3E2",
   future:"#9AA3AD",futureBg:"#F2F4F6",goal:"#6357CC",goalBg:"#EEECFA",ink:"#1F2933",sub:"#67707A"};
 const FONT = "Hiragino Sans, 'Noto Sans CJK JP', 'Yu Gothic', sans-serif";
+const SVG_DEFS = `<defs>`+
+  `<linearGradient id="goalGrad" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#5B4BE0"/><stop offset="0.5" stop-color="#B14BE0"/><stop offset="1" stop-color="#FFC24B"/></linearGradient>`+
+  `<linearGradient id="phx" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFE259"/><stop offset="0.5" stop-color="#FF9A00"/><stop offset="1" stop-color="#FF3D00"/></linearGradient>`+
+  `<linearGradient id="phx2" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFF0A0"/><stop offset="1" stop-color="#FF7A00"/></linearGradient>`+
+  `<linearGradient id="hen" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#37C9B0"/><stop offset="0.6" stop-color="#3DA0E8"/><stop offset="1" stop-color="#7A5BE0"/></linearGradient>`+
+  `</defs>`;
 
 function template(name){
   return {name:name||"新規メンバー",note:"",theme:"テーマ",goal:"観察できる状態でゴールを書く",
@@ -217,17 +224,50 @@ function birdMarkup(form,cx,cy,s,phaseDone){
     beak(13,-8,7);eye(8,-11);
     o.push(star(cx+15*s,cy-16*s,3.4*s,"#FFFFFF"));
   }else{
-    o.push(`<circle cx="${X(0)}" cy="${Y(0)}" r="${R(23)}" fill="#FFB84D" opacity="0.20"/>`);
-    path(M(-2,2)+Q(-26,-6,-31,-22)+Q(-15,-12,-6,-6)+"Z","url(#phx)");
-    path(M(2,2)+Q(26,-6,31,-22)+Q(15,-12,6,-6)+"Z","url(#phx)");
-    ell(0,4,12,16,"url(#phx)");circ(0,-10,8,"url(#phx)");
-    path(M(-3,-17)+Q(-2,-27,2,-22)+Q(4,-29,6,-21)+Q(9,-27,8,-17)+"Z","url(#phx)");
-    beak(7,-12,7,"#FFB300");eye(3,-12);
-    path(M(-4,18)+Q(-2,31,3,24)+Q(5,33,8,23)+Q(11,31,9,19)+"Z","url(#phx)");
-    o.push(star(cx-21*s,cy-17*s,3*s,"#FFF1B8"));
-    o.push(star(cx+21*s,cy+13*s,2.4*s,"#FFF1B8"));
+    const RAYS=[[30,0],[21,21],[0,30],[-21,21],[-30,0],[-21,-21],[0,-30],[21,-21]];
+    RAYS.forEach((p,i)=>o.push(`<line x1="${X(0)}" y1="${Y(0)}" x2="${X(p[0])}" y2="${Y(p[1])}" stroke="#FFD36E" stroke-width="${R(i%2?1.4:2.2)}" stroke-linecap="round" opacity="0.30"/>`));
+    o.push(`<circle cx="${X(0)}" cy="${Y(0)}" r="${R(26)}" fill="#FFC74D" opacity="0.12"/>`);
+    o.push(`<circle cx="${X(0)}" cy="${Y(0)}" r="${R(17)}" fill="#FFE7A0" opacity="0.16"/>`);
+    path(M(-3,15)+Q(-16,30,-7,34)+Q(-1,31,1,17)+"Z","url(#phx)");
+    path(M(0,16)+Q(-2,36,5,34)+Q(8,29,4,17)+"Z","url(#phx2)");
+    path(M(3,15)+Q(16,30,9,35)+Q(2,33,0,17)+"Z","url(#phx)");
+    path(M(-3,2)+Q(-20,-2,-31,-14)+Q(-18,-10,-6,-4)+"Z","url(#phx2)");
+    path(M(-3,4)+Q(-22,4,-33,-5)+Q(-18,-2,-6,0)+"Z","url(#phx)");
+    path(M(-3,6)+Q(-17,12,-26,9)+Q(-14,6,-5,4)+"Z","url(#phx2)");
+    path(M(3,2)+Q(20,-2,31,-14)+Q(18,-10,6,-4)+"Z","url(#phx2)");
+    path(M(3,4)+Q(22,4,33,-5)+Q(18,-2,6,0)+"Z","url(#phx)");
+    path(M(3,6)+Q(17,12,26,9)+Q(14,6,5,4)+"Z","url(#phx2)");
+    ell(0,5,11,15,"url(#phx)");
+    o.push(`<ellipse cx="${X(0)}" cy="${Y(8)}" rx="${R(5)}" ry="${R(8)}" fill="#FFE9A0" opacity="0.50"/>`);
+    circ(0,-10,8,"url(#phx)");
+    path(M(-4,-16)+Q(-4,-27,0,-22)+Q(0,-32,4,-23)+Q(6,-32,8,-22)+Q(11,-28,9,-16)+"Z","url(#phx2)");
+    beak(7,-11,8,"#FFB300");eye(3,-12);
+    o.push(star(cx,cy-13*s,2.2*s,"#FFF6D0"));
+    o.push(star(cx-24*s,cy-16*s,3.2*s,"#FFF1B8"));
+    o.push(star(cx+25*s,cy-6*s,2.6*s,"#FFF1B8"));
+    o.push(star(cx+18*s,cy+16*s,2.2*s,"#FFD36E"));
+    o.push(star(cx-20*s,cy+14*s,2*s,"#FFD36E"));
   }
   return o.join("");
+}
+
+// 現在のアバターだけを切り出した単体カード（朝礼/Slack/Notionに貼る用）
+function buildAvatarCard(d){
+  const g=growth(d), W=300, H=228, ink="#1F2933", sub="#67707A";
+  const o=[];
+  o.push(`<svg xmlns="http://www.w3.org/2000/svg" id="card" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" font-family="${FONT}">`);
+  o.push(SVG_DEFS);
+  o.push(`<rect x="0" y="0" width="${W}" height="${H}" fill="#fff"/>`);
+  o.push(`<rect x="5" y="5" width="${W-10}" height="${H-10}" rx="18" fill="#FFFDF7" stroke="#EFE7D6" stroke-width="1.5"/>`);
+  o.push(birdMarkup(g.form, W/2, 84, 2.35, g.phaseDone));
+  // 文字の可読性確保の帯（背の高い不死鳥でも名前が読める）
+  o.push(`<rect x="14" y="158" width="${W-28}" height="62" rx="12" fill="#FFFDF7" opacity="0.92"/>`);
+  o.push(`<text x="${W/2}" y="182" text-anchor="middle" font-size="20" font-weight="700" fill="${ink}">${esc(d.name||"")}</text>`);
+  o.push(`<text x="${W/2}" y="202" text-anchor="middle" font-size="14" font-weight="700" fill="${g.form===5?"#C2410C":"#B7791F"}">${esc(FORM_NAMES[g.form])}　${g.rate}%</text>`);
+  const sub2 = g.form<5 ? `あと${g.need}コで進化（餌 ${g.phaseDone}/${g.phaseTotal}）` : `覚醒！全タスク完了`;
+  o.push(`<text x="${W/2}" y="217" text-anchor="middle" font-size="11.5" fill="${sub}">${esc(sub2)}</text>`);
+  o.push("</svg>");
+  return o.join("\n");
 }
 
 function buildSvg(d){
@@ -242,11 +282,7 @@ function buildSvg(d){
   const cx=PHASE_X+PHASE_W/2;
   const o=[];
   o.push(`<svg xmlns="http://www.w3.org/2000/svg" id="gm" viewBox="0 0 ${W} ${H}" font-family="${FONT}" width="${W}" height="${H}">`);
-  o.push(`<defs>`+
-    `<linearGradient id="goalGrad" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#5B4BE0"/><stop offset="0.5" stop-color="#B14BE0"/><stop offset="1" stop-color="#FFC24B"/></linearGradient>`+
-    `<linearGradient id="phx" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFE259"/><stop offset="0.5" stop-color="#FF9A00"/><stop offset="1" stop-color="#FF3D00"/></linearGradient>`+
-    `<linearGradient id="hen" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#37C9B0"/><stop offset="0.6" stop-color="#3DA0E8"/><stop offset="1" stop-color="#7A5BE0"/></linearGradient>`+
-    `</defs>`);
+  o.push(SVG_DEFS);
   o.push(`<rect x="0" y="0" width="${W}" height="${H}" fill="#fff"/>`);
   let head=esc(d.name||"")+(d.note?`（${esc(d.note)}）`:"")+`｜${esc(d.theme||"")}`;
   o.push(`<text x="20" y="34" font-size="19" font-weight="700" fill="${COL.ink}">${head}</text>`);
@@ -380,6 +416,15 @@ document.getElementById("exportJson").addEventListener("click",()=>{
   const blob=new Blob([JSON.stringify(data,null,2)],{type:"application/json"});
   const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=data.name+".json";a.click();});
 document.getElementById("print").addEventListener("click",()=>window.print());
+document.getElementById("exportAvatar").addEventListener("click",()=>{
+  const xml=buildAvatarCard(data);
+  const m=xml.match(/width="(\d+)" height="(\d+)"/);
+  const img=new Image();
+  img.onload=()=>{const s=3,c=document.createElement("canvas");
+    c.width=(+m[1])*s;c.height=(+m[2])*s;const ctx=c.getContext("2d");
+    ctx.fillStyle="#fff";ctx.fillRect(0,0,c.width,c.height);ctx.scale(s,s);ctx.drawImage(img,0,0);
+    const a=document.createElement("a");a.href=c.toDataURL("image/png");a.download=data.name+"_アバター.png";a.click();};
+  img.src="data:image/svg+xml;charset=utf-8,"+encodeURIComponent(xml);});
 document.getElementById("exportPng").addEventListener("click",()=>{
   const svg=document.getElementById("gm");
   const xml=new XMLSerializer().serializeToString(svg);

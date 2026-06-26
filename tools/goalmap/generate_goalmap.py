@@ -191,15 +191,34 @@ def bird_markup(form: int, cx: float, cy: float, s: float, phase_done: int) -> s
         beak(13, -8, 7); eye(8, -11)
         o.append(star(cx + 15 * s, cy - 16 * s, 3.4 * s, "#FFFFFF"))
     else:
-        o.append(f'<circle cx="{X(0)}" cy="{Y(0)}" r="{R(23)}" fill="#FFB84D" opacity="0.20"/>')
-        path(M(-2, 2) + Q(-26, -6, -31, -22) + Q(-15, -12, -6, -6) + "Z", "url(#phx)")
-        path(M(2, 2) + Q(26, -6, 31, -22) + Q(15, -12, 6, -6) + "Z", "url(#phx)")
-        ell(0, 4, 12, 16, "url(#phx)"); circ(0, -10, 8, "url(#phx)")
-        path(M(-3, -17) + Q(-2, -27, 2, -22) + Q(4, -29, 6, -21) + Q(9, -27, 8, -17) + "Z", "url(#phx)")
-        beak(7, -12, 7, "#FFB300"); eye(3, -12)
-        path(M(-4, 18) + Q(-2, 31, 3, 24) + Q(5, 33, 8, 23) + Q(11, 31, 9, 19) + "Z", "url(#phx)")
-        o.append(star(cx - 21 * s, cy - 17 * s, 3 * s, "#FFF1B8"))
-        o.append(star(cx + 21 * s, cy + 13 * s, 2.4 * s, "#FFF1B8"))
+        rays = [(30, 0), (21, 21), (0, 30), (-21, 21),
+                (-30, 0), (-21, -21), (0, -30), (21, -21)]
+        for i, (rx, ry) in enumerate(rays):
+            o.append(f'<line x1="{X(0)}" y1="{Y(0)}" x2="{X(rx)}" y2="{Y(ry)}" '
+                     f'stroke="#FFD36E" stroke-width="{R(1.4 if i % 2 else 2.2)}" '
+                     f'stroke-linecap="round" opacity="0.30"/>')
+        o.append(f'<circle cx="{X(0)}" cy="{Y(0)}" r="{R(26)}" fill="#FFC74D" opacity="0.12"/>')
+        o.append(f'<circle cx="{X(0)}" cy="{Y(0)}" r="{R(17)}" fill="#FFE7A0" opacity="0.16"/>')
+        path(M(-3, 15) + Q(-16, 30, -7, 34) + Q(-1, 31, 1, 17) + "Z", "url(#phx)")
+        path(M(0, 16) + Q(-2, 36, 5, 34) + Q(8, 29, 4, 17) + "Z", "url(#phx2)")
+        path(M(3, 15) + Q(16, 30, 9, 35) + Q(2, 33, 0, 17) + "Z", "url(#phx)")
+        path(M(-3, 2) + Q(-20, -2, -31, -14) + Q(-18, -10, -6, -4) + "Z", "url(#phx2)")
+        path(M(-3, 4) + Q(-22, 4, -33, -5) + Q(-18, -2, -6, 0) + "Z", "url(#phx)")
+        path(M(-3, 6) + Q(-17, 12, -26, 9) + Q(-14, 6, -5, 4) + "Z", "url(#phx2)")
+        path(M(3, 2) + Q(20, -2, 31, -14) + Q(18, -10, 6, -4) + "Z", "url(#phx2)")
+        path(M(3, 4) + Q(22, 4, 33, -5) + Q(18, -2, 6, 0) + "Z", "url(#phx)")
+        path(M(3, 6) + Q(17, 12, 26, 9) + Q(14, 6, 5, 4) + "Z", "url(#phx2)")
+        ell(0, 5, 11, 15, "url(#phx)")
+        o.append(f'<ellipse cx="{X(0)}" cy="{Y(8)}" rx="{R(5)}" ry="{R(8)}" fill="#FFE9A0" opacity="0.50"/>')
+        circ(0, -10, 8, "url(#phx)")
+        path(M(-4, -16) + Q(-4, -27, 0, -22) + Q(0, -32, 4, -23)
+             + Q(6, -32, 8, -22) + Q(11, -28, 9, -16) + "Z", "url(#phx2)")
+        beak(7, -11, 8, "#FFB300"); eye(3, -12)
+        o.append(star(cx, cy - 13 * s, 2.2 * s, "#FFF6D0"))
+        o.append(star(cx - 24 * s, cy - 16 * s, 3.2 * s, "#FFF1B8"))
+        o.append(star(cx + 25 * s, cy - 6 * s, 2.6 * s, "#FFF1B8"))
+        o.append(star(cx + 18 * s, cy + 16 * s, 2.2 * s, "#FFD36E"))
+        o.append(star(cx - 20 * s, cy + 14 * s, 2 * s, "#FFD36E"))
     return "".join(o)
 
 
@@ -234,6 +253,9 @@ def build_svg(d: dict, font: str = FONT) -> str:
         '<stop offset="0" stop-color="#FFE259"/>'
         '<stop offset="0.5" stop-color="#FF9A00"/>'
         '<stop offset="1" stop-color="#FF3D00"/></linearGradient>'
+        '<linearGradient id="phx2" x1="0" y1="0" x2="0" y2="1">'
+        '<stop offset="0" stop-color="#FFF0A0"/>'
+        '<stop offset="1" stop-color="#FF7A00"/></linearGradient>'
         '<linearGradient id="hen" x1="0" y1="0" x2="1" y2="1">'
         '<stop offset="0" stop-color="#37C9B0"/>'
         '<stop offset="0.6" stop-color="#3DA0E8"/>'
