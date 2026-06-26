@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 680 624" font-family="Hiragino Sans, 'Noto Sans CJK JP', 'Yu Gothic', sans-serif" width="680" height="624">
-<defs><linearGradient id="goalGrad" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#5B4BE0"/><stop offset="0.5" stop-color="#B14BE0"/><stop offset="1" stop-color="#FFC24B"/></linearGradient></defs>
+<defs><linearGradient id="goalGrad" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#5B4BE0"/><stop offset="0.5" stop-color="#B14BE0"/><stop offset="1" stop-color="#FFC24B"/></linearGradient><linearGradient id="phx" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFE259"/><stop offset="0.5" stop-color="#FF9A00"/><stop offset="1" stop-color="#FF3D00"/></linearGradient><linearGradient id="hen" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#37C9B0"/><stop offset="0.6" stop-color="#3DA0E8"/><stop offset="1" stop-color="#7A5BE0"/></linearGradient></defs>
 <rect x="0" y="0" width="680" height="624" fill="#FFFFFF"/>
 <text x="20" y="34" font-size="19" font-weight="700" fill="#1F2933">宮腰（wanny・戸田指導）｜契約を安定させる（クローザー）</text>
 <text x="660" y="26" text-anchor="end" font-size="13" fill="#67707A">達成率</text>
@@ -8,12 +8,16 @@
 <rect x="470" y="38" width="30" height="12" rx="6" fill="#1D9E75"/>
 <rect x="130" y="70" width="210" height="70" rx="10" fill="url(#goalGrad)" stroke="#FFD36E" stroke-width="2.5"/>
 <rect x="130" y="70" width="210" height="35.0" rx="10" fill="#FFFFFF" opacity="0.16"/>
-<text x="144" y="92" font-size="12" font-weight="700" fill="#FFFFFF">🏆 ゴール</text>
-<text x="328" y="94" text-anchor="end" font-size="15">✨</text>
+<text x="144" y="92" font-size="12" font-weight="700" fill="#FFFFFF">ゴール</text>
+<polygon points="324.0,79.0 325.4,83.6 330.0,85.0 325.4,86.4 324.0,91.0 322.6,86.4 318.0,85.0 322.6,83.6" fill="#FFF1B8"/>
 <text x="144" y="112" font-size="13" font-weight="600" fill="#FFFFFF">客層を問わず自分の型で契約</text>
 <text x="144" y="128" font-size="13" font-weight="600" fill="#FFFFFF">まで運び、成約が安定する</text>
 <rect x="20" y="94.0" width="58" height="22" rx="11" fill="#FFF3D6" stroke="#B7791F" stroke-width="1"/>
 <text x="49.0" y="109.0" text-anchor="middle" font-size="11" font-weight="700" fill="#B7791F">達成</text>
+<line x1="395.2" y1="134.1" x2="395.2" y2="144.3" stroke="#F2A30D" stroke-width="3.4" stroke-linecap="round"/><line x1="408.8" y1="134.1" x2="408.8" y2="144.3" stroke="#F2A30D" stroke-width="3.4" stroke-linecap="round"/><circle cx="402.0" cy="115.4" r="22.1" fill="#FFD23F"/><ellipse cx="388.4" cy="117.1" rx="7.6" ry="11.9" fill="#F4C12B"/><circle cx="402.0" cy="96.7" r="13.6" fill="#FFD23F"/><polygon points="413.9,93.0 424.1,96.7 413.9,100.4" fill="#F2870D"/><circle cx="407.1" cy="93.3" r="3.6" fill="#FFFFFF"/><circle cx="407.6" cy="93.3" r="2.0" fill="#33270D"/><path d="M400.3,84.8Q396.9,76.3 403.7,76.3" fill="none" stroke="#F4C12B" stroke-width="2.7" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="448" y="96" font-size="14" font-weight="700" fill="#1F2933">ひよこ</text>
+<text x="448" y="115" font-size="11.5" fill="#67707A">餌 0/2　あと2コで進化</text>
+<text x="448" y="132" font-size="11" fill="#67707A">累計 2/10 餌</text>
 <line x1="235.0" y1="166" x2="235.0" y2="146" stroke="#9AA3AD" stroke-width="2"/>
 <path d="M230.0,148 L235.0,142 L240.0,148 Z" fill="#9AA3AD"/>
 <rect x="130" y="166" width="210" height="60" rx="10" fill="#F2F4F6" stroke="#9AA3AD" stroke-width="1"/>

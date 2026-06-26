@@ -155,6 +155,81 @@ const esc = s => String(s==null?"":s).replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt
 const wrap = (t,n) => {t=String(t||"");const r=[];for(let i=0;i<t.length;i+=n)r.push(t.slice(i,i+n));return r.length?r:[""];};
 const phaseH = n => Math.max(60, 24 + 18*n);
 
+// ───────── 成長キャラ（鶏→不死鳥）。1タスク=餌1つ、1フェーズ食べ切る=進化 ─────────
+const FORM_NAMES=["たまご","ひよこ","小鶏","とさか鶏","極彩鶏","不死鳥"];
+function growth(d){
+  const per=(d.phases||[]).map(p=>{const t=p.tasks||[];return{done:t.filter(x=>x.done).length,total:t.length};});
+  const all=per.reduce((s,p)=>s+p.total,0), allDone=per.reduce((s,p)=>s+p.done,0);
+  const rate=all?Math.round(allDone/all*100):0;
+  let cleared=0; for(const p of per){ if(p.total>0&&p.done===p.total)cleared++; else break; }
+  const form=rate>=100?5:Math.min(cleared,4);
+  let np=null; for(const p of per){ if(!(p.total>0&&p.done===p.total)){np=p;break;} }
+  if(!np)np=per[per.length-1]||{done:0,total:0};
+  return {rate,form,allDone,all,need:Math.max(0,np.total-np.done),phaseDone:np.done,phaseTotal:np.total};
+}
+function star(cx,cy,r,fill){
+  const pts=[[0,-1],[0.24,-0.24],[1,0],[0.24,0.24],[0,1],[-0.24,0.24],[-1,0],[-0.24,-0.24]]
+    .map(([x,y])=>`${(cx+x*r).toFixed(1)},${(cy+y*r).toFixed(1)}`).join(" ");
+  return `<polygon points="${pts}" fill="${fill}"/>`;
+}
+function birdMarkup(form,cx,cy,s,phaseDone){
+  const X=v=>(cx+v*s).toFixed(1),Y=v=>(cy+v*s).toFixed(1),R=v=>(v*s).toFixed(1);
+  const o=[];
+  const line=(x1,y1,x2,y2,c,w)=>o.push(`<line x1="${X(x1)}" y1="${Y(y1)}" x2="${X(x2)}" y2="${Y(y2)}" stroke="${c}" stroke-width="${R(w)}" stroke-linecap="round"/>`);
+  const circ=(x,y,r,f)=>o.push(`<circle cx="${X(x)}" cy="${Y(y)}" r="${R(r)}" fill="${f}"/>`);
+  const ell=(x,y,rx,ry,f)=>o.push(`<ellipse cx="${X(x)}" cy="${Y(y)}" rx="${R(rx)}" ry="${R(ry)}" fill="${f}"/>`);
+  const beak=(x,y,w,c)=>o.push(`<polygon points="${X(x)},${Y(y-2.2)} ${X(x+w)},${Y(y)} ${X(x)},${Y(y+2.2)}" fill="${c||'#F2870D'}"/>`);
+  const eye=(x,y)=>{circ(x,y,2.1,"#FFFFFF");circ(x+0.3,y,1.2,"#33270D");};
+  const comb=(x,y,n,r)=>{for(let i=0;i<n;i++)circ(x+i*r*1.3-((n-1)*r*1.3)/2,y-(i%2?1.6:0),r,"#E0352B");};
+  const M=(x,y)=>`M${X(x)},${Y(y)}`,Q=(a,b,x,y)=>`Q${X(a)},${Y(b)} ${X(x)},${Y(y)}`,L=(x,y)=>`L${X(x)},${Y(y)}`;
+  const path=(d,f,st,w)=>o.push(`<path d="${d}" fill="${f||'none'}"${st?` stroke="${st}" stroke-width="${R(w||2)}" stroke-linecap="round" stroke-linejoin="round"`:''}/>`);
+  if(form===0){
+    ell(0,0,15,19,"#FFF3D6");
+    o.push(`<ellipse cx="${X(0)}" cy="${Y(0)}" rx="${R(15)}" ry="${R(19)}" fill="none" stroke="#E2D2A0" stroke-width="${R(1.4)}"/>`);
+    circ(-5,-3,1.5,"#E6D3A0");circ(5,5,1.3,"#E6D3A0");circ(1,11,1.2,"#E6D3A0");
+    if(phaseDone>0)path(M(-6,-7)+L(-2,-3)+L(-6,1)+L(-1,5),null,"#C9B27A",1.6);
+  }else if(form===1){
+    line(-4,13,-4,19,"#F2A30D",2);line(4,13,4,19,"#F2A30D",2);
+    circ(0,2,13,"#FFD23F");ell(-8,3,4.5,7,"#F4C12B");
+    circ(0,-9,8,"#FFD23F");beak(7,-9,6);eye(3,-11);
+    path(M(-1,-16)+Q(-3,-21,1,-21),null,"#F4C12B",1.6);
+  }else if(form===2){
+    line(-5,15,-5,21,"#F2A30D",2);line(5,15,5,21,"#F2A30D",2);
+    path(M(-13,2)+Q(-21,0,-22,-8),null,"#F4C12B",3);
+    ell(0,3,15,14,"#FFE066");ell(-7,4,5.5,9,"#F4C12B");line(-9,0,-5,7,"#E8B23A",1.4);
+    circ(2,-9,9,"#FFE066");comb(2,-18,2,2.4);beak(11,-9,6);eye(6,-11);
+  }else if(form===3){
+    line(-5,17,-5,24,"#E8901F",2.2);line(5,17,5,24,"#E8901F",2.2);
+    path(M(-14,2)+Q(-26,-2,-24,-14),null,"#E8B04B",4);
+    path(M(-13,5)+Q(-24,4,-26,-6),null,"#C98A2E",3);
+    ell(0,4,17,15,"#FBEFD0");ell(-6,5,7,10,"#E8B04B");line(-8,1,-3,9,"#CC9A3D",1.5);
+    circ(4,-9,9,"#FBEFD0");comb(4,-19,3,2.6);
+    o.push(`<ellipse cx="${X(11)}" cy="${Y(-4)}" rx="${R(1.8)}" ry="${R(3.4)}" fill="#E0352B"/>`);
+    beak(12,-8,6);eye(7,-11);
+  }else if(form===4){
+    line(-5,18,-5,25,"#E8901F",2.4);line(5,18,5,25,"#E8901F",2.4);
+    path(M(-14,3)+Q(-30,-3,-27,-18),null,"#37C9B0",4.5);
+    path(M(-15,6)+Q(-30,4,-30,-9),null,"#FF8A3D",4);
+    path(M(-13,9)+Q(-26,11,-29,1),null,"#FFD23F",3.5);
+    ell(0,5,18,16,"url(#hen)");ell(-5,6,7.5,11,"#FF8A3D");line(-7,2,-2,11,"#E0702A",1.6);
+    circ(5,-9,10,"url(#hen)");comb(5,-21,3,3);
+    o.push(`<ellipse cx="${X(13)}" cy="${Y(-4)}" rx="${R(2)}" ry="${R(3.8)}" fill="#E0352B"/>`);
+    beak(13,-8,7);eye(8,-11);
+    o.push(star(cx+15*s,cy-16*s,3.4*s,"#FFFFFF"));
+  }else{
+    o.push(`<circle cx="${X(0)}" cy="${Y(0)}" r="${R(23)}" fill="#FFB84D" opacity="0.20"/>`);
+    path(M(-2,2)+Q(-26,-6,-31,-22)+Q(-15,-12,-6,-6)+"Z","url(#phx)");
+    path(M(2,2)+Q(26,-6,31,-22)+Q(15,-12,6,-6)+"Z","url(#phx)");
+    ell(0,4,12,16,"url(#phx)");circ(0,-10,8,"url(#phx)");
+    path(M(-3,-17)+Q(-2,-27,2,-22)+Q(4,-29,6,-21)+Q(9,-27,8,-17)+"Z","url(#phx)");
+    beak(7,-12,7,"#FFB300");eye(3,-12);
+    path(M(-4,18)+Q(-2,31,3,24)+Q(5,33,8,23)+Q(11,31,9,19)+"Z","url(#phx)");
+    o.push(star(cx-21*s,cy-17*s,3*s,"#FFF1B8"));
+    o.push(star(cx+21*s,cy+13*s,2.4*s,"#FFF1B8"));
+  }
+  return o.join("");
+}
+
 function buildSvg(d){
   const W=680, PHASE_X=130, PHASE_W=210, PILL_X=20, PILL_W=58, TASK_X=360,
         HEADER_H=70, GAP=26, GOAL_H=70, PAD=28, LH=18;
@@ -167,7 +242,11 @@ function buildSvg(d){
   const cx=PHASE_X+PHASE_W/2;
   const o=[];
   o.push(`<svg xmlns="http://www.w3.org/2000/svg" id="gm" viewBox="0 0 ${W} ${H}" font-family="${FONT}" width="${W}" height="${H}">`);
-  o.push(`<defs><linearGradient id="goalGrad" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#5B4BE0"/><stop offset="0.5" stop-color="#B14BE0"/><stop offset="1" stop-color="#FFC24B"/></linearGradient></defs>`);
+  o.push(`<defs>`+
+    `<linearGradient id="goalGrad" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#5B4BE0"/><stop offset="0.5" stop-color="#B14BE0"/><stop offset="1" stop-color="#FFC24B"/></linearGradient>`+
+    `<linearGradient id="phx" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFE259"/><stop offset="0.5" stop-color="#FF9A00"/><stop offset="1" stop-color="#FF3D00"/></linearGradient>`+
+    `<linearGradient id="hen" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#37C9B0"/><stop offset="0.6" stop-color="#3DA0E8"/><stop offset="1" stop-color="#7A5BE0"/></linearGradient>`+
+    `</defs>`);
   o.push(`<rect x="0" y="0" width="${W}" height="${H}" fill="#fff"/>`);
   let head=esc(d.name||"")+(d.note?`（${esc(d.note)}）`:"")+`｜${esc(d.theme||"")}`;
   o.push(`<text x="20" y="34" font-size="19" font-weight="700" fill="${COL.ink}">${head}</text>`);
@@ -184,10 +263,21 @@ function buildSvg(d){
   const gy=HEADER_H;
   o.push(`<rect x="${PHASE_X}" y="${gy}" width="${PHASE_W}" height="${GOAL_H}" rx="10" fill="url(#goalGrad)" stroke="#FFD36E" stroke-width="2.5"/>`);
   o.push(`<rect x="${PHASE_X}" y="${gy}" width="${PHASE_W}" height="${GOAL_H/2}" rx="10" fill="#ffffff" opacity="0.16"/>`);
-  o.push(`<text x="${PHASE_X+14}" y="${gy+22}" font-size="12" font-weight="700" fill="#fff">🏆 ゴール</text>`);
-  o.push(`<text x="${PHASE_X+PHASE_W-12}" y="${gy+24}" text-anchor="end" font-size="15">✨</text>`);
+  o.push(`<text x="${PHASE_X+14}" y="${gy+22}" font-size="12" font-weight="700" fill="#fff">ゴール</text>`);
+  o.push(star(PHASE_X+PHASE_W-16, gy+15, 6, "#FFF1B8"));
   wrap(d.goal,13).slice(0,2).forEach((l,k)=>o.push(`<text x="${PHASE_X+14}" y="${gy+42+k*16}" font-size="13" font-weight="600" fill="#fff">${esc(l)}</text>`));
   pill(gy+GOAL_H/2,"達成","#B7791F","#FFF3D6");
+  // ── 成長キャラ（達成感メーター：1タスク=餌、1フェーズ完食=進化）──
+  const g=growth(d);
+  const ccx=402, ccy=112, cs=1.7, tx=ccx+46;
+  o.push(birdMarkup(g.form,ccx,ccy,cs,g.phaseDone));
+  o.push(`<text x="${tx}" y="${ccy-16}" font-size="14" font-weight="700" fill="${COL.ink}">${esc(FORM_NAMES[g.form])}</text>`);
+  if(g.form<5){
+    o.push(`<text x="${tx}" y="${ccy+3}" font-size="11.5" fill="${COL.sub}">餌 ${g.phaseDone}/${g.phaseTotal}　あと${g.need}コで進化</text>`);
+    o.push(`<text x="${tx}" y="${ccy+20}" font-size="11" fill="${COL.sub}">累計 ${g.allDone}/${g.all} 餌</text>`);
+  }else{
+    o.push(`<text x="${tx}" y="${ccy+3}" font-size="12.5" font-weight="700" fill="#C2410C">覚醒！全タスク完了</text>`);
+  }
   let y=gy+GOAL_H+GAP; arrow(y,gy+GOAL_H); let weeks=0;
   order.forEach(idx=>{
     const p=phases[idx], h=hts[idx], sn=idx+1, tasks=p.tasks||[];

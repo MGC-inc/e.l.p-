@@ -76,6 +76,133 @@ def wrap(text: str, n: int) -> list[str]:
     return [text[i:i + n] for i in range(0, len(text), n)] or [""]
 
 
+# ── 成長キャラ（鶏→不死鳥）。1タスク=餌1つ、1フェーズ食べ切る=進化 ──
+FORM_NAMES = ["たまご", "ひよこ", "小鶏", "とさか鶏", "極彩鶏", "不死鳥"]
+
+
+def growth(d: dict) -> dict:
+    per = []
+    for p in d.get("phases", []):
+        t = p.get("tasks", [])
+        per.append((sum(1 for x in t if x.get("done")), len(t)))
+    all_ = sum(tot for _, tot in per)
+    done = sum(dn for dn, _ in per)
+    rate = round(done / all_ * 100) if all_ else 0
+    cleared = 0
+    for dn, tot in per:
+        if tot > 0 and dn == tot:
+            cleared += 1
+        else:
+            break
+    form = 5 if rate >= 100 else min(cleared, 4)
+    nxt = None
+    for dn, tot in per:
+        if not (tot > 0 and dn == tot):
+            nxt = (dn, tot)
+            break
+    if nxt is None:
+        nxt = per[-1] if per else (0, 0)
+    return {"rate": rate, "form": form, "allDone": done, "all": all_,
+            "need": max(0, nxt[1] - nxt[0]), "phaseDone": nxt[0], "phaseTotal": nxt[1]}
+
+
+def star(cx: float, cy: float, r: float, fill: str) -> str:
+    pts = [(0, -1), (0.24, -0.24), (1, 0), (0.24, 0.24),
+           (0, 1), (-0.24, 0.24), (-1, 0), (-0.24, -0.24)]
+    s = " ".join(f"{cx+x*r:.1f},{cy+y*r:.1f}" for x, y in pts)
+    return f'<polygon points="{s}" fill="{fill}"/>'
+
+
+def bird_markup(form: int, cx: float, cy: float, s: float, phase_done: int) -> str:
+    X = lambda v: f"{cx+v*s:.1f}"  # noqa: E731
+    Y = lambda v: f"{cy+v*s:.1f}"  # noqa: E731
+    R = lambda v: f"{v*s:.1f}"     # noqa: E731
+    o: list[str] = []
+
+    def line(x1, y1, x2, y2, c, w):
+        o.append(f'<line x1="{X(x1)}" y1="{Y(y1)}" x2="{X(x2)}" y2="{Y(y2)}" '
+                 f'stroke="{c}" stroke-width="{R(w)}" stroke-linecap="round"/>')
+
+    def circ(x, y, r, f):
+        o.append(f'<circle cx="{X(x)}" cy="{Y(y)}" r="{R(r)}" fill="{f}"/>')
+
+    def ell(x, y, rx, ry, f):
+        o.append(f'<ellipse cx="{X(x)}" cy="{Y(y)}" rx="{R(rx)}" ry="{R(ry)}" fill="{f}"/>')
+
+    def beak(x, y, w, c="#F2870D"):
+        o.append(f'<polygon points="{X(x)},{Y(y-2.2)} {X(x+w)},{Y(y)} '
+                 f'{X(x)},{Y(y+2.2)}" fill="{c}"/>')
+
+    def eye(x, y):
+        circ(x, y, 2.1, "#FFFFFF")
+        circ(x + 0.3, y, 1.2, "#33270D")
+
+    def comb(x, y, n, r):
+        for i in range(n):
+            circ(x + i * r * 1.3 - ((n - 1) * r * 1.3) / 2, y - (1.6 if i % 2 else 0), r, "#E0352B")
+
+    def M(x, y):
+        return f"M{X(x)},{Y(y)}"
+
+    def Q(a, b, x, y):
+        return f"Q{X(a)},{Y(b)} {X(x)},{Y(y)}"
+
+    def L(x, y):
+        return f"L{X(x)},{Y(y)}"
+
+    def path(d_, f=None, st=None, w=2):
+        stroke = (f' stroke="{st}" stroke-width="{R(w)}" stroke-linecap="round" '
+                  f'stroke-linejoin="round"') if st else ""
+        o.append(f'<path d="{d_}" fill="{f or "none"}"{stroke}/>')
+
+    if form == 0:
+        ell(0, 0, 15, 19, "#FFF3D6")
+        o.append(f'<ellipse cx="{X(0)}" cy="{Y(0)}" rx="{R(15)}" ry="{R(19)}" '
+                 f'fill="none" stroke="#E2D2A0" stroke-width="{R(1.4)}"/>')
+        circ(-5, -3, 1.5, "#E6D3A0"); circ(5, 5, 1.3, "#E6D3A0"); circ(1, 11, 1.2, "#E6D3A0")
+        if phase_done > 0:
+            path(M(-6, -7) + L(-2, -3) + L(-6, 1) + L(-1, 5), None, "#C9B27A", 1.6)
+    elif form == 1:
+        line(-4, 13, -4, 19, "#F2A30D", 2); line(4, 13, 4, 19, "#F2A30D", 2)
+        circ(0, 2, 13, "#FFD23F"); ell(-8, 3, 4.5, 7, "#F4C12B")
+        circ(0, -9, 8, "#FFD23F"); beak(7, -9, 6); eye(3, -11)
+        path(M(-1, -16) + Q(-3, -21, 1, -21), None, "#F4C12B", 1.6)
+    elif form == 2:
+        line(-5, 15, -5, 21, "#F2A30D", 2); line(5, 15, 5, 21, "#F2A30D", 2)
+        path(M(-13, 2) + Q(-21, 0, -22, -8), None, "#F4C12B", 3)
+        ell(0, 3, 15, 14, "#FFE066"); ell(-7, 4, 5.5, 9, "#F4C12B"); line(-9, 0, -5, 7, "#E8B23A", 1.4)
+        circ(2, -9, 9, "#FFE066"); comb(2, -18, 2, 2.4); beak(11, -9, 6); eye(6, -11)
+    elif form == 3:
+        line(-5, 17, -5, 24, "#E8901F", 2.2); line(5, 17, 5, 24, "#E8901F", 2.2)
+        path(M(-14, 2) + Q(-26, -2, -24, -14), None, "#E8B04B", 4)
+        path(M(-13, 5) + Q(-24, 4, -26, -6), None, "#C98A2E", 3)
+        ell(0, 4, 17, 15, "#FBEFD0"); ell(-6, 5, 7, 10, "#E8B04B"); line(-8, 1, -3, 9, "#CC9A3D", 1.5)
+        circ(4, -9, 9, "#FBEFD0"); comb(4, -19, 3, 2.6)
+        o.append(f'<ellipse cx="{X(11)}" cy="{Y(-4)}" rx="{R(1.8)}" ry="{R(3.4)}" fill="#E0352B"/>')
+        beak(12, -8, 6); eye(7, -11)
+    elif form == 4:
+        line(-5, 18, -5, 25, "#E8901F", 2.4); line(5, 18, 5, 25, "#E8901F", 2.4)
+        path(M(-14, 3) + Q(-30, -3, -27, -18), None, "#37C9B0", 4.5)
+        path(M(-15, 6) + Q(-30, 4, -30, -9), None, "#FF8A3D", 4)
+        path(M(-13, 9) + Q(-26, 11, -29, 1), None, "#FFD23F", 3.5)
+        ell(0, 5, 18, 16, "url(#hen)"); ell(-5, 6, 7.5, 11, "#FF8A3D"); line(-7, 2, -2, 11, "#E0702A", 1.6)
+        circ(5, -9, 10, "url(#hen)"); comb(5, -21, 3, 3)
+        o.append(f'<ellipse cx="{X(13)}" cy="{Y(-4)}" rx="{R(2)}" ry="{R(3.8)}" fill="#E0352B"/>')
+        beak(13, -8, 7); eye(8, -11)
+        o.append(star(cx + 15 * s, cy - 16 * s, 3.4 * s, "#FFFFFF"))
+    else:
+        o.append(f'<circle cx="{X(0)}" cy="{Y(0)}" r="{R(23)}" fill="#FFB84D" opacity="0.20"/>')
+        path(M(-2, 2) + Q(-26, -6, -31, -22) + Q(-15, -12, -6, -6) + "Z", "url(#phx)")
+        path(M(2, 2) + Q(26, -6, 31, -22) + Q(15, -12, 6, -6) + "Z", "url(#phx)")
+        ell(0, 4, 12, 16, "url(#phx)"); circ(0, -10, 8, "url(#phx)")
+        path(M(-3, -17) + Q(-2, -27, 2, -22) + Q(4, -29, 6, -21) + Q(9, -27, 8, -17) + "Z", "url(#phx)")
+        beak(7, -12, 7, "#FFB300"); eye(3, -12)
+        path(M(-4, 18) + Q(-2, 31, 3, 24) + Q(5, 33, 8, 23) + Q(11, 31, 9, 19) + "Z", "url(#phx)")
+        o.append(star(cx - 21 * s, cy - 17 * s, 3 * s, "#FFF1B8"))
+        o.append(star(cx + 21 * s, cy + 13 * s, 2.4 * s, "#FFF1B8"))
+    return "".join(o)
+
+
 def build_svg(d: dict, font: str = FONT) -> str:
     phases = d["phases"]
     assert len(phases) == 5, "phases は必ず5要素（①〜⑤）"
@@ -98,10 +225,20 @@ def build_svg(d: dict, font: str = FONT) -> str:
         f'font-family="{font}" width="{WIDTH}" height="{H}">'
     )
     out.append(
-        '<defs><linearGradient id="goalGrad" x1="0" y1="0" x2="1" y2="1">'
+        '<defs>'
+        '<linearGradient id="goalGrad" x1="0" y1="0" x2="1" y2="1">'
         '<stop offset="0" stop-color="#5B4BE0"/>'
         '<stop offset="0.5" stop-color="#B14BE0"/>'
-        '<stop offset="1" stop-color="#FFC24B"/></linearGradient></defs>'
+        '<stop offset="1" stop-color="#FFC24B"/></linearGradient>'
+        '<linearGradient id="phx" x1="0" y1="0" x2="0" y2="1">'
+        '<stop offset="0" stop-color="#FFE259"/>'
+        '<stop offset="0.5" stop-color="#FF9A00"/>'
+        '<stop offset="1" stop-color="#FF3D00"/></linearGradient>'
+        '<linearGradient id="hen" x1="0" y1="0" x2="1" y2="1">'
+        '<stop offset="0" stop-color="#37C9B0"/>'
+        '<stop offset="0.6" stop-color="#3DA0E8"/>'
+        '<stop offset="1" stop-color="#7A5BE0"/></linearGradient>'
+        '</defs>'
     )
     out.append(f'<rect x="0" y="0" width="{WIDTH}" height="{H}" fill="#FFFFFF"/>')
 
@@ -154,11 +291,9 @@ def build_svg(d: dict, font: str = FONT) -> str:
     )
     out.append(
         f'<text x="{PHASE_X+14}" y="{gy+22}" font-size="12" font-weight="700" '
-        f'fill="#FFFFFF">🏆 ゴール</text>'
+        f'fill="#FFFFFF">ゴール</text>'
     )
-    out.append(
-        f'<text x="{PHASE_X+PHASE_W-12}" y="{gy+24}" text-anchor="end" font-size="15">✨</text>'
-    )
+    out.append(star(PHASE_X + PHASE_W - 16, gy + 15, 6, "#FFF1B8"))
     for k, line in enumerate(wrap(d.get("goal", ""), 13)[:2]):
         out.append(
             f'<text x="{PHASE_X+14}" y="{gy+42+k*16}" font-size="13" font-weight="600" '
@@ -166,6 +301,29 @@ def build_svg(d: dict, font: str = FONT) -> str:
         )
     # 時間軸ピル「達成」（ゴールに合わせて金）
     _pill(out, gy + GOAL_H / 2, "達成", "#B7791F", "#FFF3D6")
+
+    # ── 成長キャラ（達成感メーター：1タスク=餌、1フェーズ完食=進化）──
+    g = growth(d)
+    ccx, ccy, cs, tx = 402, 112, 1.7, 448
+    out.append(bird_markup(g["form"], ccx, ccy, cs, g["phaseDone"]))
+    out.append(
+        f'<text x="{tx}" y="{ccy-16}" font-size="14" font-weight="700" '
+        f'fill="{C_INK}">{esc(FORM_NAMES[g["form"]])}</text>'
+    )
+    if g["form"] < 5:
+        out.append(
+            f'<text x="{tx}" y="{ccy+3}" font-size="11.5" fill="{C_SUB}">'
+            f'餌 {g["phaseDone"]}/{g["phaseTotal"]}　あと{g["need"]}コで進化</text>'
+        )
+        out.append(
+            f'<text x="{tx}" y="{ccy+20}" font-size="11" fill="{C_SUB}">'
+            f'累計 {g["allDone"]}/{g["all"]} 餌</text>'
+        )
+    else:
+        out.append(
+            f'<text x="{tx}" y="{ccy+3}" font-size="12.5" font-weight="700" '
+            f'fill="#C2410C">覚醒！全タスク完了</text>'
+        )
 
     # ── フェーズ箱（⑤→①）─────────────────────
     y = gy + GOAL_H + GAP
