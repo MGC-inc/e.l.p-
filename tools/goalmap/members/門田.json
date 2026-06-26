@@ -38,15 +38,18 @@
       "doneDef": "失注の共通要因を抽出できる",
       "tasks": [
         { "name": "週次で成約率の推移を確認", "status": "未着手", "done": false },
-        { "name": "失注の共通要因を抽出する", "status": "未着手", "done": false }
+        { "name": "失注の共通要因を抽出する", "status": "未着手", "done": false },
+        { "name": "【管理】ピタサチ全体の成約率を把握し、底上げ対象を決める", "status": "未着手", "done": false }
       ]
     },
     {
       "name": "自走",
-      "doneDef": "指導なしで型を回し、人に教えられる",
+      "doneDef": "指導なしで型を回し、代理店メンバーを育てられる",
       "tasks": [
         { "name": "自分の型を後輩に共有する", "status": "未着手", "done": false },
-        { "name": "勝ち型を標準トークに言語化・共有する", "status": "未着手", "done": false }
+        { "name": "勝ち型を標準トークに言語化・共有する", "status": "未着手", "done": false },
+        { "name": "【管理】ピタサチメンバーと1on1し、各人のフォーカスを握る", "status": "未着手", "done": false },
+        { "name": "【管理】ピタサチに勝ち型を標準トークとして展開する", "status": "未着手", "done": false }
       ]
     }
   ]
