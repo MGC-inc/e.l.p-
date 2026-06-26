@@ -191,34 +191,33 @@ def bird_markup(form: int, cx: float, cy: float, s: float, phase_done: int) -> s
         beak(13, -8, 7); eye(8, -11)
         o.append(star(cx + 15 * s, cy - 16 * s, 3.4 * s, "#FFFFFF"))
     else:
-        rays = [(30, 0), (21, 21), (0, 30), (-21, 21),
-                (-30, 0), (-21, -21), (0, -30), (21, -21)]
-        for i, (rx, ry) in enumerate(rays):
-            o.append(f'<line x1="{X(0)}" y1="{Y(0)}" x2="{X(rx)}" y2="{Y(ry)}" '
-                     f'stroke="#FFD36E" stroke-width="{R(1.4 if i % 2 else 2.2)}" '
-                     f'stroke-linecap="round" opacity="0.30"/>')
-        o.append(f'<circle cx="{X(0)}" cy="{Y(0)}" r="{R(26)}" fill="#FFC74D" opacity="0.12"/>')
-        o.append(f'<circle cx="{X(0)}" cy="{Y(0)}" r="{R(17)}" fill="#FFE7A0" opacity="0.16"/>')
-        path(M(-3, 15) + Q(-16, 30, -7, 34) + Q(-1, 31, 1, 17) + "Z", "url(#phx)")
-        path(M(0, 16) + Q(-2, 36, 5, 34) + Q(8, 29, 4, 17) + "Z", "url(#phx2)")
-        path(M(3, 15) + Q(16, 30, 9, 35) + Q(2, 33, 0, 17) + "Z", "url(#phx)")
-        path(M(-3, 2) + Q(-20, -2, -31, -14) + Q(-18, -10, -6, -4) + "Z", "url(#phx2)")
-        path(M(-3, 4) + Q(-22, 4, -33, -5) + Q(-18, -2, -6, 0) + "Z", "url(#phx)")
-        path(M(-3, 6) + Q(-17, 12, -26, 9) + Q(-14, 6, -5, 4) + "Z", "url(#phx2)")
-        path(M(3, 2) + Q(20, -2, 31, -14) + Q(18, -10, 6, -4) + "Z", "url(#phx2)")
-        path(M(3, 4) + Q(22, 4, 33, -5) + Q(18, -2, 6, 0) + "Z", "url(#phx)")
-        path(M(3, 6) + Q(17, 12, 26, 9) + Q(14, 6, 5, 4) + "Z", "url(#phx2)")
-        ell(0, 5, 11, 15, "url(#phx)")
-        o.append(f'<ellipse cx="{X(0)}" cy="{Y(8)}" rx="{R(5)}" ry="{R(8)}" fill="#FFE9A0" opacity="0.50"/>')
-        circ(0, -10, 8, "url(#phx)")
-        path(M(-4, -16) + Q(-4, -27, 0, -22) + Q(0, -32, 4, -23)
-             + Q(6, -32, 8, -22) + Q(11, -28, 9, -16) + "Z", "url(#phx2)")
-        beak(7, -11, 8, "#FFB300"); eye(3, -12)
-        o.append(star(cx, cy - 13 * s, 2.2 * s, "#FFF6D0"))
-        o.append(star(cx - 24 * s, cy - 16 * s, 3.2 * s, "#FFF1B8"))
-        o.append(star(cx + 25 * s, cy - 6 * s, 2.6 * s, "#FFF1B8"))
-        o.append(star(cx + 18 * s, cy + 16 * s, 2.2 * s, "#FFD36E"))
-        o.append(star(cx - 20 * s, cy + 14 * s, 2 * s, "#FFD36E"))
+        # 最終進化：クジャク風（青緑〜金のイリデッセント・特大の羽・目玉模様の大扇・輝き）
+        o.append(f'<circle cx="{X(0)}" cy="{Y(0)}" r="{R(30)}" fill="#2BD0C0" opacity="0.10"/>')
+        o.append(f'<circle cx="{X(0)}" cy="{Y(0)}" r="{R(21)}" fill="#BFF3EC" opacity="0.16"/>')
+        uf = [(-0.914, -0.407), (-0.695, -0.719), (-0.375, -0.927), (0, -1),
+              (0.375, -0.927), (0.695, -0.719), (0.914, -0.407)]
+        rf, bx, by = 32, 0, 6
+        for dx, dy in uf:
+            tx, ty = bx + dx * rf, by + dy * rf
+            mx, my = bx + dx * rf * 0.55, by + dy * rf * 0.55
+            path(M(bx, by) + Q(mx, my, tx, ty), None, "#1E9E8A", 2.2)
+            circ(tx, ty, 5, "#C9A227"); circ(tx, ty, 3.4, "#1FA6A0"); circ(tx, ty, 2, "#173A8C")
+            o.append(f'<circle cx="{X(tx-0.6)}" cy="{Y(ty-0.6)}" r="{R(0.7)}" fill="#FFFFFF"/>')
+        path(M(-3, 0) + Q(-22, -6, -35, -16) + Q(-20, -12, -5, -5) + "Z", "url(#pcock)")
+        path(M(-3, 3) + Q(-24, 2, -35, -3) + Q(-18, -2, -5, -1) + "Z", "#1746A0")
+        path(M(3, 0) + Q(22, -6, 35, -16) + Q(20, -12, 5, -5) + "Z", "url(#pcock)")
+        path(M(3, 3) + Q(24, 2, 35, -3) + Q(18, -2, 5, -1) + "Z", "#1746A0")
+        ell(0, 6, 12, 15, "url(#pcock)")
+        o.append(f'<ellipse cx="{X(-3)}" cy="{Y(2)}" rx="{R(5)}" ry="{R(9)}" fill="#BFFAF2" opacity="0.45"/>')
+        circ(0, -9, 7.5, "#1C4FB0")
+        line(-2.5, -15, -4, -23, "#1E9E8A", 1.4); circ(-4, -23, 1.3, "#173A8C")
+        line(0, -16, 0, -25, "#1E9E8A", 1.4); circ(0, -25, 1.3, "#173A8C")
+        line(2.5, -15, 4, -23, "#1E9E8A", 1.4); circ(4, -23, 1.3, "#173A8C")
+        beak(7, -9, 7, "#E8E0C8"); eye(3, -11)
+        o.append(star(cx, cy - 13 * s, 2 * s, "#FFFFFF"))
+        o.append(star(cx - 27 * s, cy - 9 * s, 2.6 * s, "#FFF6D0"))
+        o.append(star(cx + 28 * s, cy - 3 * s, 2.2 * s, "#FFF6D0"))
+        o.append(star(cx + 20 * s, cy + 15 * s, 2 * s, "#BFF3EC"))
     return "".join(o)
 
 
@@ -260,6 +259,10 @@ def build_svg(d: dict, font: str = FONT) -> str:
         '<stop offset="0" stop-color="#37C9B0"/>'
         '<stop offset="0.6" stop-color="#3DA0E8"/>'
         '<stop offset="1" stop-color="#7A5BE0"/></linearGradient>'
+        '<linearGradient id="pcock" x1="0" y1="0" x2="0" y2="1">'
+        '<stop offset="0" stop-color="#2BD0C0"/>'
+        '<stop offset="0.55" stop-color="#2E8FD0"/>'
+        '<stop offset="1" stop-color="#2E4BB0"/></linearGradient>'
         '</defs>'
     )
     out.append(f'<rect x="0" y="0" width="{WIDTH}" height="{H}" fill="#FFFFFF"/>')
