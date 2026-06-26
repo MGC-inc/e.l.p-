@@ -71,6 +71,19 @@
   .ro-note b{font-size:14px}
   .ro-note .sub{color:#9A7B3A;font-size:12px}
   .ro-note button{display:block;margin-top:12px;font-size:13px;font-weight:700;padding:7px 12px;border:1px solid #C8901A;border-radius:8px;background:#fff;color:#7A3E00;cursor:pointer}
+  /* スマホ・タブレット縦：2カラムをやめて1カラムに積む。地図(canvas)を上に。 */
+  @media (max-width:760px){
+    header{gap:6px;padding:8px 10px}
+    header h1{font-size:14px;margin:0;flex:1 1 100%}
+    select,button{font-size:14px;padding:7px 11px}
+    .wrap{grid-template-columns:1fr}
+    .canvas{order:1;height:auto;padding:10px}
+    .editor{order:2;height:auto;border-right:none;border-top:1px solid var(--line);padding:12px}
+    /* iOSの入力フォーカス時の自動ズーム防止のため16px以上に */
+    .field input[type=text],.task input[type=text],.doneDef,input[type=date]{font-size:16px}
+    .task input[type=checkbox]{width:22px;height:22px}
+    .rtile svg{width:52px;height:52px}
+  }
   @media print{header,.editor,.roster,.ro-banner{display:none}.wrap{grid-template-columns:1fr}.canvas{height:auto;border:none}svg{border:none}}
 </style>
 </head>
