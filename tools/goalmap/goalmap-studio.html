@@ -65,7 +65,13 @@
   .rtile svg{width:44px;height:44px;display:block}
   .rtile .rname{font-size:11px;font-weight:700;color:var(--ink)}
   .rtile .rrate{font-size:10px;color:var(--sub)}
-  @media print{header,.editor,.roster{display:none}.wrap{grid-template-columns:1fr}.canvas{height:auto;border:none}svg{border:none}}
+  .ro-banner{display:flex;align-items:center;gap:12px;padding:8px 14px;background:#FFF3D6;border-bottom:1px solid #E0B43A;color:#7A3E00;font-size:13px;font-weight:700}
+  .ro-banner button{margin-left:auto;font-size:12px;font-weight:700;padding:4px 10px;border:1px solid #C8901A;border-radius:8px;background:#fff;color:#7A3E00;cursor:pointer}
+  .ro-note{background:#FFFDF7;border:1px dashed #E0B43A;border-radius:10px;padding:14px;color:#7A3E00;font-size:13px;line-height:1.7}
+  .ro-note b{font-size:14px}
+  .ro-note .sub{color:#9A7B3A;font-size:12px}
+  .ro-note button{display:block;margin-top:12px;font-size:13px;font-weight:700;padding:7px 12px;border:1px solid #C8901A;border-radius:8px;background:#fff;color:#7A3E00;cursor:pointer}
+  @media print{header,.editor,.roster,.ro-banner{display:none}.wrap{grid-template-columns:1fr}.canvas{height:auto;border:none}svg{border:none}}
 </style>
 </head>
 <body>
@@ -81,9 +87,12 @@
   <button id="exportPng" class="primary">PNG出力</button>
   <button id="exportAvatar" title="今のアバターだけを画像で書き出す">アバターPNG</button>
   <button id="print">印刷/PDF</button>
+  <button id="history" title="過去の達成地図(out/archive/のJSON)を上書きせず読み取り専用で開く">🔒 履歴を見る</button>
+  <input type="file" id="historyFile" accept="application/json" style="display:none" />
   <span id="saved" class="hint" style="margin-left:auto"></span>
 </header>
 <div class="roster" id="roster" title="クリックでメンバー切替（今のアバターが見えます）"></div>
+<div id="roBanner" class="ro-banner" style="display:none"></div>
 <div class="wrap">
   <div class="editor" id="editor"></div>
   <div class="canvas" id="canvas"></div>
@@ -589,7 +598,32 @@ function refreshMemberSelect(){
   sel.innerHTML=members.map(m=>`<option ${m===data.name?"selected":""}>${esc(m)}</option>`).join("");
 }
 function renderAll(){renderEditor();renderCanvas();refreshMemberSelect();renderRoster();}
-function persist(){save(data);renderCanvas();renderRoster();}
+// 履歴の読み取り専用プレビュー中は保存・編集を一切しない
+let viewing=false;
+function persist(){if(viewing)return;save(data);renderCanvas();renderRoster();}
+
+// ───────── 履歴ビュー（読み取り専用）─────────
+function enterHistory(obj,label){
+  viewing=true;
+  data=obj;                       // localStorageには一切書かない（save()を呼ばない）
+  const b=document.getElementById("roBanner");
+  b.style.display="flex";
+  b.innerHTML=`🔒 履歴プレビュー（読み取り専用）：${esc(label)}　— 編集・保存はされません`+
+    `<button id="historyClose2">× 閉じて現在地に戻る</button>`;
+  document.getElementById("editor").innerHTML=
+    `<div class="ro-note"><b>🔒 読み取り専用（履歴）</b><br>${esc(label)}<br>`+
+    `<span class="sub">過去の達成地図を表示中です。チェックや期限の編集はできません（現在の作業データは上書きされません）。</span>`+
+    `<button id="historyClose">× 閉じて現在地に戻る</button></div>`;
+  renderCanvas();
+}
+function exitHistory(){
+  viewing=false;
+  document.getElementById("roBanner").style.display="none";
+  const n=document.getElementById("member").value;
+  data=load(n)||findEmbedded(n)||clone(EMBEDDED[0]);   // 現在地（作業中データ）に復帰
+  renderAll();
+}
+function leaveViewing(){ if(viewing){viewing=false;document.getElementById("roBanner").style.display="none";} }
 
 // ───────── 書き出しヘルパー（アーカイブ／各種PNG共通）─────────
 function downloadJSON(obj,filename){
@@ -647,19 +681,28 @@ document.getElementById("editor").addEventListener("click",ev=>{
     }
   }
 });
-document.getElementById("member").addEventListener("change",ev=>{const n=ev.target.value;const d=load(n)||findEmbedded(n);if(d){data=d;save(data);renderAll();}});
+document.getElementById("member").addEventListener("change",ev=>{leaveViewing();const n=ev.target.value;const d=load(n)||findEmbedded(n);if(d){data=d;save(data);renderAll();}});
 document.getElementById("roster").addEventListener("click",ev=>{
   const t=ev.target.closest("[data-rmember]"); if(!t)return;
+  leaveViewing();
   const n=t.dataset.rmember; const d=load(n)||findEmbedded(n);
   if(d){data=d;save(data);renderAll();}});
+// 履歴を見る（読み取り専用・上書きしない）
+document.getElementById("history").addEventListener("click",()=>document.getElementById("historyFile").click());
+document.getElementById("historyFile").addEventListener("change",ev=>{
+  const f=ev.target.files[0];if(!f)return;const r=new FileReader();
+  r.onload=()=>{try{enterHistory(JSON.parse(r.result),f.name);}catch(e){alert("JSONの読み込みに失敗: "+e);}};
+  r.readAsText(f); ev.target.value="";});   // 同じファイルを再選択できるようにリセット
+document.addEventListener("click",ev=>{ if(ev.target.id==="historyClose"||ev.target.id==="historyClose2")exitHistory(); });
 document.getElementById("reset").addEventListener("click",()=>{
+  if(viewing){exitHistory();return;}   // 履歴表示中は初期化せず、現在地に戻すだけ
   const base=findEmbedded(data.name);
   if(!base){alert("このメンバーは内蔵の初期値がありません（手元のJSONから読み込んでください）");return;}
   if(!confirm(`「${data.name}」を内蔵の初期値に戻します。今の編集内容は消えます。よろしいですか？`))return;
   data=base;save(data);renderAll();});
-document.getElementById("new").addEventListener("click",()=>{const n=prompt("メンバー名は？");if(!n)return;data=template(n);save(data);renderAll();});
+document.getElementById("new").addEventListener("click",()=>{leaveViewing();const n=prompt("メンバー名は？");if(!n)return;data=template(n);save(data);renderAll();});
 document.getElementById("import").addEventListener("change",ev=>{
-  const f=ev.target.files[0];if(!f)return;const r=new FileReader();
+  const f=ev.target.files[0];if(!f)return;leaveViewing();const r=new FileReader();
   r.onload=()=>{try{data=JSON.parse(r.result);save(data);renderAll();}catch(e){alert("JSONの読み込みに失敗: "+e);}};r.readAsText(f);});
 document.getElementById("exportJson").addEventListener("click",()=>{
   const blob=new Blob([JSON.stringify(data,null,2)],{type:"application/json"});
