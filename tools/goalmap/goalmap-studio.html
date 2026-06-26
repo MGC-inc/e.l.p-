@@ -591,6 +591,29 @@ function refreshMemberSelect(){
 function renderAll(){renderEditor();renderCanvas();refreshMemberSelect();renderRoster();}
 function persist(){save(data);renderCanvas();renderRoster();}
 
+// ───────── 書き出しヘルパー（アーカイブ／各種PNG共通）─────────
+function downloadJSON(obj,filename){
+  const blob=new Blob([JSON.stringify(obj,null,2)],{type:"application/json"});
+  const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=filename;a.click();
+}
+function downloadSvgPng(xml,w,h,scale,filename){
+  const img=new Image();
+  img.onload=()=>{const c=document.createElement("canvas");c.width=w*scale;c.height=h*scale;
+    const ctx=c.getContext("2d");ctx.fillStyle="#fff";ctx.fillRect(0,0,c.width,c.height);
+    ctx.scale(scale,scale);ctx.drawImage(img,0,0);
+    const a=document.createElement("a");a.href=c.toDataURL("image/png");a.download=filename;a.click();};
+  img.src="data:image/svg+xml;charset=utf-8,"+encodeURIComponent(xml);
+}
+// この周回の最終地図(PNG)とデータ(JSON)をアーカイブとして書き出す
+function archiveCycle(d){
+  const cyc=Math.max(1,Math.floor(+d.cycle||1));
+  const base=`${d.name}_cycle${cyc}`;
+  downloadJSON(d, base+".json");
+  const xml=buildSvg(d), m=xml.match(/width="(\d+)" height="(\d+)"/);
+  downloadSvgPng(xml, +m[1], +m[2], 2, base+".png");
+  return base;
+}
+
 // ───────── イベント ─────────
 document.getElementById("editor").addEventListener("input",ev=>{
   const t=ev.target;
@@ -614,11 +637,13 @@ document.getElementById("editor").addEventListener("click",ev=>{
     for(let j=i;j<data.phases.length;j++){const p=data.phases[j];const d=p.due?new Date(p.due+"T00:00:00"):new Date();d.setDate(d.getDate()+7);p.due=isoOf(d);}
     persist();renderEditor();}
   else if(t.dataset.nextgoal!=null){
-    if(confirm("現在のゴールを達成として、次のゴールに進みます。\n・周回数を+1（アバターに番号が付き、何羽目か分かる）\n・全タスクのチェックを外す（卵に戻る）\n・ステージを①に戻す\n\nゴール文・テーマ・タスク内容は、このあと新しいゴールに手動で書き換えてください。")){
+    if(confirm("現在のゴールを達成として、次のゴールに進みます。\n\nまず【この周回の地図(PNG)とデータ(JSON)を書き出し】てから:\n・周回数を+1（アバターに番号が付き、何羽目か分かる）\n・全タスクのチェックを外す（卵に戻る）\n・ステージを①に戻す\n\n書き出した2ファイルは tools/goalmap/out/archive/ に保存してコミットすると、過去の達成地図をいつでも見返せます。\nゴール文・テーマ・タスクは、このあと新しいゴールに手動で書き換えてください。")){
+      const base=archiveCycle(data); // ★リセット前にこの周回をアーカイブ書き出し
       data.cycle=Math.max(1,Math.floor(+data.cycle||1))+1;
       data.currentStage=1;
       (data.phases||[]).forEach(p=>(p.tasks||[]).forEach(x=>{x.done=false;if("status" in x)x.status="未着手";}));
       persist();renderEditor();
+      flash(`${base} を書き出しました → out/archive/ に保存 ✓`);
     }
   }
 });
