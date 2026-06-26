@@ -263,7 +263,7 @@ function buildAvatarCard(d){
   // 文字の可読性確保の帯（背の高い不死鳥でも名前が読める）
   o.push(`<rect x="14" y="158" width="${W-28}" height="62" rx="12" fill="#FFFDF7" opacity="0.92"/>`);
   o.push(`<text x="${W/2}" y="182" text-anchor="middle" font-size="20" font-weight="700" fill="${ink}">${esc(d.name||"")}</text>`);
-  o.push(`<text x="${W/2}" y="202" text-anchor="middle" font-size="14" font-weight="700" fill="${g.form===5?"#C2410C":"#B7791F"}">${esc(FORM_NAMES[g.form])}　${g.rate}%</text>`);
+  o.push(`<text x="${W/2}" y="202" text-anchor="middle" font-size="15" font-weight="700" fill="${g.form===5?"#C2410C":"#B7791F"}">達成率 ${g.rate}%</text>`);
   const sub2 = g.form<5 ? `あと${g.need}コで進化（餌 ${g.phaseDone}/${g.phaseTotal}）` : `覚醒！全タスク完了`;
   o.push(`<text x="${W/2}" y="217" text-anchor="middle" font-size="11.5" fill="${sub}">${esc(sub2)}</text>`);
   o.push("</svg>");
@@ -307,12 +307,11 @@ function buildSvg(d){
   const g=growth(d);
   const ccx=402, ccy=112, cs=1.7, tx=ccx+46;
   o.push(birdMarkup(g.form,ccx,ccy,cs,g.phaseDone));
-  o.push(`<text x="${tx}" y="${ccy-16}" font-size="14" font-weight="700" fill="${COL.ink}">${esc(FORM_NAMES[g.form])}</text>`);
   if(g.form<5){
-    o.push(`<text x="${tx}" y="${ccy+3}" font-size="11.5" fill="${COL.sub}">餌 ${g.phaseDone}/${g.phaseTotal}　あと${g.need}コで進化</text>`);
-    o.push(`<text x="${tx}" y="${ccy+20}" font-size="11" fill="${COL.sub}">累計 ${g.allDone}/${g.all} 餌</text>`);
+    o.push(`<text x="${tx}" y="${ccy-3}" font-size="13" font-weight="700" fill="${COL.ink}">あと${g.need}コで進化</text>`);
+    o.push(`<text x="${tx}" y="${ccy+15}" font-size="11" fill="${COL.sub}">餌 ${g.phaseDone}/${g.phaseTotal}　累計 ${g.allDone}/${g.all}</text>`);
   }else{
-    o.push(`<text x="${tx}" y="${ccy+3}" font-size="12.5" font-weight="700" fill="#C2410C">覚醒！全タスク完了</text>`);
+    o.push(`<text x="${tx}" y="${ccy+2}" font-size="13" font-weight="700" fill="#C2410C">覚醒！全タスク完了</text>`);
   }
   let y=gy+GOAL_H+GAP; arrow(y,gy+GOAL_H); let weeks=0;
   order.forEach(idx=>{

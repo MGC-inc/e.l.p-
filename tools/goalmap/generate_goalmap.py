@@ -328,22 +328,18 @@ def build_svg(d: dict, font: str = FONT) -> str:
     g = growth(d)
     ccx, ccy, cs, tx = 402, 112, 1.7, 448
     out.append(bird_markup(g["form"], ccx, ccy, cs, g["phaseDone"]))
-    out.append(
-        f'<text x="{tx}" y="{ccy-16}" font-size="14" font-weight="700" '
-        f'fill="{C_INK}">{esc(FORM_NAMES[g["form"]])}</text>'
-    )
     if g["form"] < 5:
         out.append(
-            f'<text x="{tx}" y="{ccy+3}" font-size="11.5" fill="{C_SUB}">'
-            f'餌 {g["phaseDone"]}/{g["phaseTotal"]}　あと{g["need"]}コで進化</text>'
+            f'<text x="{tx}" y="{ccy-3}" font-size="13" font-weight="700" '
+            f'fill="{C_INK}">あと{g["need"]}コで進化</text>'
         )
         out.append(
-            f'<text x="{tx}" y="{ccy+20}" font-size="11" fill="{C_SUB}">'
-            f'累計 {g["allDone"]}/{g["all"]} 餌</text>'
+            f'<text x="{tx}" y="{ccy+15}" font-size="11" fill="{C_SUB}">'
+            f'餌 {g["phaseDone"]}/{g["phaseTotal"]}　累計 {g["allDone"]}/{g["all"]}</text>'
         )
     else:
         out.append(
-            f'<text x="{tx}" y="{ccy+3}" font-size="12.5" font-weight="700" '
+            f'<text x="{tx}" y="{ccy+2}" font-size="13" font-weight="700" '
             f'fill="#C2410C">覚醒！全タスク完了</text>'
         )
 
