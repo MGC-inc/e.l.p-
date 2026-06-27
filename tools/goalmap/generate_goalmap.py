@@ -511,6 +511,146 @@ def _pill(out: list[str], cy: float, label: str, fg: str, bg: str):
     )
 
 
+# ── 1枚カード（スマホ縦・週次スクショ共有用）。studioの buildSummarySvg と同仕様 ──
+GRAD_DEFS = (
+    '<defs>'
+    '<linearGradient id="goalGrad" x1="0" y1="0" x2="1" y2="1">'
+    '<stop offset="0" stop-color="#5B4BE0"/><stop offset="0.5" stop-color="#B14BE0"/>'
+    '<stop offset="1" stop-color="#FFC24B"/></linearGradient>'
+    '<linearGradient id="phx" x1="0" y1="0" x2="0" y2="1">'
+    '<stop offset="0" stop-color="#FFE259"/><stop offset="0.5" stop-color="#FF9A00"/>'
+    '<stop offset="1" stop-color="#FF3D00"/></linearGradient>'
+    '<linearGradient id="phx2" x1="0" y1="0" x2="0" y2="1">'
+    '<stop offset="0" stop-color="#FFF0A0"/><stop offset="1" stop-color="#FF7A00"/></linearGradient>'
+    '<linearGradient id="hen" x1="0" y1="0" x2="1" y2="1">'
+    '<stop offset="0" stop-color="#37C9B0"/><stop offset="0.6" stop-color="#3DA0E8"/>'
+    '<stop offset="1" stop-color="#7A5BE0"/></linearGradient>'
+    '<linearGradient id="pcock" x1="0" y1="0" x2="0" y2="1">'
+    '<stop offset="0" stop-color="#2BD0C0"/><stop offset="0.55" stop-color="#2E8FD0"/>'
+    '<stop offset="1" stop-color="#2E4BB0"/></linearGradient>'
+    '<linearGradient id="gold" x1="0" y1="0" x2="0" y2="1">'
+    '<stop offset="0" stop-color="#FFF0A8"/><stop offset="0.5" stop-color="#F2C230"/>'
+    '<stop offset="1" stop-color="#C8901A"/></linearGradient>'
+    '</defs>'
+)
+
+
+def top_task(d: dict) -> dict:
+    """今週の最優先タスク：現在ステージ以降で最初の未完タスク。"""
+    cur = int(d.get("currentStage", 1))
+    phases = d.get("phases", [])
+    for s in range(cur - 1, len(phases)):
+        for t in phases[s].get("tasks", []):
+            if not t.get("done"):
+                return {"task": t.get("name", ""), "stage": s}
+    for s in range(len(phases)):
+        for t in phases[s].get("tasks", []):
+            if not t.get("done"):
+                return {"task": t.get("name", ""), "stage": s}
+    return {"task": "全タスク完了！次のゴールへ", "stage": cur - 1}
+
+
+def build_summary_svg(d: dict, font: str = FONT) -> str:
+    W, PAD, task_h = 384, 12, 14
+    g = growth(d)
+    cur = int(d.get("currentStage", 1))
+    tt = top_task(d)
+    today_iso = date.today().isoformat()
+    phases = d.get("phases", [])
+    blocks = [{"idx": i, "p": p, "tasks": p.get("tasks", []),
+               "h": 20 + max(1, len(p.get("tasks", []))) * task_h + 6}
+              for i, p in enumerate(phases)]
+    py = 46 + 60 + 12
+    head_h = py + 40 + 8
+    H = head_h + sum(b["h"] + 6 for b in blocks) + PAD
+    o: list[str] = []
+    o.append(f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W} {H}" '
+             f'font-family="{font}" width="{W}" height="{H}">')
+    o.append(GRAD_DEFS)
+    o.append(f'<rect x="0" y="0" width="{W}" height="{H}" fill="#fff"/>')
+    # 名前・テーマ／達成率・バー
+    head = esc(d.get("name", "")) + (f"（{esc(d['note'])}）" if d.get("note") else "")
+    o.append(f'<text x="{PAD}" y="20" font-size="14" font-weight="700" fill="{C_INK}">{head}</text>')
+    o.append(f'<text x="{PAD}" y="37" font-size="10.5" fill="{C_SUB}">{esc(d.get("theme",""))}</text>')
+    o.append(f'<text x="{W-PAD}" y="20" text-anchor="end" font-size="15" font-weight="700" '
+             f'fill="{C_DONE}">達成率 {g["rate"]}%</text>')
+    o.append(f'<rect x="{W-128}" y="27" width="116" height="7" rx="3.5" fill="{C_FUTURE_BG}"/>')
+    o.append(f'<rect x="{W-128}" y="27" width="{round(116*g["rate"]/100)}" height="7" rx="3.5" fill="{C_DONE}"/>')
+    # ゴール箱
+    gy, gw, gh = 46, 244, 60
+    o.append(f'<rect x="{PAD}" y="{gy}" width="{gw}" height="{gh}" rx="9" '
+             f'fill="url(#goalGrad)" stroke="#FFD36E" stroke-width="2"/>')
+    o.append(f'<rect x="{PAD}" y="{gy}" width="{gw}" height="{gh/2}" rx="9" fill="#fff" opacity="0.16"/>')
+    o.append(f'<text x="{PAD+12}" y="{gy+18}" font-size="11" font-weight="700" fill="#fff">ゴール</text>')
+    o.append(star(PAD + gw - 14, gy + 13, 5.5, "#FFF1B8"))
+    for k, line in enumerate(wrap(d.get("goal", ""), 15)[:2]):
+        o.append(f'<text x="{PAD+12}" y="{gy+37+k*15}" font-size="12" font-weight="600" '
+                 f'fill="#fff">{esc(line)}</text>')
+    # アバター（小）＋キャプション
+    acx, acy = PAD + gw + 58, gy + 30
+    o.append(bird_markup(g["form"], acx, acy, 1.2, g["phaseDone"], g["cycle"] if g["cycle"] >= 2 else 0))
+    cap = (f'あと{g["need"]}コ' if g["form"] < 5 else "覚醒") + (f'・{g["cycle"]}周目' if g["cycle"] >= 2 else "")
+    o.append(f'<text x="{acx}" y="{gy+gh+1}" text-anchor="middle" font-size="9.5" '
+             f'font-weight="700" fill="#B7791F">{esc(cap)}</text>')
+    # 今週の最優先ストリップ（🎯は絵文字非対応のため的マークを描画）
+    o.append(f'<rect x="{PAD}" y="{py}" width="{W-2*PAD}" height="40" rx="9" '
+             f'fill="{C_NOW_BG}" stroke="{C_NOW}"/>')
+    txn, tyn = PAD + 12, py + 12
+    o.append(f'<circle cx="{txn}" cy="{tyn}" r="4.6" fill="none" stroke="{C_NOW}" stroke-width="1.6"/>')
+    o.append(f'<circle cx="{txn}" cy="{tyn}" r="2.3" fill="none" stroke="{C_NOW}" stroke-width="1.3"/>')
+    o.append(f'<circle cx="{txn}" cy="{tyn}" r="1.1" fill="{C_NOW}"/>')
+    o.append(f'<text x="{txn+10}" y="{py+15}" font-size="10" font-weight="700" '
+             f'fill="{C_NOW}">今週の最優先（今ここ：{esc(STAGE_NAMES[tt["stage"]])}）</text>')
+    o.append(f'<text x="{PAD+10}" y="{py+32}" font-size="12.5" font-weight="700" '
+             f'fill="{C_INK}">{esc(wrap(tt["task"], 30)[0])}</text>')
+    # ステージ（①→⑤・全タスク）
+    y = head_h
+    for b in blocks:
+        sn = b["idx"] + 1
+        is_now = sn == cur
+        if sn < cur:
+            fg = C_DONE
+        elif is_now:
+            fg = C_NOW
+        else:
+            fg = C_FUTURE
+        if is_now:
+            o.append(f'<rect x="6" y="{y-2}" width="{W-12}" height="{b["h"]}" rx="8" '
+                     f'fill="{C_NOW_BG}" opacity="0.5"/>')
+        o.append(f'<circle cx="{PAD+5}" cy="{y+10}" r="5" fill="{fg}"/>')
+        o.append(f'<text x="{PAD+16}" y="{y+14}" font-size="11.5" font-weight="700" '
+                 f'fill="{C_INK}">{esc(STAGE_NAMES[b["idx"]])}</text>')
+        tasks = b["tasks"]
+        complete = bool(tasks) and all(t.get("done") for t in tasks)
+        due = b["p"].get("due")
+        if sn < cur or complete:
+            pl, pf, pb = "クリア", C_DONE, C_DONE_BG
+        elif due and due < today_iso:
+            pl, pf, pb = "⚠" + week_label_date(due), C_LATE, C_LATE_BG
+        else:
+            pl = week_label_date(due) if due else "—"
+            pf, pb = (C_NOW, C_NOW_BG) if is_now else (C_FUTURE, C_FUTURE_BG)
+        o.append(f'<rect x="{W-92}" y="{y+2}" width="80" height="17" rx="8.5" fill="{pb}" stroke="{pf}"/>')
+        o.append(f'<text x="{W-52}" y="{y+14}" text-anchor="middle" font-size="9.5" '
+                 f'font-weight="700" fill="{pf}">{esc(pl)}</text>')
+        ty = y + 31
+        rows = tasks if tasks else [{"name": "（タスクなし）", "done": False}]
+        for t in rows:
+            dn = bool(t.get("done"))
+            o.append(f'<rect x="{PAD+16}" y="{ty-9}" width="11" height="11" rx="2.5" '
+                     f'fill="{C_DONE if dn else "#fff"}" stroke="{C_DONE if dn else C_FUTURE}" stroke-width="1.3"/>')
+            if dn:
+                o.append(f'<path d="M{PAD+18.5},{ty-3.5} l2,2 l4,-5" fill="none" stroke="#fff" '
+                         f'stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>')
+            deco = ' text-decoration="line-through"' if dn else ""
+            o.append(f'<text x="{PAD+32}" y="{ty}" font-size="10.5" '
+                     f'fill="{C_SUB if dn else C_INK}"{deco}>{esc(wrap(t.get("name",""), 30)[0])}</text>')
+            ty += task_h
+        y += b["h"] + 6
+    o.append("</svg>")
+    return "".join(o)
+
+
 def main(argv: list[str]) -> int:
     args = [a for a in argv[1:] if not a.startswith("-")]
     opts = argv[1:]
@@ -520,6 +660,9 @@ def main(argv: list[str]) -> int:
     src = args[0]
     data = load_member_data(src)
     stem = data.get("name", "goalmap") if src == "-" else Path(src).stem
+    # --summary / -s ：スマホ1枚カード（週次スクショ共有用）を出力
+    summary = "--summary" in opts or "-s" in opts
+    renderer = build_summary_svg if summary else build_svg
 
     out_base = None
     if "-o" in opts:
@@ -527,9 +670,9 @@ def main(argv: list[str]) -> int:
     if out_base is None:
         out_dir = Path(__file__).parent / "out"
         out_dir.mkdir(exist_ok=True)
-        out_base = str(out_dir / stem)
+        out_base = str(out_dir / (stem + "_1枚" if summary else stem))
 
-    svg = build_svg(data)
+    svg = renderer(data)
     svg_path = Path(str(out_base) + ".svg")
     svg_path.write_text(svg, encoding="utf-8")
     print(f"wrote {svg_path}")
@@ -537,7 +680,7 @@ def main(argv: list[str]) -> int:
     try:
         import cairosvg  # type: ignore
         png_path = Path(str(out_base) + ".png")
-        svg_raster = build_svg(data, font=FONT_RASTER)  # CJKフォントを先頭にした版
+        svg_raster = renderer(data, font=FONT_RASTER)  # CJKフォントを先頭にした版
         cairosvg.svg2png(bytestring=svg_raster.encode("utf-8"), write_to=str(png_path), scale=2)
         print(f"wrote {png_path}")
     except Exception as e:  # noqa: BLE001
