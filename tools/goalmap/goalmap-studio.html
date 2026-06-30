@@ -610,59 +610,59 @@ function topTask(d){
 
 // スマホ1画面まとめ表示（週次スクショ共有用）：ゴール・アバター・現在地・最優先・全タスクを1枚に凝縮
 function buildSummarySvg(d){
-  const W=384, PAD=12, taskH=14;
+  const W=430, PAD=12, taskH=16;     // LINE可読性のため横幅を広げ文字を一回り大きく
   const g=growth(d), cur=+d.currentStage||1, tt=topTask(d), todayIso=todayISO();
-  const blocks=(d.phases||[]).map((p,idx)=>{const tasks=p.tasks||[];return{idx,p,tasks,h:20+Math.max(1,tasks.length)*taskH+6};});
-  const py=46+60+12;                 // ゴール箱下＋余白＝最優先ストリップy
-  const headH=py+40+8;               // 最優先ストリップ(40)＋余白
+  const blocks=(d.phases||[]).map((p,idx)=>{const tasks=p.tasks||[];return{idx,p,tasks,h:22+Math.max(1,tasks.length)*taskH+6};});
+  const gy=48, gw=270, gh=64;
+  const py=gy+gh+12, stripH=46;      // 最優先ストリップ
+  const headH=py+stripH+10;
   const H=headH+blocks.reduce((s,b)=>s+b.h+6,0)+PAD;
   const o=[];
   o.push(`<svg xmlns="http://www.w3.org/2000/svg" id="gm" viewBox="0 0 ${W} ${H}" font-family="${FONT}" width="${W}" height="${H}">`);
   o.push(SVG_DEFS);
   o.push(`<rect x="0" y="0" width="${W}" height="${H}" fill="#fff"/>`);
   // 名前・テーマ／達成率・バー
-  o.push(`<text x="${PAD}" y="20" font-size="14" font-weight="700" fill="${COL.ink}">${esc(d.name||"")}${d.note?`（${esc(d.note)}）`:""}</text>`);
-  o.push(`<text x="${PAD}" y="37" font-size="10.5" fill="${COL.sub}">${esc(d.theme||"")}</text>`);
-  o.push(`<text x="${W-PAD}" y="20" text-anchor="end" font-size="15" font-weight="700" fill="${COL.done}">達成率 ${g.rate}%</text>`);
-  o.push(`<rect x="${W-128}" y="27" width="116" height="7" rx="3.5" fill="${COL.futureBg}"/>`);
-  o.push(`<rect x="${W-128}" y="27" width="${Math.round(116*g.rate/100)}" height="7" rx="3.5" fill="${COL.done}"/>`);
+  o.push(`<text x="${PAD}" y="22" font-size="16" font-weight="700" fill="${COL.ink}">${esc(d.name||"")}${d.note?`（${esc(d.note)}）`:""}</text>`);
+  o.push(`<text x="${PAD}" y="40" font-size="11.5" fill="${COL.sub}">${esc(d.theme||"")}</text>`);
+  o.push(`<text x="${W-PAD}" y="22" text-anchor="end" font-size="17" font-weight="700" fill="${COL.done}">達成率 ${g.rate}%</text>`);
+  o.push(`<rect x="${W-150}" y="30" width="138" height="8" rx="4" fill="${COL.futureBg}"/>`);
+  o.push(`<rect x="${W-150}" y="30" width="${Math.round(138*g.rate/100)}" height="8" rx="4" fill="${COL.done}"/>`);
   // ゴール箱
-  const gy=46, gw=244, gh=60;
-  o.push(`<rect x="${PAD}" y="${gy}" width="${gw}" height="${gh}" rx="9" fill="url(#goalGrad)" stroke="#FFD36E" stroke-width="2"/>`);
-  o.push(`<rect x="${PAD}" y="${gy}" width="${gw}" height="${gh/2}" rx="9" fill="#fff" opacity="0.16"/>`);
-  o.push(`<text x="${PAD+12}" y="${gy+18}" font-size="11" font-weight="700" fill="#fff">ゴール</text>`);
-  o.push(star(PAD+gw-14, gy+13, 5.5, "#FFF1B8"));
-  wrap(d.goal,15).slice(0,2).forEach((l,k)=>o.push(`<text x="${PAD+12}" y="${gy+37+k*15}" font-size="12" font-weight="600" fill="#fff">${esc(l)}</text>`));
+  o.push(`<rect x="${PAD}" y="${gy}" width="${gw}" height="${gh}" rx="10" fill="url(#goalGrad)" stroke="#FFD36E" stroke-width="2"/>`);
+  o.push(`<rect x="${PAD}" y="${gy}" width="${gw}" height="${gh/2}" rx="10" fill="#fff" opacity="0.16"/>`);
+  o.push(`<text x="${PAD+12}" y="${gy+20}" font-size="12" font-weight="700" fill="#fff">ゴール</text>`);
+  o.push(star(PAD+gw-15, gy+14, 6, "#FFF1B8"));
+  wrap(d.goal,18).slice(0,2).forEach((l,k)=>o.push(`<text x="${PAD+12}" y="${gy+40+k*17}" font-size="14" font-weight="600" fill="#fff">${esc(l)}</text>`));
   // アバター（小）＋キャプション
-  const acx=PAD+gw+58, acy=gy+30;
-  o.push(birdMarkup(g.form,acx,acy,1.2,g.phaseDone,g.cycle>=2?g.cycle:0));
-  o.push(`<text x="${acx}" y="${gy+gh+1}" text-anchor="middle" font-size="9.5" font-weight="700" fill="#B7791F">${g.form<5?`あと${g.need}コ`:"覚醒"}${g.cycle>=2?`・${g.cycle}周目`:""}</text>`);
+  const acx=Math.round((PAD+gw+(W-PAD))/2), acy=gy+32;
+  o.push(birdMarkup(g.form,acx,acy,1.3,g.phaseDone,g.cycle>=2?g.cycle:0));
+  o.push(`<text x="${acx}" y="${gy+gh+2}" text-anchor="middle" font-size="11" font-weight="700" fill="#B7791F">${g.form<5?`あと${g.need}コ`:"覚醒"}${g.cycle>=2?`・${g.cycle}周目`:""}</text>`);
   // 今週の最優先ストリップ
-  o.push(`<rect x="${PAD}" y="${py}" width="${W-2*PAD}" height="40" rx="9" fill="${COL.nowBg}" stroke="${COL.now}"/>`);
-  o.push(`<text x="${PAD+10}" y="${py+15}" font-size="10" font-weight="700" fill="${COL.now}">🎯 今週の最優先（今ここ：${esc(STAGE_NAMES[tt.stage])}）</text>`);
-  o.push(`<text x="${PAD+10}" y="${py+32}" font-size="12.5" font-weight="700" fill="${COL.ink}">${esc(wrap(tt.task,30)[0])}</text>`);
+  o.push(`<rect x="${PAD}" y="${py}" width="${W-2*PAD}" height="${stripH}" rx="10" fill="${COL.nowBg}" stroke="${COL.now}"/>`);
+  o.push(`<text x="${PAD+12}" y="${py+17}" font-size="12" font-weight="700" fill="${COL.now}">🎯 今週の最優先（今ここ：${esc(STAGE_NAMES[tt.stage])}）</text>`);
+  o.push(`<text x="${PAD+12}" y="${py+37}" font-size="15" font-weight="700" fill="${COL.ink}">${esc(wrap(tt.task,30)[0])}</text>`);
   // ステージ（①→⑤・全タスク）
   let y=headH;
   blocks.forEach(b=>{
     const sn=b.idx+1, isNow=sn===cur;
     let st,fg;
     if(sn<cur){st="done";fg=COL.done;} else if(isNow){st="now";fg=COL.now;} else{st="future";fg=COL.future;}
-    if(isNow)o.push(`<rect x="6" y="${y-2}" width="${W-12}" height="${b.h}" rx="8" fill="${COL.nowBg}" opacity="0.5"/>`);
-    o.push(`<circle cx="${PAD+5}" cy="${y+10}" r="5" fill="${fg}"/>`);
-    o.push(`<text x="${PAD+16}" y="${y+14}" font-size="11.5" font-weight="700" fill="${COL.ink}">${esc(STAGE_NAMES[b.idx])}</text>`);
+    if(isNow)o.push(`<rect x="6" y="${y-2}" width="${W-12}" height="${b.h}" rx="9" fill="${COL.nowBg}" opacity="0.5"/>`);
+    o.push(`<circle cx="${PAD+6}" cy="${y+11}" r="5.5" fill="${fg}"/>`);
+    o.push(`<text x="${PAD+18}" y="${y+15}" font-size="13" font-weight="700" fill="${COL.ink}">${esc(STAGE_NAMES[b.idx])}</text>`);
     const complete=b.tasks.length>0&&b.tasks.every(t=>t.done);
     const due=b.p.due; let pl,pf,pb;
     if(sn<cur||complete){pl="クリア";pf=COL.done;pb=COL.doneBg;}
     else if(due&&due<todayIso){pl="⚠"+weekLabelDate(due);pf="#DC2626";pb="#FEE2E2";}
     else{pl=due?weekLabelDate(due):"—";pf=(st==="now")?COL.now:COL.future;pb=(st==="now")?COL.nowBg:COL.futureBg;}
-    o.push(`<rect x="${W-92}" y="${y+2}" width="80" height="17" rx="8.5" fill="${pb}" stroke="${pf}"/>`);
-    o.push(`<text x="${W-52}" y="${y+14}" text-anchor="middle" font-size="9.5" font-weight="700" fill="${pf}">${esc(pl)}</text>`);
-    let ty=y+31;
+    o.push(`<rect x="${W-100}" y="${y+2}" width="88" height="19" rx="9.5" fill="${pb}" stroke="${pf}"/>`);
+    o.push(`<text x="${W-56}" y="${y+15}" text-anchor="middle" font-size="11" font-weight="700" fill="${pf}">${esc(pl)}</text>`);
+    let ty=y+34;
     (b.tasks.length?b.tasks:[{name:"（タスクなし）",done:false}]).forEach(t=>{
       const dn=!!t.done;
-      o.push(`<rect x="${PAD+16}" y="${ty-9}" width="11" height="11" rx="2.5" fill="${dn?COL.done:"#fff"}" stroke="${dn?COL.done:COL.future}" stroke-width="1.3"/>`);
-      if(dn)o.push(`<path d="M${PAD+18.5},${ty-3.5} l2,2 l4,-5" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>`);
-      o.push(`<text x="${PAD+32}" y="${ty}" font-size="10.5" fill="${dn?COL.sub:COL.ink}"${dn?' text-decoration="line-through"':""}>${esc(wrap(t.name,30)[0])}</text>`);
+      o.push(`<rect x="${PAD+18}" y="${ty-10}" width="13" height="13" rx="3" fill="${dn?COL.done:"#fff"}" stroke="${dn?COL.done:COL.future}" stroke-width="1.4"/>`);
+      if(dn)o.push(`<path d="M${PAD+21},${ty-3.5} l2.4,2.4 l4.6,-6" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>`);
+      o.push(`<text x="${PAD+36}" y="${ty}" font-size="12" fill="${dn?COL.sub:COL.ink}"${dn?' text-decoration="line-through"':""}>${esc(wrap(t.name,30)[0])}</text>`);
       ty+=taskH;
     });
     y+=b.h+6;
@@ -821,7 +821,7 @@ document.getElementById("exportPng").addEventListener("click",()=>{
   const svg=document.getElementById("gm");
   const xml=new XMLSerializer().serializeToString(svg);
   const img=new Image();
-  img.onload=()=>{const s=2,c=document.createElement("canvas");
+  img.onload=()=>{const s=3,c=document.createElement("canvas");   // 高解像度（LINE圧縮対策）
     c.width=svg.viewBox.baseVal.width*s;c.height=svg.viewBox.baseVal.height*s;
     const ctx=c.getContext("2d");ctx.fillStyle="#fff";ctx.fillRect(0,0,c.width,c.height);
     ctx.scale(s,s);ctx.drawImage(img,0,0);

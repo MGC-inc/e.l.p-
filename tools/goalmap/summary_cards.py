@@ -42,7 +42,7 @@ def main(argv: list[str]) -> int:
         print(f"wrote {base}.svg")
         if cairosvg:
             cairosvg.svg2png(bytestring=G.build_summary_svg(d, font=G.FONT_RASTER).encode("utf-8"),
-                             write_to=str(base.with_suffix(".png")), scale=2)
+                             write_to=str(base.with_suffix(".png")), scale=3)
             print(f"wrote {base}.png")
     print(f"\n→ out/summary/ に {len(files)} 名分。LINE等でそのまま共有できます。")
     return 0

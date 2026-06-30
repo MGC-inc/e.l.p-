@@ -552,17 +552,18 @@ def top_task(d: dict) -> dict:
 
 
 def build_summary_svg(d: dict, font: str = FONT) -> str:
-    W, PAD, task_h = 384, 12, 14
+    W, PAD, task_h = 430, 12, 16   # LINE可読性のため横幅を広げ文字を一回り大きく
     g = growth(d)
     cur = int(d.get("currentStage", 1))
     tt = top_task(d)
     today_iso = date.today().isoformat()
     phases = d.get("phases", [])
     blocks = [{"idx": i, "p": p, "tasks": p.get("tasks", []),
-               "h": 20 + max(1, len(p.get("tasks", []))) * task_h + 6}
+               "h": 22 + max(1, len(p.get("tasks", []))) * task_h + 6}
               for i, p in enumerate(phases)]
-    py = 46 + 60 + 12
-    head_h = py + 40 + 8
+    gy, gw, gh = 48, 270, 64
+    py, strip_h = gy + gh + 12, 46
+    head_h = py + strip_h + 10
     H = head_h + sum(b["h"] + 6 for b in blocks) + PAD
     o: list[str] = []
     o.append(f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W} {H}" '
@@ -571,38 +572,37 @@ def build_summary_svg(d: dict, font: str = FONT) -> str:
     o.append(f'<rect x="0" y="0" width="{W}" height="{H}" fill="#fff"/>')
     # 名前・テーマ／達成率・バー
     head = esc(d.get("name", "")) + (f"（{esc(d['note'])}）" if d.get("note") else "")
-    o.append(f'<text x="{PAD}" y="20" font-size="14" font-weight="700" fill="{C_INK}">{head}</text>')
-    o.append(f'<text x="{PAD}" y="37" font-size="10.5" fill="{C_SUB}">{esc(d.get("theme",""))}</text>')
-    o.append(f'<text x="{W-PAD}" y="20" text-anchor="end" font-size="15" font-weight="700" '
+    o.append(f'<text x="{PAD}" y="22" font-size="16" font-weight="700" fill="{C_INK}">{head}</text>')
+    o.append(f'<text x="{PAD}" y="40" font-size="11.5" fill="{C_SUB}">{esc(d.get("theme",""))}</text>')
+    o.append(f'<text x="{W-PAD}" y="22" text-anchor="end" font-size="17" font-weight="700" '
              f'fill="{C_DONE}">達成率 {g["rate"]}%</text>')
-    o.append(f'<rect x="{W-128}" y="27" width="116" height="7" rx="3.5" fill="{C_FUTURE_BG}"/>')
-    o.append(f'<rect x="{W-128}" y="27" width="{round(116*g["rate"]/100)}" height="7" rx="3.5" fill="{C_DONE}"/>')
+    o.append(f'<rect x="{W-150}" y="30" width="138" height="8" rx="4" fill="{C_FUTURE_BG}"/>')
+    o.append(f'<rect x="{W-150}" y="30" width="{round(138*g["rate"]/100)}" height="8" rx="4" fill="{C_DONE}"/>')
     # ゴール箱
-    gy, gw, gh = 46, 244, 60
-    o.append(f'<rect x="{PAD}" y="{gy}" width="{gw}" height="{gh}" rx="9" '
+    o.append(f'<rect x="{PAD}" y="{gy}" width="{gw}" height="{gh}" rx="10" '
              f'fill="url(#goalGrad)" stroke="#FFD36E" stroke-width="2"/>')
-    o.append(f'<rect x="{PAD}" y="{gy}" width="{gw}" height="{gh/2}" rx="9" fill="#fff" opacity="0.16"/>')
-    o.append(f'<text x="{PAD+12}" y="{gy+18}" font-size="11" font-weight="700" fill="#fff">ゴール</text>')
-    o.append(star(PAD + gw - 14, gy + 13, 5.5, "#FFF1B8"))
-    for k, line in enumerate(wrap(d.get("goal", ""), 15)[:2]):
-        o.append(f'<text x="{PAD+12}" y="{gy+37+k*15}" font-size="12" font-weight="600" '
+    o.append(f'<rect x="{PAD}" y="{gy}" width="{gw}" height="{gh/2}" rx="10" fill="#fff" opacity="0.16"/>')
+    o.append(f'<text x="{PAD+12}" y="{gy+20}" font-size="12" font-weight="700" fill="#fff">ゴール</text>')
+    o.append(star(PAD + gw - 15, gy + 14, 6, "#FFF1B8"))
+    for k, line in enumerate(wrap(d.get("goal", ""), 18)[:2]):
+        o.append(f'<text x="{PAD+12}" y="{gy+40+k*17}" font-size="14" font-weight="600" '
                  f'fill="#fff">{esc(line)}</text>')
     # アバター（小）＋キャプション
-    acx, acy = PAD + gw + 58, gy + 30
-    o.append(bird_markup(g["form"], acx, acy, 1.2, g["phaseDone"], g["cycle"] if g["cycle"] >= 2 else 0))
+    acx, acy = round((PAD + gw + (W - PAD)) / 2), gy + 32
+    o.append(bird_markup(g["form"], acx, acy, 1.3, g["phaseDone"], g["cycle"] if g["cycle"] >= 2 else 0))
     cap = (f'あと{g["need"]}コ' if g["form"] < 5 else "覚醒") + (f'・{g["cycle"]}周目' if g["cycle"] >= 2 else "")
-    o.append(f'<text x="{acx}" y="{gy+gh+1}" text-anchor="middle" font-size="9.5" '
+    o.append(f'<text x="{acx}" y="{gy+gh+2}" text-anchor="middle" font-size="11" '
              f'font-weight="700" fill="#B7791F">{esc(cap)}</text>')
     # 今週の最優先ストリップ（🎯は絵文字非対応のため的マークを描画）
-    o.append(f'<rect x="{PAD}" y="{py}" width="{W-2*PAD}" height="40" rx="9" '
+    o.append(f'<rect x="{PAD}" y="{py}" width="{W-2*PAD}" height="{strip_h}" rx="10" '
              f'fill="{C_NOW_BG}" stroke="{C_NOW}"/>')
-    txn, tyn = PAD + 12, py + 12
-    o.append(f'<circle cx="{txn}" cy="{tyn}" r="4.6" fill="none" stroke="{C_NOW}" stroke-width="1.6"/>')
-    o.append(f'<circle cx="{txn}" cy="{tyn}" r="2.3" fill="none" stroke="{C_NOW}" stroke-width="1.3"/>')
-    o.append(f'<circle cx="{txn}" cy="{tyn}" r="1.1" fill="{C_NOW}"/>')
-    o.append(f'<text x="{txn+10}" y="{py+15}" font-size="10" font-weight="700" '
+    txn, tyn = PAD + 14, py + 13
+    o.append(f'<circle cx="{txn}" cy="{tyn}" r="5.2" fill="none" stroke="{C_NOW}" stroke-width="1.8"/>')
+    o.append(f'<circle cx="{txn}" cy="{tyn}" r="2.6" fill="none" stroke="{C_NOW}" stroke-width="1.5"/>')
+    o.append(f'<circle cx="{txn}" cy="{tyn}" r="1.3" fill="{C_NOW}"/>')
+    o.append(f'<text x="{txn+11}" y="{py+17}" font-size="12" font-weight="700" '
              f'fill="{C_NOW}">今週の最優先（今ここ：{esc(STAGE_NAMES[tt["stage"]])}）</text>')
-    o.append(f'<text x="{PAD+10}" y="{py+32}" font-size="12.5" font-weight="700" '
+    o.append(f'<text x="{PAD+12}" y="{py+37}" font-size="15" font-weight="700" '
              f'fill="{C_INK}">{esc(wrap(tt["task"], 30)[0])}</text>')
     # ステージ（①→⑤・全タスク）
     y = head_h
@@ -616,10 +616,10 @@ def build_summary_svg(d: dict, font: str = FONT) -> str:
         else:
             fg = C_FUTURE
         if is_now:
-            o.append(f'<rect x="6" y="{y-2}" width="{W-12}" height="{b["h"]}" rx="8" '
+            o.append(f'<rect x="6" y="{y-2}" width="{W-12}" height="{b["h"]}" rx="9" '
                      f'fill="{C_NOW_BG}" opacity="0.5"/>')
-        o.append(f'<circle cx="{PAD+5}" cy="{y+10}" r="5" fill="{fg}"/>')
-        o.append(f'<text x="{PAD+16}" y="{y+14}" font-size="11.5" font-weight="700" '
+        o.append(f'<circle cx="{PAD+6}" cy="{y+11}" r="5.5" fill="{fg}"/>')
+        o.append(f'<text x="{PAD+18}" y="{y+15}" font-size="13" font-weight="700" '
                  f'fill="{C_INK}">{esc(STAGE_NAMES[b["idx"]])}</text>')
         tasks = b["tasks"]
         complete = bool(tasks) and all(t.get("done") for t in tasks)
@@ -631,20 +631,20 @@ def build_summary_svg(d: dict, font: str = FONT) -> str:
         else:
             pl = week_label_date(due) if due else "—"
             pf, pb = (C_NOW, C_NOW_BG) if is_now else (C_FUTURE, C_FUTURE_BG)
-        o.append(f'<rect x="{W-92}" y="{y+2}" width="80" height="17" rx="8.5" fill="{pb}" stroke="{pf}"/>')
-        o.append(f'<text x="{W-52}" y="{y+14}" text-anchor="middle" font-size="9.5" '
+        o.append(f'<rect x="{W-100}" y="{y+2}" width="88" height="19" rx="9.5" fill="{pb}" stroke="{pf}"/>')
+        o.append(f'<text x="{W-56}" y="{y+15}" text-anchor="middle" font-size="11" '
                  f'font-weight="700" fill="{pf}">{esc(pl)}</text>')
-        ty = y + 31
+        ty = y + 34
         rows = tasks if tasks else [{"name": "（タスクなし）", "done": False}]
         for t in rows:
             dn = bool(t.get("done"))
-            o.append(f'<rect x="{PAD+16}" y="{ty-9}" width="11" height="11" rx="2.5" '
-                     f'fill="{C_DONE if dn else "#fff"}" stroke="{C_DONE if dn else C_FUTURE}" stroke-width="1.3"/>')
+            o.append(f'<rect x="{PAD+18}" y="{ty-10}" width="13" height="13" rx="3" '
+                     f'fill="{C_DONE if dn else "#fff"}" stroke="{C_DONE if dn else C_FUTURE}" stroke-width="1.4"/>')
             if dn:
-                o.append(f'<path d="M{PAD+18.5},{ty-3.5} l2,2 l4,-5" fill="none" stroke="#fff" '
-                         f'stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>')
+                o.append(f'<path d="M{PAD+21},{ty-3.5} l2.4,2.4 l4.6,-6" fill="none" stroke="#fff" '
+                         f'stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>')
             deco = ' text-decoration="line-through"' if dn else ""
-            o.append(f'<text x="{PAD+32}" y="{ty}" font-size="10.5" '
+            o.append(f'<text x="{PAD+36}" y="{ty}" font-size="12" '
                      f'fill="{C_SUB if dn else C_INK}"{deco}>{esc(wrap(t.get("name",""), 30)[0])}</text>')
             ty += task_h
         y += b["h"] + 6
@@ -682,7 +682,7 @@ def main(argv: list[str]) -> int:
         import cairosvg  # type: ignore
         png_path = Path(str(out_base) + ".png")
         svg_raster = renderer(data, font=FONT_RASTER)  # CJKフォントを先頭にした版
-        cairosvg.svg2png(bytestring=svg_raster.encode("utf-8"), write_to=str(png_path), scale=2)
+        cairosvg.svg2png(bytestring=svg_raster.encode("utf-8"), write_to=str(png_path), scale=3)
         print(f"wrote {png_path}")
     except Exception as e:  # noqa: BLE001
         print(f"(PNG skipped: {e})")
