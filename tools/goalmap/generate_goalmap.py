@@ -487,12 +487,13 @@ def build_svg(d: dict, font: str = FONT) -> str:
             up_arrow(y_next, y + h)  # 下の箱上端 → この箱下端
         y = y_next
 
-    # 遅れ告知バナー（赤）
+    # 遅れ告知バナー（赤）。タイトル(y34)と達成率バー(右)に重ならないよう、
+    # ヘッダー下段の中央（y44〜66）に配置する。
     if overdue_any:
-        bx2, bw2 = 268, 156
-        out.append(f'<rect x="{bx2}" y="10" width="{bw2}" height="22" rx="11" fill="{C_LATE}"/>')
+        bx2, bw2 = 196, 176
+        out.append(f'<rect x="{bx2}" y="44" width="{bw2}" height="22" rx="11" fill="{C_LATE}"/>')
         out.append(
-            f'<text x="{bx2+bw2/2}" y="25" text-anchor="middle" font-size="12" '
+            f'<text x="{bx2+bw2/2}" y="59" text-anchor="middle" font-size="12" '
             f'font-weight="700" fill="#FFFFFF">⚠ 期限に遅れあり</text>'
         )
 
