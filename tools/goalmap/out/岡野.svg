@@ -74,8 +74,8 @@
 <text x="142" y="536" font-size="14" font-weight="700" fill="#1F2933">②練習</text>
 <text x="142" y="554" font-size="11" fill="#67707A">完了：苦手ケースでも型どおり切</text>
 <text x="142" y="569" font-size="11" fill="#67707A">り返せる</text>
-<rect x="16" y="533.0" width="80" height="22" rx="11" fill="#FDF3E2" stroke="#EF9F27" stroke-width="1"/>
-<text x="56.0" y="548.0" text-anchor="middle" font-size="11" font-weight="700" fill="#EF9F27">6月第4週</text>
+<rect x="16" y="533.0" width="80" height="22" rx="11" fill="#FEE2E2" stroke="#DC2626" stroke-width="1"/>
+<text x="56.0" y="548.0" text-anchor="middle" font-size="11" font-weight="700" fill="#DC2626">⚠6月第4週</text>
 <rect x="360" y="519" width="14" height="14" rx="3" fill="#fff" stroke="#9AA3AD" stroke-width="1.5"/>
 <text x="382" y="530" font-size="12.5" fill="#1F2933">苦手ケースの切り返しをロープレ</text>
 <rect x="360" y="537" width="14" height="14" rx="3" fill="#fff" stroke="#9AA3AD" stroke-width="1.5"/>
@@ -96,4 +96,6 @@
 <rect x="360" y="623" width="14" height="14" rx="3" fill="#1D9E75" stroke="#1D9E75" stroke-width="1.5"/>
 <path d="M363,630 l3,3 l5,-6" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
 <text x="382" y="634" font-size="12.5" fill="#67707A" text-decoration="line-through">勝ち／負けパターンを言語化する</text>
+<rect x="268" y="10" width="156" height="22" rx="11" fill="#DC2626"/>
+<text x="346.0" y="25" text-anchor="middle" font-size="12" font-weight="700" fill="#FFFFFF">⚠ 期限に遅れあり</text>
 </svg>
