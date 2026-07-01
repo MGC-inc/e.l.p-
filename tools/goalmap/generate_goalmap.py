@@ -280,7 +280,11 @@ def build_svg(d: dict, font: str = FONT) -> str:
     # 各箱の高さを先に計算して総高さを決める（描画は上→下: goal,⑤,④,③,②,①）
     order = [4, 3, 2, 1, 0]  # phases index、上から
     heights = {i: phase_box_height(len(phases[i].get("tasks", []))) for i in order}
-    H = HEADER_H + GOAL_H + GAP + sum(heights[i] + GAP for i in order) + PAD_BOTTOM
+    # 中長期ゴール（北極星）＝ゴール箱のさらに上の「遠い頂」。未設定なら従来レイアウト
+    has_vision = bool(str(d.get("vision", "")).strip())
+    VIS_BAND, VIS_GAP = 46, 22
+    VIS_H = (VIS_BAND + VIS_GAP) if has_vision else 0
+    H = HEADER_H + VIS_H + GOAL_H + GAP + sum(heights[i] + GAP for i in order) + PAD_BOTTOM
 
     out: list[str] = []
     out.append(
@@ -324,6 +328,12 @@ def build_svg(d: dict, font: str = FONT) -> str:
     out.append(
         f'<text x="20" y="34" font-size="19" font-weight="700" fill="{C_INK}">{esc(head)}</text>'
     )
+    if has_vision:  # ヘッダーにも中長期を1行常時表示（今のゴールが霞んでも見える）
+        vt = "中長期：" + str(d.get("vision", ""))
+        vs = vt[:22] + "…" if len(vt) > 22 else vt
+        out.append(
+            f'<text x="20" y="52" font-size="11" fill="{C_SUB}">{esc(vs)}</text>'
+        )
     # 達成率（右上に数値＋バー）
     bar_x, bar_w = WIDTH - 210, 150
     out.append(
@@ -352,8 +362,40 @@ def build_svg(d: dict, font: str = FONT) -> str:
             f'<path d="M{cx-5},{y_top+8} L{cx},{y_top+2} L{cx+5},{y_top+8} Z" fill="{C_FUTURE}"/>'
         )
 
-    # ── ゴール箱（最上部・輝くグラデーション・金枠）──────────────
-    gy = HEADER_H
+    # ── 遠い頂＝中長期ゴール（北極星）。今期ゴールはその通過点 ──────
+    gy = HEADER_H + VIS_H
+    if has_vision:
+        vy = HEADER_H
+        out.append(
+            f'<rect x="{PHASE_X}" y="{vy}" width="{PHASE_W}" height="{VIS_BAND}" rx="10" '
+            f'fill="#F3F0FF" stroke="#B9AEEA" stroke-width="1.6" stroke-dasharray="5 4"/>'
+        )
+        out.append(star(PHASE_X + PHASE_W - 16, vy + 14, 6, "#C9BEF2"))
+        vlabel = "中長期ゴール（北極星）"
+        if d.get("visionDue"):
+            vlabel += f"・{d['visionDue']}"
+        out.append(
+            f'<text x="{PHASE_X+12}" y="{vy+17}" font-size="10.5" font-weight="700" '
+            f'fill="#6357CC">{esc(vlabel)}</text>'
+        )
+        for k, line in enumerate(wrap(d.get("vision", ""), 17)[:2]):
+            out.append(
+                f'<text x="{PHASE_X+12}" y="{vy+34+k*14}" font-size="12" font-weight="600" '
+                f'fill="#4B3FA0">{esc(line)}</text>'
+            )
+        # 今期ゴール→北極星の淡い上向き矢印（その先へ）
+        out.append(
+            f'<line x1="{cx}" y1="{gy}" x2="{cx}" y2="{vy+VIS_BAND+5}" '
+            f'stroke="#B9AEEA" stroke-width="2" stroke-dasharray="4 3"/>'
+        )
+        out.append(
+            f'<path d="M{cx-5},{vy+VIS_BAND+7} L{cx},{vy+VIS_BAND+1} '
+            f'L{cx+5},{vy+VIS_BAND+7} Z" fill="#B9AEEA"/>'
+        )
+        out.append(
+            f'<text x="{cx+9}" y="{vy+VIS_BAND+16}" font-size="9.5" fill="#8A7FD0">その先へ</text>'
+        )
+    # ── ゴール箱（輝くグラデーション・金枠）──────────────
     out.append(
         f'<rect x="{PHASE_X}" y="{gy}" width="{PHASE_W}" height="{GOAL_H}" rx="10" '
         f'fill="url(#goalGrad)" stroke="#FFD36E" stroke-width="2.5"/>'
@@ -378,7 +420,7 @@ def build_svg(d: dict, font: str = FONT) -> str:
 
     # ── 成長キャラ（達成感メーター：1タスク=餌、1フェーズ完食=進化）──
     g = growth(d)
-    ccx, ccy, cs, tx = 402, 112, 1.7, 448
+    ccx, ccy, cs, tx = 402, 112 + VIS_H, 1.7, 448
     out.append(bird_markup(g["form"], ccx, ccy, cs, g["phaseDone"],
                            g["cycle"] if g["cycle"] >= 2 else 0))
     if g["form"] < 5:
@@ -561,7 +603,9 @@ def build_summary_svg(d: dict, font: str = FONT) -> str:
     blocks = [{"idx": i, "p": p, "tasks": p.get("tasks", []),
                "h": 22 + max(1, len(p.get("tasks", []))) * task_h + 6}
               for i, p in enumerate(phases)]
-    gy, gw, gh = 48, 270, 64
+    has_v = bool(str(d.get("vision", "")).strip())
+    vis_h = 20 if has_v else 0
+    gy, gw, gh = 48 + vis_h, 270, 64
     py, strip_h = gy + gh + 12, 46
     head_h = py + strip_h + 10
     H = head_h + sum(b["h"] + 6 for b in blocks) + PAD
@@ -574,6 +618,11 @@ def build_summary_svg(d: dict, font: str = FONT) -> str:
     head = esc(d.get("name", "")) + (f"（{esc(d['note'])}）" if d.get("note") else "")
     o.append(f'<text x="{PAD}" y="22" font-size="16" font-weight="700" fill="{C_INK}">{head}</text>')
     o.append(f'<text x="{PAD}" y="40" font-size="11.5" fill="{C_SUB}">{esc(d.get("theme",""))}</text>')
+    if has_v:  # 中長期ゴール（北極星）を先頭に一行
+        vt = "中長期：" + str(d.get("vision", ""))
+        vs = vt[:34] + "…" if len(vt) > 34 else vt
+        o.append(f'<text x="{PAD}" y="{40+vis_h-2}" font-size="11" font-weight="700" '
+                 f'fill="#6357CC">{esc(vs)}</text>')
     o.append(f'<text x="{W-PAD}" y="22" text-anchor="end" font-size="17" font-weight="700" '
              f'fill="{C_DONE}">達成率 {g["rate"]}%</text>')
     o.append(f'<rect x="{W-150}" y="30" width="138" height="8" rx="4" fill="{C_FUTURE_BG}"/>')
