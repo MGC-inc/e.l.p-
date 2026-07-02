@@ -102,6 +102,13 @@
   .mtlog .logitem .lnext li{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--sub);margin:3px 0}
   .mtlog .logitem .lnext button{font-size:10px;color:var(--goal);border:1px solid var(--line);background:#fff;border-radius:6px;padding:1px 6px;cursor:pointer}
   .mtlog .empty{font-size:12px;color:var(--sub)}
+  /* 🔭 望遠鏡ズーム（宇宙→地球→日本→家）のセグメント操作 */
+  .zoomctl{display:inline-flex;align-items:center;gap:0;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+  .zoomctl .zlabel{padding:0 6px;font-size:13px;color:var(--sub)}
+  .zoomctl button{border:none;border-left:1px solid var(--line);border-radius:0;padding:6px 9px;font-size:12px;background:#fff}
+  .zoomctl button.on{background:var(--goal);color:#fff}
+  .zoomctl button:hover{background:#F2F4F6}
+  .zoomctl button.on:hover{background:var(--goal)}
   /* スマホ・タブレット縦：2カラムをやめて1カラムに積む。地図(canvas)を上に。 */
   @media (max-width:760px){
     header{gap:6px;padding:8px 10px}
@@ -134,7 +141,10 @@
   <button id="exportPng" class="primary">PNG出力</button>
   <button id="exportAvatar" title="今のアバターだけを画像で書き出す">アバターPNG</button>
   <button id="summary" title="スマホ1画面に全部まとめた表示（週次スクショ共有用）。もう一度押すと通常の地図に戻る">📱 1枚表示</button>
-  <button id="overview" title="タスクを畳んで、大枠▸中目標▸今期ゴールの全体像だけを俯瞰する。もう一度で通常表示">🔭 俯瞰</button>
+  <span id="zoomctl" class="zoomctl" title="宇宙→地球→日本→家 のように、引くほど上位目標・寄るほど現在地へズーム">
+    <span class="zlabel">🔭</span>
+    <button data-zoom="1" class="on">🏠現在地</button><button data-zoom="2">🗾今期</button><button data-zoom="3">🌏中目標</button><button data-zoom="4">🌌大枠</button>
+  </span>
   <button id="print">印刷/PDF</button>
   <button id="history" title="過去の達成地図(out/archive/のJSON)を上書きせず読み取り専用で開く">🔒 履歴を見る</button>
   <input type="file" id="historyFile" accept="application/json" style="display:none" />
@@ -530,63 +540,64 @@ function renderEditor(){
   e.innerHTML=html;
 }
 
-// 🔭 俯瞰（フェードアウト）ビュー：タスクを畳み、大枠▸中目標▸今期ゴールの全体像だけを見せる
-function buildOverviewSvg(d){
-  const W=680, BX=170, BW=340, cx=BX+BW/2;
-  const g=growth(d), cur=+d.currentStage||1;
-  const tiers=[];
-  if(d.vision&&String(d.vision).trim())
-    tiers.push({label:"大枠ゴール（長期・北極星）"+(d.visionDue?`・${d.visionDue}`:""),body:d.vision,fill:"#F3F0FF",stroke:"#8A7FD0",bodyFill:"#4B3FA0",labelFill:"#8A7FD0",dashed:true});
-  if(d.midGoal&&String(d.midGoal).trim())
-    tiers.push({label:"中目標（中期のマイルストーン）"+(d.midDue?`・${d.midDue}`:""),body:d.midGoal,fill:"#EEF6FF",stroke:"#5C90CE",bodyFill:"#2C5A93",labelFill:"#5C90CE",dashed:true});
-  tiers.push({label:"今期ゴール",body:d.goal||"",fill:"url(#goalGrad)",stroke:"#FFD36E",bodyFill:"#fff",labelFill:"#fff",dashed:false});
-  const boxes=tiers.map(t=>{const lines=wrap(t.body,24).slice(0,3);return Object.assign({},t,{lines,h:34+lines.length*17});});
-  const HEAD=64, ARROW=34, STRIP=96, PAD=24;
-  const H=HEAD+boxes.reduce((s,b)=>s+b.h,0)+ARROW*boxes.length+STRIP+PAD;
-  const o=[];
-  o.push(`<svg xmlns="http://www.w3.org/2000/svg" id="gm" viewBox="0 0 ${W} ${H}" font-family="${FONT}" width="${W}" height="${H}">`);
-  o.push(SVG_DEFS);
-  o.push(`<rect x="0" y="0" width="${W}" height="${H}" fill="#fff"/>`);
+// 🔭 望遠鏡ズーム：宇宙(大枠)→地球(中目標)→日本(今期)→家(現在地)。引くほど上位・寄るほど現在地。
+// level 2=今期(日本) / 3=中目標(地球) / 4=大枠(宇宙)。level1(家)は通常地図(buildSvg)。
+function buildZoomSvg(d,level){
+  const W=680, g=growth(d), cur=+d.currentStage||1, tt=topTask(d);
+  const TI={
+    4:{icon:"🌌",name:"大枠ゴール",place:"宇宙",body:d.vision,due:d.visionDue,fill:"#F3F0FF",stroke:"#8A7FD0",bf:"#4B3FA0",grad:false},
+    3:{icon:"🌏",name:"中目標",place:"地球",body:d.midGoal,due:d.midDue,fill:"#EEF6FF",stroke:"#5C90CE",bf:"#2C5A93",grad:false},
+    2:{icon:"🗾",name:"今期ゴール",place:"日本",body:d.goal,due:"",fill:"url(#goalGrad)",stroke:"#FFD36E",bf:"#fff",grad:true},
+  };
+  const focus=TI[level]||TI[2];
+  const cardX=110, cardW=460, midx=cardX+cardW/2;
+  const trunc=(t,n)=>{t=String(t||"");return t.length>n?t.slice(0,n-1)+"…":t;};
+  const body=[]; let y=30;
   const head=esc(d.name||"")+(d.note?`（${esc(d.note)}）`:"")+`｜${esc(d.theme||"")}`;
-  o.push(`<text x="24" y="32" font-size="18" font-weight="700" fill="${COL.ink}">${head}</text>`);
-  o.push(`<text x="24" y="52" font-size="12" fill="${COL.sub}">🔭 俯瞰ビュー：目標の全体像（タスクは畳んで表示）</text>`);
-  o.push(`<text x="${W-24}" y="28" text-anchor="end" font-size="14" font-weight="700" fill="${COL.done}">達成率 ${g.rate}%</text>`);
-  o.push(`<rect x="${W-160}" y="38" width="136" height="9" rx="4.5" fill="${COL.futureBg}"/>`);
-  o.push(`<rect x="${W-160}" y="38" width="${Math.round(136*g.rate/100)}" height="9" rx="4.5" fill="${COL.done}"/>`);
-  o.push(birdMarkup(g.form,W-52,HEAD+8,1.15,g.phaseDone,g.cycle>=2?g.cycle:0));
-  let y=HEAD;
-  boxes.forEach((b,i)=>{
-    if(i>0){const ay=y-ARROW;
-      o.push(`<line x1="${cx}" y1="${y-6}" x2="${cx}" y2="${ay+9}" stroke="${b.stroke}" stroke-width="2.5"${b.dashed?' stroke-dasharray="5 4"':''}/>`);
-      o.push(`<path d="M${cx-6},${ay+12} L${cx},${ay+3} L${cx+6},${ay+12} Z" fill="${b.stroke}"/>`);
-      o.push(`<text x="${cx+11}" y="${ay+14}" font-size="10" fill="${b.stroke}">その先へ</text>`);}
-    o.push(`<rect x="${BX}" y="${y}" width="${BW}" height="${b.h}" rx="12" fill="${b.fill}" stroke="${b.stroke}" stroke-width="2"${b.dashed?' stroke-dasharray="6 4"':''}/>`);
-    if(String(b.fill).indexOf("goalGrad")>=0){o.push(`<rect x="${BX}" y="${y}" width="${BW}" height="${b.h/2}" rx="12" fill="#fff" opacity="0.16"/>`);o.push(star(BX+BW-18,y+16,7,"#FFF1B8"));}
-    o.push(`<text x="${BX+16}" y="${y+20}" font-size="11" font-weight="700" fill="${b.labelFill}">${esc(b.label)}</text>`);
-    b.lines.forEach((l,k)=>o.push(`<text x="${BX+16}" y="${y+40+k*17}" font-size="14" font-weight="600" fill="${b.bodyFill}">${esc(l)}</text>`));
-    y+=b.h+ARROW;
+  body.push(`<text x="24" y="${y}" font-size="16" font-weight="700" fill="${COL.ink}">${head}</text>`);
+  body.push(`<text x="${W-24}" y="${y-3}" text-anchor="end" font-size="13" font-weight="700" fill="${COL.done}">達成率 ${g.rate}%</text>`);
+  y+=24;
+  body.push(`<text x="24" y="${y}" font-size="12" font-weight="700" fill="${focus.grad?'#B7791F':focus.stroke}">${focus.icon} ${esc(focus.name)}（${focus.place}）から俯瞰中</text>`);
+  body.push(`<text x="${W-24}" y="${y}" text-anchor="end" font-size="10.5" fill="${COL.sub}">🔭 引く＝上位／寄る＝現在地</text>`);
+  y+=20;
+  const ups=[]; for(let l=level+1;l<=4;l++){ if(TI[l]&&String(TI[l].body||"").trim()) ups.push(`${TI[l].icon}${TI[l].name}`); }
+  if(ups.length){ body.push(`<text x="24" y="${y}" font-size="11" fill="${COL.sub}">▲ この先の上位：${esc(ups.join(" › "))}</text>`); y+=18; }
+  y+=4;
+  // フォーカス大カード（今いる高度の目標を大きく）
+  const bigLines=wrap(String(focus.body||"").trim()||"（未設定 — エディタで入力できます）",20).slice(0,3);
+  const bh=Math.max(72,40+bigLines.length*22);
+  body.push(`<rect x="${cardX}" y="${y}" width="${cardW}" height="${bh}" rx="14" fill="${focus.fill}" stroke="${focus.stroke}" stroke-width="3"${focus.grad?'':' stroke-dasharray="7 4"'}/>`);
+  if(focus.grad){body.push(`<rect x="${cardX}" y="${y}" width="${cardW}" height="${bh/2}" rx="14" fill="#fff" opacity="0.16"/>`);body.push(star(cardX+cardW-20,y+18,7,"#FFF1B8"));}
+  body.push(`<text x="${cardX+20}" y="${y+25}" font-size="12" font-weight="700" fill="${focus.grad?'#fff':focus.stroke}">${focus.icon} ${esc(focus.name)}${focus.due?`（${esc(focus.due)}）`:""}</text>`);
+  bigLines.forEach((l,k)=>body.push(`<text x="${cardX+20}" y="${y+52+k*22}" font-size="17" font-weight="700" fill="${focus.bf}">${esc(l)}</text>`));
+  y+=bh;
+  // 下へドリルダウン（この下に何があるか＝家＝現在地まで funnel）
+  const downArrow=(label)=>{ body.push(`<line x1="${midx}" y1="${y+3}" x2="${midx}" y2="${y+15}" stroke="${COL.future}" stroke-width="2"/>`); body.push(`<path d="M${midx-5},${y+13} L${midx},${y+19} L${midx+5},${y+13} Z" fill="${COL.future}"/>`); if(label)body.push(`<text x="${midx+10}" y="${y+16}" font-size="9.5" fill="${COL.sub}">${label}</text>`); y+=22; };
+  const downs=[]; for(let l=level-1;l>=2;l--){ if(String(TI[l].body||"").trim()) downs.push(TI[l]); }
+  downs.forEach((t,i)=>{
+    downArrow(i===0?"この下に":"");
+    const ls=wrap(String(t.body||""),26).slice(0,2);
+    const hh=Math.max(44,26+ls.length*16), w=cardW-80, x=cardX+40;
+    body.push(`<rect x="${x}" y="${y}" width="${w}" height="${hh}" rx="10" fill="${t.fill}" stroke="${t.stroke}" stroke-width="1.5" opacity="0.94"${t.grad?'':' stroke-dasharray="5 4"'}/>`);
+    if(t.grad)body.push(`<rect x="${x}" y="${y}" width="${w}" height="${hh/2}" rx="10" fill="#fff" opacity="0.16"/>`);
+    body.push(`<text x="${x+16}" y="${y+18}" font-size="10.5" font-weight="700" fill="${t.grad?'#fff':t.stroke}">${t.icon} ${esc(t.name)}</text>`);
+    ls.forEach((l,k)=>body.push(`<text x="${x+16}" y="${y+34+k*16}" font-size="12.5" font-weight="600" fill="${t.bf}">${esc(l)}</text>`));
+    y+=hh;
   });
-  // 今のタスク群→今期ゴールの矢印＋フェーズ帯（タスクは畳む＝淡色でフェードアウト）
-  const ay=y-ARROW;
-  o.push(`<line x1="${cx}" y1="${y+2}" x2="${cx}" y2="${ay+9}" stroke="${COL.future}" stroke-width="2.5"/>`);
-  o.push(`<path d="M${cx-6},${ay+12} L${cx},${ay+3} L${cx+6},${ay+12} Z" fill="${COL.future}"/>`);
-  o.push(`<text x="${BX}" y="${y+8}" font-size="12" font-weight="700" fill="${COL.now}">今ここ：${esc(STAGE_NAMES[cur-1])}（この下のタスクは畳み中）</text>`);
-  const cw=(BW)/5, chipY=y+18;
-  (d.phases||[]).forEach((p,idx)=>{
-    const tasks=p.tasks||[], done=tasks.filter(t=>t.done).length, sn=idx+1;
-    let fg,bg; if(sn<cur){fg=COL.done;bg=COL.doneBg;} else if(sn===cur){fg=COL.now;bg=COL.nowBg;} else {fg=COL.future;bg=COL.futureBg;}
-    const x=BX+idx*cw;
-    o.push(`<g opacity="${sn===cur?1:0.5}">`);
-    o.push(`<rect x="${x}" y="${chipY}" width="${cw-8}" height="42" rx="9" fill="${bg}" stroke="${fg}" stroke-width="${sn===cur?2:1}"/>`);
-    o.push(`<text x="${x+(cw-8)/2}" y="${chipY+20}" text-anchor="middle" font-size="16" font-weight="700" fill="${fg}">${esc(STAGE_NAMES[idx].charAt(0))}</text>`);
-    o.push(`<text x="${x+(cw-8)/2}" y="${chipY+35}" text-anchor="middle" font-size="10" fill="${fg}">✓${done}/${tasks.length}</text>`);
-    o.push(`</g>`);
-  });
-  o.push("</svg>");
-  return o.join("\n");
+  // 家（現在地）＝今のフェーズ＋最優先タスク
+  downArrow(downs.length?"":"この下に");
+  const hw=cardW-140, hx=cardX+70, hh=54;
+  body.push(`<rect x="${hx}" y="${y}" width="${hw}" height="${hh}" rx="10" fill="${COL.nowBg}" stroke="${COL.now}" stroke-width="1.5"/>`);
+  body.push(`<text x="${hx+16}" y="${y+19}" font-size="10.5" font-weight="700" fill="${COL.now}">🏠 現在地（家）｜${esc(STAGE_NAMES[cur-1])}・達成率 ${g.rate}%</text>`);
+  body.push(`<text x="${hx+16}" y="${y+40}" font-size="12.5" font-weight="700" fill="${COL.ink}">${esc(trunc(tt.task,26))}</text>`);
+  y+=hh;
+  const H=y+24;
+  return `<svg xmlns="http://www.w3.org/2000/svg" id="gm" viewBox="0 0 ${W} ${H}" font-family="${FONT}" width="${W}" height="${H}">`+
+    SVG_DEFS+`<rect x="0" y="0" width="${W}" height="${H}" fill="#fff"/>`+body.join("")+`</svg>`;
 }
-let summaryMode=false, overviewMode=false;
-function renderCanvas(){const c=document.getElementById("canvas");c.innerHTML=overviewMode?buildOverviewSvg(data):(summaryMode?buildSummarySvg(data):buildSvg(data));}
+let summaryMode=false, zoomLevel=1;
+function syncZoomButtons(){const el=document.getElementById("zoomctl");if(!el)return;[...el.querySelectorAll("[data-zoom]")].forEach(b=>b.classList.toggle("on",+b.dataset.zoom===zoomLevel));}
+function renderCanvas(){const c=document.getElementById("canvas");c.innerHTML=(zoomLevel>1)?buildZoomSvg(data,zoomLevel):(summaryMode?buildSummarySvg(data):buildSvg(data));syncZoomButtons();}
 
 // 今週の最優先タスク：現在ステージ以降で最初の未完タスク
 function topTask(d){
@@ -925,18 +936,17 @@ document.getElementById("exportJson").addEventListener("click",()=>{
 document.getElementById("print").addEventListener("click",()=>window.print());
 document.getElementById("summary").addEventListener("click",()=>{
   summaryMode=!summaryMode;
-  if(summaryMode)overviewMode=false;
+  if(summaryMode)zoomLevel=1;   // 1枚表示に入る時はズームを現在地に戻す
   document.getElementById("summary").classList.toggle("primary",summaryMode);
-  document.getElementById("overview").classList.toggle("primary",false);
   document.body.classList.toggle("summary",summaryMode);   // ロスターを隠してスッキリ
   renderCanvas();
   if(summaryMode)document.getElementById("canvas").scrollIntoView({behavior:"smooth",block:"start"});
 });
-document.getElementById("overview").addEventListener("click",()=>{
-  overviewMode=!overviewMode;
-  if(overviewMode){summaryMode=false;document.body.classList.remove("summary");}
-  document.getElementById("overview").classList.toggle("primary",overviewMode);
-  document.getElementById("summary").classList.toggle("primary",false);
+// 🔭 望遠鏡ズーム（宇宙→地球→日本→家）：セグメントで高度を選ぶ
+document.getElementById("zoomctl").addEventListener("click",ev=>{
+  const b=ev.target.closest("[data-zoom]"); if(!b)return;
+  zoomLevel=+b.dataset.zoom;
+  if(zoomLevel>1&&summaryMode){summaryMode=false;document.body.classList.remove("summary");document.getElementById("summary").classList.remove("primary");}
   renderCanvas();
   document.getElementById("canvas").scrollIntoView({behavior:"smooth",block:"start"});
 });
