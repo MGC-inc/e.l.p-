@@ -356,31 +356,41 @@ function buildAvatarCard(d){
 
 function buildSvg(d){
   const W=680, PHASE_X=130, PHASE_W=210, PILL_X=16, PILL_W=80, TASK_X=360,
-        HEADER_H=70, GAP=26, GOAL_H=70, PAD=28, LH=18;
+        HEADER_H=70, GAP=26, PAD=28, TASK_TX=382, TASK_N=22, DD_N=15;
+  // 文字が枠を超えないよう、指定文字数で折り返し・最大行数を超えたら末尾を「…」に
+  const wrapMax=(t,n,max)=>{const a=wrap(t,n);if(a.length<=max)return a;const b=a.slice(0,max);b[max-1]=b[max-1].slice(0,n-1)+"…";return b;};
   const phases=d.phases, cur=+d.currentStage||1;
   const all=phases.flatMap(p=>p.tasks||[]); const done=all.filter(t=>t.done).length;
   const total=all.length, rate=total?Math.round(done/total*100):0;
   const order=[4,3,2,1,0];
-  const hts={}; order.forEach(i=>hts[i]=phaseH((phases[i].tasks||[]).length));
-  // 上位目標＝ゴール箱のさらに上に積む段（大枠＝vision／中目標＝midGoal）。未設定の段は描かない
+  // フェーズ箱の高さ＝左（完了定義）と右（折り返したタスク）の高い方に合わせる
+  const phaseHeight=p=>{
+    const tks=p.tasks||[];
+    const rightH=12+tks.reduce((s,t)=>s+wrapMax(t.name,TASK_N,2).length*15+6,0);
+    const leftH=44+wrapMax("完了："+(p.doneDef||""),DD_N,2).length*15;
+    return Math.max(58,rightH,leftH);
+  };
+  const hts={}; order.forEach(i=>hts[i]=phaseHeight(phases[i]));
+  // 上位目標（大枠＝vision／中目標＝midGoal）。本文に合わせて高さ可変・未設定は描かない
   const hasVision=!!(d.vision&&String(d.vision).trim());
   const hasMid=!!(d.midGoal&&String(d.midGoal).trim());
-  const VIS_BAND=46, VIS_GAP=22, VIS_H=hasVision?(VIS_BAND+VIS_GAP):0;
-  const MID_BAND=44, MID_GAP=20, MID_H=hasMid?(MID_BAND+MID_GAP):0;
+  const visLines=hasVision?wrapMax(d.vision,18,3):[];
+  const midLines=hasMid?wrapMax(d.midGoal,18,3):[];
+  const VIS_BAND=hasVision?(24+visLines.length*15):0, VIS_GAP=22, VIS_H=hasVision?(VIS_BAND+VIS_GAP):0;
+  const MID_BAND=hasMid?(24+midLines.length*15):0, MID_GAP=20, MID_H=hasMid?(MID_BAND+MID_GAP):0;
   const TOP_H=VIS_H+MID_H;
+  const goalLines=wrapMax(d.goal,15,3);
+  const GOAL_H=Math.max(66,30+goalLines.length*17);
   const H=HEADER_H+TOP_H+GOAL_H+GAP+order.reduce((s,i)=>s+hts[i]+GAP,0)+PAD;
   const cx=PHASE_X+PHASE_W/2;
   const o=[];
   o.push(`<svg xmlns="http://www.w3.org/2000/svg" id="gm" viewBox="0 0 ${W} ${H}" font-family="${FONT}" width="${W}" height="${H}">`);
   o.push(SVG_DEFS);
   o.push(`<rect x="0" y="0" width="${W}" height="${H}" fill="#fff"/>`);
-  let head=esc(d.name||"")+(d.note?`（${esc(d.note)}）`:"")+`｜${esc(d.theme||"")}`;
-  o.push(`<text x="20" y="34" font-size="19" font-weight="700" fill="${COL.ink}">${head}</text>`);
-  if(hasVision||hasMid){ // ヘッダーにも上位目標を1行常時表示（今のゴールが霞んでも見える）
-    const vt=(hasVision?"大枠："+String(d.vision):"中目標："+String(d.midGoal));
-    const vs=vt.length>22?vt.slice(0,22)+"…":vt;
-    o.push(`<text x="20" y="52" font-size="11" fill="${COL.sub}">${esc(vs)}</text>`);
-  }
+  // タイトルは達成率バーに被らないよう、長い時は自動で少し小さくする
+  const headRaw=(d.name||"")+(d.note?`（${d.note}）`:"")+`｜${d.theme||""}`;
+  const headFont=headRaw.length>23?Math.max(13,Math.floor(19*23/headRaw.length)):19;
+  o.push(`<text x="20" y="34" font-size="${headFont}" font-weight="700" fill="${COL.ink}">${esc(headRaw)}</text>`);
   const bx=W-210, bw=150;
   o.push(`<text x="${W-20}" y="26" text-anchor="end" font-size="13" fill="${COL.sub}">達成率</text>`);
   o.push(`<text x="${bx-8}" y="50" text-anchor="end" font-size="20" font-weight="700" fill="${COL.done}">${rate}%</text>`);
@@ -392,33 +402,31 @@ function buildSvg(d){
     o.push(`<path d="M${cx-5},${yt+8} L${cx},${yt+2} L${cx+5},${yt+8} Z" fill="${COL.future}"/>`);};
   // 上位目標の段（大枠＝紫破線・中目標＝青破線）を上から積み、淡い上向き矢印で連結
   const gy=HEADER_H+TOP_H;
-  const tierBand=(y,h,fill,stroke,starFill,label,body,bodyFill)=>{
+  const tierBand=(y,h,fill,stroke,label,due,lines,bodyFill)=>{
     o.push(`<rect x="${PHASE_X}" y="${y}" width="${PHASE_W}" height="${h}" rx="10" fill="${fill}" stroke="${stroke}" stroke-width="1.6" stroke-dasharray="5 4"/>`);
-    o.push(star(PHASE_X+PHASE_W-16, y+14, 6, starFill));
-    o.push(`<text x="${PHASE_X+12}" y="${y+17}" font-size="10.5" font-weight="700" fill="${stroke}">${esc(label)}</text>`);
-    wrap(body,17).slice(0,2).forEach((l,k)=>o.push(`<text x="${PHASE_X+12}" y="${y+34+k*14}" font-size="12" font-weight="600" fill="${bodyFill}">${esc(l)}</text>`));
+    o.push(`<text x="${PHASE_X+12}" y="${y+16}" font-size="10.5" font-weight="700" fill="${stroke}">${esc(label)}</text>`);
+    if(due)o.push(`<text x="${PHASE_X+PHASE_W-10}" y="${y+16}" text-anchor="end" font-size="9.5" fill="${stroke}">${esc(due)}</text>`);
+    lines.forEach((l,k)=>o.push(`<text x="${PHASE_X+12}" y="${y+32+k*15}" font-size="12" font-weight="600" fill="${bodyFill}">${esc(l)}</text>`));
   };
   const upArrow=(yUpperBottom,yLowerTop,color,label)=>{ // 下段上端→上段下端への上向き矢印
     o.push(`<line x1="${cx}" y1="${yLowerTop}" x2="${cx}" y2="${yUpperBottom+5}" stroke="${color}" stroke-width="2" stroke-dasharray="4 3"/>`);
     o.push(`<path d="M${cx-5},${yUpperBottom+7} L${cx},${yUpperBottom+1} L${cx+5},${yUpperBottom+7} Z" fill="${color}"/>`);
     if(label)o.push(`<text x="${cx+9}" y="${yUpperBottom+16}" font-size="9.5" fill="${color}">${label}</text>`);
   };
-  if(hasVision) tierBand(HEADER_H, VIS_BAND, "#F3F0FF", "#8A7FD0", "#C9BEF2",
-    "大枠ゴール（長期・北極星）"+(d.visionDue?`・${d.visionDue}`:""), d.vision, "#4B3FA0");
-  if(hasMid) tierBand(HEADER_H+VIS_H, MID_BAND, "#EEF6FF", "#5C90CE", "#B9D6F2",
-    "中目標（中期のマイルストーン）"+(d.midDue?`・${d.midDue}`:""), d.midGoal, "#2C5A93");
+  if(hasVision) tierBand(HEADER_H, VIS_BAND, "#F3F0FF", "#8A7FD0", "大枠ゴール（長期）", d.visionDue, visLines, "#4B3FA0");
+  if(hasMid) tierBand(HEADER_H+VIS_H, MID_BAND, "#EEF6FF", "#5C90CE", "中目標（中期）", d.midDue, midLines, "#2C5A93");
   if(hasMid) upArrow(HEADER_H+VIS_H+MID_BAND, gy, "#5C90CE", "その先へ");        // 今期→中目標
   if(hasVision&&hasMid) upArrow(HEADER_H+VIS_BAND, HEADER_H+VIS_H, "#8A7FD0", ""); // 中目標→大枠
   if(hasVision&&!hasMid) upArrow(HEADER_H+VIS_BAND, gy, "#8A7FD0", "その先へ");    // 今期→大枠（中目標なし）
   o.push(`<rect x="${PHASE_X}" y="${gy}" width="${PHASE_W}" height="${GOAL_H}" rx="10" fill="url(#goalGrad)" stroke="#FFD36E" stroke-width="2.5"/>`);
   o.push(`<rect x="${PHASE_X}" y="${gy}" width="${PHASE_W}" height="${GOAL_H/2}" rx="10" fill="#ffffff" opacity="0.16"/>`);
-  o.push(`<text x="${PHASE_X+14}" y="${gy+22}" font-size="12" font-weight="700" fill="#fff">ゴール</text>`);
+  o.push(`<text x="${PHASE_X+14}" y="${gy+20}" font-size="12" font-weight="700" fill="#fff">ゴール</text>`);
   o.push(star(PHASE_X+PHASE_W-16, gy+15, 6, "#FFF1B8"));
-  wrap(d.goal,13).slice(0,2).forEach((l,k)=>o.push(`<text x="${PHASE_X+14}" y="${gy+42+k*16}" font-size="13" font-weight="600" fill="#fff">${esc(l)}</text>`));
+  goalLines.forEach((l,k)=>o.push(`<text x="${PHASE_X+14}" y="${gy+38+k*16}" font-size="13" font-weight="600" fill="#fff">${esc(l)}</text>`));
   pill(gy+GOAL_H/2,"達成","#B7791F","#FFF3D6");
   // ── 成長キャラ（達成感メーター：1タスク=餌、1フェーズ完食=進化）──
   const g=growth(d);
-  const ccx=402, ccy=112+TOP_H, cs=1.7, tx=ccx+46;
+  const ccx=402, ccy=gy+Math.round(GOAL_H/2)+6, cs=1.7, tx=ccx+46;
   o.push(birdMarkup(g.form,ccx,ccy,cs,g.phaseDone,g.cycle>=2?g.cycle:0));
   if(g.form<5){
     o.push(`<text x="${tx}" y="${ccy-3}" font-size="13" font-weight="700" fill="${COL.ink}">あと${g.need}コで進化</text>`);
@@ -451,12 +459,14 @@ function buildSvg(d){
     o.push(`<circle cx="${PHASE_X-12}" cy="${mcy}" r="9" fill="${fg}"/>`);
     if(st==="done")o.push(`<path d="M${PHASE_X-16},${mcy} l3,3 l6,-7" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`);
     o.push(`<text x="${PHASE_X+12}" y="${y+22}" font-size="14" font-weight="700" fill="${COL.ink}">${esc(STAGE_NAMES[idx])}</text>`);
-    wrap("完了："+(p.doneDef||""),15).slice(0,2).forEach((l,k)=>o.push(`<text x="${PHASE_X+12}" y="${y+40+k*15}" font-size="11" fill="${COL.sub}">${esc(l)}</text>`));
+    wrapMax("完了："+(p.doneDef||""),DD_N,2).forEach((l,k)=>o.push(`<text x="${PHASE_X+12}" y="${y+40+k*15}" font-size="11" fill="${COL.sub}">${esc(l)}</text>`));
     pill(y+h/2,pl,pf,pb);
-    tasks.forEach((t,j)=>{const ty=y+16+j*LH, dn=!!t.done, bc=dn?COL.done:COL.future;
+    let ty=y+18;
+    tasks.forEach(t=>{const lines=wrapMax(t.name,TASK_N,2), dn=!!t.done, bc=dn?COL.done:COL.future;
       o.push(`<rect x="${TASK_X}" y="${ty-11}" width="14" height="14" rx="3" fill="${dn?COL.done:"#fff"}" stroke="${bc}" stroke-width="1.5"/>`);
       if(dn)o.push(`<path d="M${TASK_X+3},${ty-4} l3,3 l5,-6" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`);
-      o.push(`<text x="${TASK_X+22}" y="${ty}" font-size="12.5" fill="${dn?COL.sub:COL.ink}"${dn?' text-decoration="line-through"':''}>${esc(t.name)}</text>`);});
+      lines.forEach((l,k)=>o.push(`<text x="${TASK_TX}" y="${ty+k*15}" font-size="12.5" fill="${dn?COL.sub:COL.ink}"${dn?' text-decoration="line-through"':''}>${esc(l)}</text>`));
+      ty+=lines.length*15+6;});
     const yn=y+h+GAP; if(idx!==0)arrow(yn,y+h); y=yn;
   });
   if(overdueAny){
@@ -630,7 +640,7 @@ function buildSummarySvg(d){
   // 今週の最優先ストリップ
   o.push(`<rect x="${PAD}" y="${py}" width="${W-2*PAD}" height="${stripH}" rx="10" fill="${COL.nowBg}" stroke="${COL.now}"/>`);
   o.push(`<text x="${PAD+12}" y="${py+17}" font-size="12" font-weight="700" fill="${COL.now}">🎯 今週の最優先（今ここ：${esc(STAGE_NAMES[tt.stage])}）</text>`);
-  o.push(`<text x="${PAD+12}" y="${py+37}" font-size="15" font-weight="700" fill="${COL.ink}">${esc(wrap(tt.task,30)[0])}</text>`);
+  o.push(`<text x="${PAD+12}" y="${py+37}" font-size="15" font-weight="700" fill="${COL.ink}">${esc(String(tt.task).length>30?String(tt.task).slice(0,29)+"…":tt.task)}</text>`);
   // ステージ（①→⑤・全タスク）
   let y=headH;
   blocks.forEach(b=>{
@@ -652,7 +662,7 @@ function buildSummarySvg(d){
       const dn=!!t.done;
       o.push(`<rect x="${PAD+18}" y="${ty-10}" width="13" height="13" rx="3" fill="${dn?COL.done:"#fff"}" stroke="${dn?COL.done:COL.future}" stroke-width="1.4"/>`);
       if(dn)o.push(`<path d="M${PAD+21},${ty-3.5} l2.4,2.4 l4.6,-6" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>`);
-      o.push(`<text x="${PAD+36}" y="${ty}" font-size="12" fill="${dn?COL.sub:COL.ink}"${dn?' text-decoration="line-through"':""}>${esc(wrap(t.name,30)[0])}</text>`);
+      o.push(`<text x="${PAD+36}" y="${ty}" font-size="12" fill="${dn?COL.sub:COL.ink}"${dn?' text-decoration="line-through"':""}>${esc(String(t.name).length>30?String(t.name).slice(0,29)+"…":t.name)}</text>`);
       ty+=taskH;
     });
     y+=b.h+6;

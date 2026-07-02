@@ -1,108 +1,110 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 680 810" font-family="Hiragino Sans, 'Noto Sans CJK JP', 'Yu Gothic', sans-serif" width="680" height="810">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 680 908" font-family="Hiragino Sans, 'Noto Sans CJK JP', 'Yu Gothic', sans-serif" width="680" height="908">
 <defs><linearGradient id="goalGrad" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#5B4BE0"/><stop offset="0.5" stop-color="#B14BE0"/><stop offset="1" stop-color="#FFC24B"/></linearGradient><linearGradient id="phx" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFE259"/><stop offset="0.5" stop-color="#FF9A00"/><stop offset="1" stop-color="#FF3D00"/></linearGradient><linearGradient id="phx2" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFF0A0"/><stop offset="1" stop-color="#FF7A00"/></linearGradient><linearGradient id="hen" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#37C9B0"/><stop offset="0.6" stop-color="#3DA0E8"/><stop offset="1" stop-color="#7A5BE0"/></linearGradient><linearGradient id="pcock" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2BD0C0"/><stop offset="0.55" stop-color="#2E8FD0"/><stop offset="1" stop-color="#2E4BB0"/></linearGradient><linearGradient id="gold" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFF0A8"/><stop offset="0.5" stop-color="#F2C230"/><stop offset="1" stop-color="#C8901A"/></linearGradient></defs>
-<rect x="0" y="0" width="680" height="810" fill="#FFFFFF"/>
-<text x="20" y="34" font-size="19" font-weight="700" fill="#1F2933">門田（ピタサチ・役員兼営業）｜契約を安定させる（クローザー）</text>
-<text x="20" y="52" font-size="11" fill="#67707A">大枠：自分の型を確立し、ピタサチ代理店に勝ち…</text>
+<rect x="0" y="0" width="680" height="908" fill="#FFFFFF"/>
+<text x="20" y="34" font-size="14" font-weight="700" fill="#1F2933">門田（ピタサチ・役員兼営業）｜契約を安定させる（クローザー）</text>
 <text x="660" y="26" text-anchor="end" font-size="13" fill="#67707A">達成率</text>
 <text x="462" y="50" text-anchor="end" font-size="20" font-weight="700" fill="#1D9E75">0%</text>
 <rect x="470" y="38" width="150" height="12" rx="6" fill="#F2F4F6"/>
 <rect x="470" y="38" width="0" height="12" rx="6" fill="#1D9E75"/>
-<rect x="130" y="70" width="210" height="46" rx="10" fill="#F3F0FF" stroke="#8A7FD0" stroke-width="1.6" stroke-dasharray="5 4"/>
-<polygon points="324.0,78.0 325.4,82.6 330.0,84.0 325.4,85.4 324.0,90.0 322.6,85.4 318.0,84.0 322.6,82.6" fill="#C9BEF2"/>
-<text x="142" y="87" font-size="10.5" font-weight="700" fill="#8A7FD0">大枠ゴール（長期・北極星）・1年後（2027年）</text>
-<text x="142" y="104" font-size="12" font-weight="600" fill="#4B3FA0">自分の型を確立し、ピタサチ代理店に</text>
-<text x="142" y="118" font-size="12" font-weight="600" fill="#4B3FA0">勝ち型を展開して育てられる</text>
-<rect x="130" y="138" width="210" height="44" rx="10" fill="#EEF6FF" stroke="#5C90CE" stroke-width="1.6" stroke-dasharray="5 4"/>
-<polygon points="324.0,146.0 325.4,150.6 330.0,152.0 325.4,153.4 324.0,158.0 322.6,153.4 318.0,152.0 322.6,150.6" fill="#B9D6F2"/>
-<text x="142" y="155" font-size="10.5" font-weight="700" fill="#5C90CE">中目標（中期のマイルストーン）・2〜3ヶ月後</text>
-<text x="142" y="172" font-size="12" font-weight="600" fill="#2C5A93">自分の型を安定させ、ピタサチの成約</text>
-<text x="142" y="186" font-size="12" font-weight="600" fill="#2C5A93">率を把握・底上げ着手できる</text>
-<line x1="235.0" y1="202" x2="235.0" y2="187" stroke="#5C90CE" stroke-width="2" stroke-dasharray="4 3"/>
-<path d="M230.0,189 L235.0,183 L240.0,189 Z" fill="#5C90CE"/>
-<text x="244.0" y="198" font-size="9.5" fill="#5C90CE">その先へ</text>
-<line x1="235.0" y1="138" x2="235.0" y2="121" stroke="#8A7FD0" stroke-width="2" stroke-dasharray="4 3"/>
-<path d="M230.0,123 L235.0,117 L240.0,123 Z" fill="#8A7FD0"/>
-<rect x="130" y="202" width="210" height="70" rx="10" fill="url(#goalGrad)" stroke="#FFD36E" stroke-width="2.5"/>
-<rect x="130" y="202" width="210" height="35.0" rx="10" fill="#FFFFFF" opacity="0.16"/>
-<text x="144" y="224" font-size="12" font-weight="700" fill="#FFFFFF">ゴール</text>
-<polygon points="324.0,211.0 325.4,215.6 330.0,217.0 325.4,218.4 324.0,223.0 322.6,218.4 318.0,217.0 322.6,215.6" fill="#FFF1B8"/>
-<text x="144" y="244" font-size="13" font-weight="600" fill="#FFFFFF">客層を問わず自分の型で契約</text>
-<text x="144" y="260" font-size="13" font-weight="600" fill="#FFFFFF">まで運び、成約が安定する</text>
-<rect x="16" y="226.0" width="80" height="22" rx="11" fill="#FFF3D6" stroke="#B7791F" stroke-width="1"/>
-<text x="56.0" y="241.0" text-anchor="middle" font-size="11" font-weight="700" fill="#B7791F">達成</text>
-<ellipse cx="402.0" cy="244.0" rx="25.5" ry="32.3" fill="#FFF3D6"/><ellipse cx="402.0" cy="244.0" rx="25.5" ry="32.3" fill="none" stroke="#E2D2A0" stroke-width="2.4"/><circle cx="393.5" cy="238.9" r="2.5" fill="#E6D3A0"/><circle cx="410.5" cy="252.5" r="2.2" fill="#E6D3A0"/><circle cx="403.7" cy="262.7" r="2.0" fill="#E6D3A0"/>
-<text x="448" y="241" font-size="13" font-weight="700" fill="#1F2933">あと2コで進化</text>
-<text x="448" y="259" font-size="11" fill="#67707A">餌 0/2　累計 0/13</text>
+<rect x="130" y="70" width="210" height="54" rx="10" fill="#F3F0FF" stroke="#8A7FD0" stroke-width="1.6" stroke-dasharray="5 4"/>
+<text x="142" y="86" font-size="10.5" font-weight="700" fill="#8A7FD0">大枠ゴール（長期）</text>
+<text x="330" y="86" text-anchor="end" font-size="9.5" fill="#8A7FD0">1年後（2027年）</text>
+<text x="142" y="102" font-size="12" font-weight="600" fill="#4B3FA0">自分の型を確立し、ピタサチ代理店に勝</text>
+<text x="142" y="117" font-size="12" font-weight="600" fill="#4B3FA0">ち型を展開して育てられる</text>
+<rect x="130" y="146" width="210" height="54" rx="10" fill="#EEF6FF" stroke="#5C90CE" stroke-width="1.6" stroke-dasharray="5 4"/>
+<text x="142" y="162" font-size="10.5" font-weight="700" fill="#5C90CE">中目標（中期）</text>
+<text x="330" y="162" text-anchor="end" font-size="9.5" fill="#5C90CE">2〜3ヶ月後</text>
+<text x="142" y="178" font-size="12" font-weight="600" fill="#2C5A93">自分の型を安定させ、ピタサチの成約率</text>
+<text x="142" y="193" font-size="12" font-weight="600" fill="#2C5A93">を把握・底上げ着手できる</text>
+<line x1="235.0" y1="220" x2="235.0" y2="205" stroke="#5C90CE" stroke-width="2" stroke-dasharray="4 3"/>
+<path d="M230.0,207 L235.0,201 L240.0,207 Z" fill="#5C90CE"/>
+<text x="244.0" y="216" font-size="9.5" fill="#5C90CE">その先へ</text>
+<line x1="235.0" y1="146" x2="235.0" y2="129" stroke="#8A7FD0" stroke-width="2" stroke-dasharray="4 3"/>
+<path d="M230.0,131 L235.0,125 L240.0,131 Z" fill="#8A7FD0"/>
+<rect x="130" y="220" width="210" height="66" rx="10" fill="url(#goalGrad)" stroke="#FFD36E" stroke-width="2.5"/>
+<rect x="130" y="220" width="210" height="33.0" rx="10" fill="#FFFFFF" opacity="0.16"/>
+<text x="144" y="240" font-size="12" font-weight="700" fill="#FFFFFF">ゴール</text>
+<polygon points="324.0,229.0 325.4,233.6 330.0,235.0 325.4,236.4 324.0,241.0 322.6,236.4 318.0,235.0 322.6,233.6" fill="#FFF1B8"/>
+<text x="144" y="258" font-size="13" font-weight="600" fill="#FFFFFF">客層を問わず自分の型で契約まで</text>
+<text x="144" y="274" font-size="13" font-weight="600" fill="#FFFFFF">運び、成約が安定する</text>
+<rect x="16" y="242.0" width="80" height="22" rx="11" fill="#FFF3D6" stroke="#B7791F" stroke-width="1"/>
+<text x="56.0" y="257.0" text-anchor="middle" font-size="11" font-weight="700" fill="#B7791F">達成</text>
+<ellipse cx="402.0" cy="259.0" rx="25.5" ry="32.3" fill="#FFF3D6"/><ellipse cx="402.0" cy="259.0" rx="25.5" ry="32.3" fill="none" stroke="#E2D2A0" stroke-width="2.4"/><circle cx="393.5" cy="253.9" r="2.5" fill="#E6D3A0"/><circle cx="410.5" cy="267.5" r="2.2" fill="#E6D3A0"/><circle cx="403.7" cy="277.7" r="2.0" fill="#E6D3A0"/>
+<text x="448" y="256" font-size="13" font-weight="700" fill="#1F2933">あと2コで進化</text>
+<text x="448" y="274" font-size="11" fill="#67707A">餌 0/2　累計 0/13</text>
 <text x="16" y="62" font-size="10" fill="#67707A">目標時期</text>
-<line x1="235.0" y1="298" x2="235.0" y2="278" stroke="#9AA3AD" stroke-width="2"/>
-<path d="M230.0,280 L235.0,274 L240.0,280 Z" fill="#9AA3AD"/>
-<rect x="130" y="298" width="210" height="96" rx="10" fill="#F2F4F6" stroke="#9AA3AD" stroke-width="1"/>
-<circle cx="118" cy="318" r="9" fill="#9AA3AD"/>
-<text x="142" y="320" font-size="14" font-weight="700" fill="#1F2933">⑤自走</text>
-<text x="142" y="338" font-size="11" fill="#67707A">完了：指導なしで型を回し、代理</text>
-<text x="142" y="353" font-size="11" fill="#67707A">店メンバーを育てられる</text>
-<rect x="16" y="335.0" width="80" height="22" rx="11" fill="#F2F4F6" stroke="#9AA3AD" stroke-width="1"/>
-<text x="56.0" y="350.0" text-anchor="middle" font-size="11" font-weight="700" fill="#9AA3AD">8月第4週</text>
-<rect x="360" y="303" width="14" height="14" rx="3" fill="#fff" stroke="#9AA3AD" stroke-width="1.5"/>
-<text x="382" y="314" font-size="12.5" fill="#1F2933">自分の型を後輩に共有する</text>
-<rect x="360" y="321" width="14" height="14" rx="3" fill="#fff" stroke="#9AA3AD" stroke-width="1.5"/>
-<text x="382" y="332" font-size="12.5" fill="#1F2933">勝ち型を標準トークに言語化・共有する</text>
-<rect x="360" y="339" width="14" height="14" rx="3" fill="#fff" stroke="#9AA3AD" stroke-width="1.5"/>
-<text x="382" y="350" font-size="12.5" fill="#1F2933">【管理】ピタサチメンバーと1on1し、各人のフォーカスを握る</text>
-<rect x="360" y="357" width="14" height="14" rx="3" fill="#fff" stroke="#9AA3AD" stroke-width="1.5"/>
-<text x="382" y="368" font-size="12.5" fill="#1F2933">【管理】ピタサチに勝ち型を標準トークとして展開する</text>
-<line x1="235.0" y1="420" x2="235.0" y2="400" stroke="#9AA3AD" stroke-width="2"/>
-<path d="M230.0,402 L235.0,396 L240.0,402 Z" fill="#9AA3AD"/>
-<rect x="130" y="420" width="210" height="78" rx="10" fill="#F2F4F6" stroke="#9AA3AD" stroke-width="1"/>
-<circle cx="118" cy="440" r="9" fill="#9AA3AD"/>
-<text x="142" y="442" font-size="14" font-weight="700" fill="#1F2933">④振り返り</text>
-<text x="142" y="460" font-size="11" fill="#67707A">完了：失注の共通要因を抽出でき</text>
-<text x="142" y="475" font-size="11" fill="#67707A">る</text>
-<rect x="16" y="448.0" width="80" height="22" rx="11" fill="#F2F4F6" stroke="#9AA3AD" stroke-width="1"/>
-<text x="56.0" y="463.0" text-anchor="middle" font-size="11" font-weight="700" fill="#9AA3AD">8月第3週</text>
-<rect x="360" y="425" width="14" height="14" rx="3" fill="#fff" stroke="#9AA3AD" stroke-width="1.5"/>
-<text x="382" y="436" font-size="12.5" fill="#1F2933">週次で成約率の推移を確認</text>
-<rect x="360" y="443" width="14" height="14" rx="3" fill="#fff" stroke="#9AA3AD" stroke-width="1.5"/>
-<text x="382" y="454" font-size="12.5" fill="#1F2933">失注の共通要因を抽出する</text>
-<rect x="360" y="461" width="14" height="14" rx="3" fill="#fff" stroke="#9AA3AD" stroke-width="1.5"/>
-<text x="382" y="472" font-size="12.5" fill="#1F2933">【管理】ピタサチ全体の成約率を把握し、底上げ対象を決める</text>
-<line x1="235.0" y1="524" x2="235.0" y2="504" stroke="#9AA3AD" stroke-width="2"/>
-<path d="M230.0,506 L235.0,500 L240.0,506 Z" fill="#9AA3AD"/>
-<rect x="130" y="524" width="210" height="60" rx="10" fill="#F2F4F6" stroke="#9AA3AD" stroke-width="1"/>
-<circle cx="118" cy="544" r="9" fill="#9AA3AD"/>
-<text x="142" y="546" font-size="14" font-weight="700" fill="#1F2933">③実践</text>
-<text x="142" y="564" font-size="11" fill="#67707A">完了：商談で型を意図的に使えて</text>
-<text x="142" y="579" font-size="11" fill="#67707A">いる</text>
-<rect x="16" y="543.0" width="80" height="22" rx="11" fill="#F2F4F6" stroke="#9AA3AD" stroke-width="1"/>
-<text x="56.0" y="558.0" text-anchor="middle" font-size="11" font-weight="700" fill="#9AA3AD">8月第1週</text>
-<rect x="360" y="529" width="14" height="14" rx="3" fill="#fff" stroke="#9AA3AD" stroke-width="1.5"/>
-<text x="382" y="540" font-size="12.5" fill="#1F2933">商談前に型の要点を確認する</text>
-<rect x="360" y="547" width="14" height="14" rx="3" fill="#fff" stroke="#9AA3AD" stroke-width="1.5"/>
-<text x="382" y="558" font-size="12.5" fill="#1F2933">ネック処理を意図的に試す</text>
-<line x1="235.0" y1="610" x2="235.0" y2="590" stroke="#9AA3AD" stroke-width="2"/>
-<path d="M230.0,592 L235.0,586 L240.0,592 Z" fill="#9AA3AD"/>
-<rect x="130" y="610" width="210" height="60" rx="10" fill="#F2F4F6" stroke="#9AA3AD" stroke-width="1"/>
-<circle cx="118" cy="630" r="9" fill="#9AA3AD"/>
-<text x="142" y="632" font-size="14" font-weight="700" fill="#1F2933">②練習</text>
-<text x="142" y="650" font-size="11" fill="#67707A">完了：苦手ケースでも型どおり切</text>
-<text x="142" y="665" font-size="11" fill="#67707A">り返せる</text>
-<rect x="16" y="629.0" width="80" height="22" rx="11" fill="#F2F4F6" stroke="#9AA3AD" stroke-width="1"/>
-<text x="56.0" y="644.0" text-anchor="middle" font-size="11" font-weight="700" fill="#9AA3AD">7月第4週</text>
-<rect x="360" y="615" width="14" height="14" rx="3" fill="#fff" stroke="#9AA3AD" stroke-width="1.5"/>
-<text x="382" y="626" font-size="12.5" fill="#1F2933">苦手ケースの切り返しをロープレ</text>
-<rect x="360" y="633" width="14" height="14" rx="3" fill="#fff" stroke="#9AA3AD" stroke-width="1.5"/>
-<text x="382" y="644" font-size="12.5" fill="#1F2933">トップ商談の録音を聞く</text>
-<line x1="235.0" y1="696" x2="235.0" y2="676" stroke="#9AA3AD" stroke-width="2"/>
-<path d="M230.0,678 L235.0,672 L240.0,678 Z" fill="#9AA3AD"/>
-<rect x="130" y="696" width="210" height="60" rx="10" fill="#FDF3E2" stroke="#EF9F27" stroke-width="2"/>
-<circle cx="118" cy="716" r="9" fill="#EF9F27"/>
-<text x="142" y="718" font-size="14" font-weight="700" fill="#1F2933">①型を知る</text>
-<text x="142" y="736" font-size="11" fill="#67707A">完了：自分の勝ち負けを言語化で</text>
-<text x="142" y="751" font-size="11" fill="#67707A">きる</text>
-<rect x="16" y="715.0" width="80" height="22" rx="11" fill="#FDF3E2" stroke="#EF9F27" stroke-width="1"/>
-<text x="56.0" y="730.0" text-anchor="middle" font-size="11" font-weight="700" fill="#EF9F27">7月第3週</text>
-<rect x="360" y="701" width="14" height="14" rx="3" fill="#fff" stroke="#9AA3AD" stroke-width="1.5"/>
-<text x="382" y="712" font-size="12.5" fill="#1F2933">直近の成約・失注を5件ずつ振り返る</text>
-<rect x="360" y="719" width="14" height="14" rx="3" fill="#fff" stroke="#9AA3AD" stroke-width="1.5"/>
-<text x="382" y="730" font-size="12.5" fill="#1F2933">勝ち／負けパターンを言語化する</text>
+<line x1="235.0" y1="312" x2="235.0" y2="292" stroke="#9AA3AD" stroke-width="2"/>
+<path d="M230.0,294 L235.0,288 L240.0,294 Z" fill="#9AA3AD"/>
+<rect x="130" y="312" width="210" height="126" rx="10" fill="#F2F4F6" stroke="#9AA3AD" stroke-width="1"/>
+<circle cx="118" cy="332" r="9" fill="#9AA3AD"/>
+<text x="142" y="334" font-size="14" font-weight="700" fill="#1F2933">⑤自走</text>
+<text x="142" y="352" font-size="11" fill="#67707A">完了：指導なしで型を回し、代理</text>
+<text x="142" y="367" font-size="11" fill="#67707A">店メンバーを育てられる</text>
+<rect x="16" y="364.0" width="80" height="22" rx="11" fill="#F2F4F6" stroke="#9AA3AD" stroke-width="1"/>
+<text x="56.0" y="379.0" text-anchor="middle" font-size="11" font-weight="700" fill="#9AA3AD">8月第4週</text>
+<rect x="360" y="319" width="14" height="14" rx="3" fill="#fff" stroke="#9AA3AD" stroke-width="1.5"/>
+<text x="382" y="330" font-size="12.5" fill="#1F2933">自分の型を後輩に共有する</text>
+<rect x="360" y="340" width="14" height="14" rx="3" fill="#fff" stroke="#9AA3AD" stroke-width="1.5"/>
+<text x="382" y="351" font-size="12.5" fill="#1F2933">勝ち型を標準トークに言語化・共有する</text>
+<rect x="360" y="361" width="14" height="14" rx="3" fill="#fff" stroke="#9AA3AD" stroke-width="1.5"/>
+<text x="382" y="372" font-size="12.5" fill="#1F2933">【管理】ピタサチメンバーと1on1し、各人の</text>
+<text x="382" y="387" font-size="12.5" fill="#1F2933">フォーカスを握る</text>
+<rect x="360" y="397" width="14" height="14" rx="3" fill="#fff" stroke="#9AA3AD" stroke-width="1.5"/>
+<text x="382" y="408" font-size="12.5" fill="#1F2933">【管理】ピタサチに勝ち型を標準トークとして展</text>
+<text x="382" y="423" font-size="12.5" fill="#1F2933">開する</text>
+<line x1="235.0" y1="464" x2="235.0" y2="444" stroke="#9AA3AD" stroke-width="2"/>
+<path d="M230.0,446 L235.0,440 L240.0,446 Z" fill="#9AA3AD"/>
+<rect x="130" y="464" width="210" height="90" rx="10" fill="#F2F4F6" stroke="#9AA3AD" stroke-width="1"/>
+<circle cx="118" cy="484" r="9" fill="#9AA3AD"/>
+<text x="142" y="486" font-size="14" font-weight="700" fill="#1F2933">④振り返り</text>
+<text x="142" y="504" font-size="11" fill="#67707A">完了：失注の共通要因を抽出でき</text>
+<text x="142" y="519" font-size="11" fill="#67707A">る</text>
+<rect x="16" y="498.0" width="80" height="22" rx="11" fill="#F2F4F6" stroke="#9AA3AD" stroke-width="1"/>
+<text x="56.0" y="513.0" text-anchor="middle" font-size="11" font-weight="700" fill="#9AA3AD">8月第3週</text>
+<rect x="360" y="471" width="14" height="14" rx="3" fill="#fff" stroke="#9AA3AD" stroke-width="1.5"/>
+<text x="382" y="482" font-size="12.5" fill="#1F2933">週次で成約率の推移を確認</text>
+<rect x="360" y="492" width="14" height="14" rx="3" fill="#fff" stroke="#9AA3AD" stroke-width="1.5"/>
+<text x="382" y="503" font-size="12.5" fill="#1F2933">失注の共通要因を抽出する</text>
+<rect x="360" y="513" width="14" height="14" rx="3" fill="#fff" stroke="#9AA3AD" stroke-width="1.5"/>
+<text x="382" y="524" font-size="12.5" fill="#1F2933">【管理】ピタサチ全体の成約率を把握し、底上げ</text>
+<text x="382" y="539" font-size="12.5" fill="#1F2933">対象を決める</text>
+<line x1="235.0" y1="580" x2="235.0" y2="560" stroke="#9AA3AD" stroke-width="2"/>
+<path d="M230.0,562 L235.0,556 L240.0,562 Z" fill="#9AA3AD"/>
+<rect x="130" y="580" width="210" height="74" rx="10" fill="#F2F4F6" stroke="#9AA3AD" stroke-width="1"/>
+<circle cx="118" cy="600" r="9" fill="#9AA3AD"/>
+<text x="142" y="602" font-size="14" font-weight="700" fill="#1F2933">③実践</text>
+<text x="142" y="620" font-size="11" fill="#67707A">完了：商談で型を意図的に使えて</text>
+<text x="142" y="635" font-size="11" fill="#67707A">いる</text>
+<rect x="16" y="606.0" width="80" height="22" rx="11" fill="#F2F4F6" stroke="#9AA3AD" stroke-width="1"/>
+<text x="56.0" y="621.0" text-anchor="middle" font-size="11" font-weight="700" fill="#9AA3AD">8月第1週</text>
+<rect x="360" y="587" width="14" height="14" rx="3" fill="#fff" stroke="#9AA3AD" stroke-width="1.5"/>
+<text x="382" y="598" font-size="12.5" fill="#1F2933">商談前に型の要点を確認する</text>
+<rect x="360" y="608" width="14" height="14" rx="3" fill="#fff" stroke="#9AA3AD" stroke-width="1.5"/>
+<text x="382" y="619" font-size="12.5" fill="#1F2933">ネック処理を意図的に試す</text>
+<line x1="235.0" y1="680" x2="235.0" y2="660" stroke="#9AA3AD" stroke-width="2"/>
+<path d="M230.0,662 L235.0,656 L240.0,662 Z" fill="#9AA3AD"/>
+<rect x="130" y="680" width="210" height="74" rx="10" fill="#F2F4F6" stroke="#9AA3AD" stroke-width="1"/>
+<circle cx="118" cy="700" r="9" fill="#9AA3AD"/>
+<text x="142" y="702" font-size="14" font-weight="700" fill="#1F2933">②練習</text>
+<text x="142" y="720" font-size="11" fill="#67707A">完了：苦手ケースでも型どおり切</text>
+<text x="142" y="735" font-size="11" fill="#67707A">り返せる</text>
+<rect x="16" y="706.0" width="80" height="22" rx="11" fill="#F2F4F6" stroke="#9AA3AD" stroke-width="1"/>
+<text x="56.0" y="721.0" text-anchor="middle" font-size="11" font-weight="700" fill="#9AA3AD">7月第4週</text>
+<rect x="360" y="687" width="14" height="14" rx="3" fill="#fff" stroke="#9AA3AD" stroke-width="1.5"/>
+<text x="382" y="698" font-size="12.5" fill="#1F2933">苦手ケースの切り返しをロープレ</text>
+<rect x="360" y="708" width="14" height="14" rx="3" fill="#fff" stroke="#9AA3AD" stroke-width="1.5"/>
+<text x="382" y="719" font-size="12.5" fill="#1F2933">トップ商談の録音を聞く</text>
+<line x1="235.0" y1="780" x2="235.0" y2="760" stroke="#9AA3AD" stroke-width="2"/>
+<path d="M230.0,762 L235.0,756 L240.0,762 Z" fill="#9AA3AD"/>
+<rect x="130" y="780" width="210" height="74" rx="10" fill="#FDF3E2" stroke="#EF9F27" stroke-width="2"/>
+<circle cx="118" cy="800" r="9" fill="#EF9F27"/>
+<text x="142" y="802" font-size="14" font-weight="700" fill="#1F2933">①型を知る</text>
+<text x="142" y="820" font-size="11" fill="#67707A">完了：自分の勝ち負けを言語化で</text>
+<text x="142" y="835" font-size="11" fill="#67707A">きる</text>
+<rect x="16" y="806.0" width="80" height="22" rx="11" fill="#FDF3E2" stroke="#EF9F27" stroke-width="1"/>
+<text x="56.0" y="821.0" text-anchor="middle" font-size="11" font-weight="700" fill="#EF9F27">7月第3週</text>
+<rect x="360" y="787" width="14" height="14" rx="3" fill="#fff" stroke="#9AA3AD" stroke-width="1.5"/>
+<text x="382" y="798" font-size="12.5" fill="#1F2933">直近の成約・失注を5件ずつ振り返る</text>
+<rect x="360" y="808" width="14" height="14" rx="3" fill="#fff" stroke="#9AA3AD" stroke-width="1.5"/>
+<text x="382" y="819" font-size="12.5" fill="#1F2933">勝ち／負けパターンを言語化する</text>
 </svg>
