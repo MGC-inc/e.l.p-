@@ -134,6 +134,7 @@
   <button id="exportPng" class="primary">PNG出力</button>
   <button id="exportAvatar" title="今のアバターだけを画像で書き出す">アバターPNG</button>
   <button id="summary" title="スマホ1画面に全部まとめた表示（週次スクショ共有用）。もう一度押すと通常の地図に戻る">📱 1枚表示</button>
+  <button id="overview" title="タスクを畳んで、大枠▸中目標▸今期ゴールの全体像だけを俯瞰する。もう一度で通常表示">🔭 俯瞰</button>
   <button id="print">印刷/PDF</button>
   <button id="history" title="過去の達成地図(out/archive/のJSON)を上書きせず読み取り専用で開く">🔒 履歴を見る</button>
   <input type="file" id="historyFile" accept="application/json" style="display:none" />
@@ -170,7 +171,7 @@ const SVG_DEFS = `<defs>`+
 
 function template(name){
   return {name:name||"新規メンバー",note:"",theme:"テーマ",goal:"観察できる状態でゴールを書く",
-    vision:"",visionDue:"",why:"",currentStage:1,cycle:1,logs:[],
+    vision:"",visionDue:"",midGoal:"",midDue:"",why:"",currentStage:1,cycle:1,logs:[],
     phases:[
       {name:"型を知る",doneDef:"観察できる完了の状態",tasks:[]},
       {name:"練習",doneDef:"観察できる完了の状態",tasks:[]},
@@ -184,14 +185,14 @@ function template(name){
 // localStorage へ取り込み、ドロップダウンに全員が並ぶ。各人の最新編集は
 // localStorage 側が正（ここは初期値／「↺ 初期化」で戻せる工場出荷値）。
 const EMBEDDED = [
-  {"name": "三浦", "note": "ピタサチ・営業", "theme": "契約を安定させる（クローザー）", "goal": "客層を問わず自分の型で契約まで運び、成約が安定する", "vision": "どんな客層でも自分の型で安定して契約でき、勝ち型を後輩に教えられる", "visionDue": "半年後（2026年内）", "why": "型を固めて成約率を安定させたい", "focus": "まずは現状の勝ち負けを言語化する（①型を知る）", "next": "②練習へ：苦手ケースの切り返しをロープレ", "currentStage": 1, "_source": "スターター（テンプレ）。Notion未登録のため、実タスク・実進捗は要見直し（2026-06-26作成）。月初は全タスク未着手＝卵スタート。", "phases": [{"name": "型を知る", "doneDef": "自分の勝ち負けを言語化できる", "tasks": [{"name": "直近の成約・失注を5件ずつ振り返る", "status": "未着手", "done": false}, {"name": "勝ち／負けパターンを言語化する", "status": "未着手", "done": false}], "due": "2026-07-17"}, {"name": "練習", "doneDef": "苦手ケースでも型どおり切り返せる", "tasks": [{"name": "苦手ケースの切り返しをロープレ", "status": "未着手", "done": false}, {"name": "トップ商談の録音を聞く", "status": "未着手", "done": false}], "due": "2026-07-27"}, {"name": "実践", "doneDef": "商談で型を意図的に使えている", "tasks": [{"name": "商談前に型の要点を確認する", "status": "未着手", "done": false}, {"name": "ネック処理を意図的に試す", "status": "未着手", "done": false}], "due": "2026-08-07"}, {"name": "振り返り", "doneDef": "失注の共通要因を抽出できる", "tasks": [{"name": "週次で成約率の推移を確認", "status": "未着手", "done": false}, {"name": "失注の共通要因を抽出する", "status": "未着手", "done": false}], "due": "2026-08-17"}, {"name": "自走", "doneDef": "指導なしで型を回し、人に教えられる", "tasks": [{"name": "自分の型を後輩に共有する", "status": "未着手", "done": false}, {"name": "勝ち型を標準トークに言語化・共有する", "status": "未着手", "done": false}], "due": "2026-08-28"}], "startDate": "2026-07-06", "dueDate": "2026-08-28", "logs": []},
-  {"name": "今川", "note": "E.L.P・営業部長", "theme": "チームの成約を仕組み化する（マネジメント）", "goal": "各メンバーの型を引き出し、チーム全体の成約率を底上げできている", "vision": "個人の勢い頼みを脱し、育成と型の仕組みでチームが自走して成約し続ける", "visionDue": "1年後（2027年）", "why": "個人の勢い頼みから、再現性あるチームの仕組みへ移行する", "focus": "まずは各メンバーの勝ち負けと現在地を把握する（①型を知る）", "next": "②練習へ：1on1の問いかけ設計を用意する", "currentStage": 1, "_source": "スターター（テンプレ・マネジメント版）。Notion未登録のため、実タスク・実進捗は要見直し（2026-06-26作成）。月初は全タスク未着手＝卵スタート。", "phases": [{"name": "型を知る", "doneDef": "各メンバーの勝ち負けと現在ステージを把握できている", "tasks": [{"name": "メンバー各人の勝ち／負けパターンを把握する", "status": "未着手", "done": false}, {"name": "各人の現在ステージを見立てる", "status": "未着手", "done": false}], "due": "2026-07-17"}, {"name": "練習", "doneDef": "引き出すための問いかけ・観点が用意できている", "tasks": [{"name": "1on1の問いかけ設計を用意する", "status": "未着手", "done": false}, {"name": "ロープレの観点表を作る", "status": "未着手", "done": false}], "due": "2026-07-27"}, {"name": "実践", "doneDef": "週次で各人のフォーカスを握れている", "tasks": [{"name": "週次で各人の今週フォーカスを握る", "status": "未着手", "done": false}, {"name": "商談同席でフィードバックする", "status": "未着手", "done": false}], "due": "2026-08-07"}, {"name": "振り返り", "doneDef": "チームの成約率と詰まりの要因を抽出できる", "tasks": [{"name": "チームの成約率推移をレビューする", "status": "未着手", "done": false}, {"name": "詰まりの共通要因を抽出する", "status": "未着手", "done": false}], "due": "2026-08-17"}, {"name": "自走", "doneDef": "各人が自走し、勝ち型がチームに展開されている", "tasks": [{"name": "勝ち型をチームの標準トークに展開する", "status": "未着手", "done": false}, {"name": "各人が自走できる仕組みにする", "status": "未着手", "done": false}], "due": "2026-08-28"}], "startDate": "2026-07-06", "dueDate": "2026-08-28", "logs": []},
-  {"name": "古賀", "note": "wanny・新人（2026-07-01参戦）", "theme": "営業の基礎を固める（新人クローザー）", "goal": "基本の型（ヒアリング〜クロージング）を身につけ、指導つきで商談を一周回せる", "vision": "指導なしで商談を一周回せる一人前のクローザーになり、自分の勝ち型を持つ", "visionDue": "半年後（2026年内）", "why": "7/1入社。まず型を覚え、自分で商談を最後まで回せる状態を目指す", "focus": "まずは商談の基本フローと勝ち筋を理解する（①型を知る）", "next": "②練習へ：基本トークをロープレで繰り返す", "currentStage": 1, "cycle": 1, "logs": [], "_source": "新人スターター（テンプレ）。2026-07-01参戦のため全タスク未着手＝卵スタート。実進捗はMTで更新（2026-06-30作成）。岡野が管理・先輩が指導役。", "phases": [{"name": "型を知る", "doneDef": "営業の基本フローと勝ち筋を説明できる", "tasks": [{"name": "商談の基本フロー（挨拶〜クロージング）を覚える", "status": "未着手", "done": false}, {"name": "先輩のトップ商談に同席し、型をメモする", "status": "未着手", "done": false}], "due": "2026-07-14"}, {"name": "練習", "doneDef": "ロープレで基本の型どおり話せる", "tasks": [{"name": "基本トークをロープレで繰り返す", "status": "未着手", "done": false}, {"name": "商品知識・よくある質問を覚える", "status": "未着手", "done": false}], "due": "2026-07-28"}, {"name": "実践", "doneDef": "指導つきで商談の一部を担当できる", "tasks": [{"name": "指導つきで商談に同席し、一部を担当する", "status": "未着手", "done": false}, {"name": "商談後に良かった点・詰まった点を記録する", "status": "未着手", "done": false}], "due": "2026-08-11"}, {"name": "振り返り", "doneDef": "うまくいった／詰まった点を言語化できる", "tasks": [{"name": "週次で自分の商談を振り返る", "status": "未着手", "done": false}, {"name": "つまずきポイントを先輩と確認する", "status": "未着手", "done": false}], "due": "2026-08-21"}, {"name": "自走", "doneDef": "指導なしで基本の商談を一周完遂できる", "tasks": [{"name": "指導なしで1商談を最後まで担当する", "status": "未着手", "done": false}, {"name": "自分の改善テーマを1つ決める", "status": "未着手", "done": false}], "due": "2026-08-31"}], "startDate": "2026-07-01", "dueDate": "2026-08-31"},
-  {"name": "宮腰", "note": "wanny・戸田指導", "theme": "契約を安定させる（クローザー）", "goal": "客層を問わず自分の型で契約まで運び、成約が安定する", "vision": "自分の成約を安定させ、戸田を一人前のクローザーに育てられる", "visionDue": "半年後（2026年内）", "why": "自分の成約を安定させつつ、戸田に型を教えられる状態を目指す", "focus": "苦手ケースの切り返しをロープレで固める（②練習・進行中）", "next": "③実践へ：商談前に型の要点を確認する", "currentStage": 2, "_source": "Notion『GMタスクDB』で宮腰ゴールに紐づく実タスク10件のミラー（2026-06-24時点）。done=ステータス『完了』。基礎④⑤の一部は未登録で、見直しで追加予定。", "phases": [{"name": "型を知る", "doneDef": "自分の勝ち負けを言語化できる", "tasks": [{"name": "直近の成約・失注を5件ずつ振り返る", "status": "完了", "done": true}, {"name": "勝ち／負けパターンを言語化する", "status": "完了", "done": true}], "due": "2026-06-19"}, {"name": "練習", "doneDef": "苦手ケースでも型どおり切り返せる", "tasks": [{"name": "苦手ケースの切り返しをロープレ", "status": "進行中", "done": false}, {"name": "トップ商談の録音を聞く", "status": "未着手", "done": false}], "due": "2026-06-28"}, {"name": "実践", "doneDef": "商談で型を意図的に使えている", "tasks": [{"name": "商談前に型の要点を確認する", "status": "未着手", "done": false}, {"name": "ネック処理を意図的に試す", "status": "未着手", "done": false}], "due": "2026-07-06"}, {"name": "振り返り", "doneDef": "失注の共通要因を、戸田に教える前提で言語化できる", "tasks": [{"name": "週次で成約率の推移を確認", "status": "未着手", "done": false}, {"name": "戸田と一緒に失注を振り返り、教える前提で言語化", "status": "未着手", "done": false}], "due": "2026-07-15"}, {"name": "自走", "doneDef": "指導なしで型を回し、戸田に教えられる", "tasks": [{"name": "戸田に自分の型を教える", "status": "未着手", "done": false}, {"name": "戸田の商談に同行してFBする", "status": "未着手", "done": false}], "due": "2026-07-23"}], "startDate": "2026-06-11", "dueDate": "2026-07-23", "logs": []},
-  {"name": "岡野", "note": "wanny", "theme": "契約を安定させる（クローザー）", "goal": "客層を問わず自分の型で契約まで運び、成約が安定する", "vision": "自分の型を安定させ、wannyメンバーの成約を底上げできる管理者になる", "visionDue": "半年後（2026年内）", "why": "成約率が客層で振れる。型を固めて安定させたい", "focus": "苦手ケースの切り返しをロープレで固める（②練習・進行中）", "next": "③実践へ：商談前に型の要点を確認する", "currentStage": 2, "_source": "Notion『GMタスクDB』の実タスク・実ステータスのミラー（2026-06-24時点）。done=ステータス『完了』。statusに実値を保持。", "phases": [{"name": "型を知る", "doneDef": "自分の勝ち負けを言語化できる", "tasks": [{"name": "直近の成約・失注を5件ずつ振り返る", "status": "完了", "done": true}, {"name": "勝ち／負けパターンを言語化する", "status": "完了", "done": true}], "due": "2026-06-19"}, {"name": "練習", "doneDef": "苦手ケースでも型どおり切り返せる", "tasks": [{"name": "苦手ケースの切り返しをロープレ", "status": "進行中", "done": false}, {"name": "トップ商談の録音を聞く", "status": "未着手", "done": false}], "due": "2026-06-28"}, {"name": "実践", "doneDef": "商談で型を意図的に使えている", "tasks": [{"name": "商談前に型の要点を確認する", "status": "未着手", "done": false}, {"name": "ネック処理を意図的に試す", "status": "未着手", "done": false}], "due": "2026-07-06"}, {"name": "振り返り", "doneDef": "失注の共通要因を抽出し、wany全体に展開できる", "tasks": [{"name": "週次で成約率の推移を確認", "status": "未着手", "done": false}, {"name": "失注の共通要因を抽出する", "status": "未着手", "done": false}, {"name": "wannyメンバーの失注商談を1件レビューし、要因を自分の型と照合", "status": "未着手", "done": false}, {"name": "【管理】wany全体の成約率を把握し、底上げ対象メンバーを決める", "status": "未着手", "done": false}], "due": "2026-07-15"}, {"name": "自走", "doneDef": "指導なしで型を回し、wanyの標準トークに言語化できる", "tasks": [{"name": "苦手客層を指名で担当する", "status": "未着手", "done": false}, {"name": "自分の型を後輩に共有する", "status": "未着手", "done": false}, {"name": "勝ち型をwannyの標準トークに言語化・共有する", "status": "未着手", "done": false}, {"name": "メンバーのロープレを主催し、教えて詰まった点を自分の再発見に使う", "status": "未着手", "done": false}, {"name": "【管理】wannyメンバーと1on1し、各人の今週フォーカスを握る", "status": "未着手", "done": false}], "due": "2026-07-23"}], "startDate": "2026-06-11", "dueDate": "2026-07-23", "logs": []},
-  {"name": "戸田", "note": "wanny・宮腰指導", "theme": "契約を安定させる（クローザー）", "goal": "客層を問わず自分の型で契約まで運び、成約が安定する", "vision": "宮腰の指導を離れ、自分の型で安定して契約できるクローザーになる", "visionDue": "半年後（2026年内）", "why": "宮腰の指導を受けながら、自分の型を固めて成約を安定させる", "focus": "まずは現状の勝ち負けを言語化する（①型を知る）", "next": "②練習へ：苦手ケースの切り返しをロープレ", "currentStage": 1, "_source": "スターター（テンプレ）。Notion未登録のため、実タスク・実進捗は要見直し（2026-06-26作成）。月初は全タスク未着手＝卵スタート。宮腰が指導役。", "phases": [{"name": "型を知る", "doneDef": "自分の勝ち負けを言語化できる", "tasks": [{"name": "直近の成約・失注を5件ずつ振り返る", "status": "未着手", "done": false}, {"name": "勝ち／負けパターンを言語化する", "status": "未着手", "done": false}], "due": "2026-07-17"}, {"name": "練習", "doneDef": "苦手ケースでも型どおり切り返せる", "tasks": [{"name": "苦手ケースの切り返しを宮腰とロープレ", "status": "未着手", "done": false}, {"name": "トップ商談の録音を聞く", "status": "未着手", "done": false}], "due": "2026-07-27"}, {"name": "実践", "doneDef": "商談で型を意図的に使えている", "tasks": [{"name": "商談前に型の要点を確認する", "status": "未着手", "done": false}, {"name": "ネック処理を意図的に試す", "status": "未着手", "done": false}], "due": "2026-08-07"}, {"name": "振り返り", "doneDef": "失注の共通要因を抽出できる", "tasks": [{"name": "週次で成約率の推移を確認", "status": "未着手", "done": false}, {"name": "失注を宮腰と振り返り、要因を言語化", "status": "未着手", "done": false}], "due": "2026-08-17"}, {"name": "自走", "doneDef": "指導なしで型を回せる", "tasks": [{"name": "指導なしで1商談を型どおり完遂する", "status": "未着手", "done": false}, {"name": "自分の勝ち型を言語化する", "status": "未着手", "done": false}], "due": "2026-08-28"}], "startDate": "2026-07-06", "dueDate": "2026-08-28", "logs": []},
-  {"name": "藤江", "note": "ピタサチ・営業", "theme": "契約を安定させる（クローザー）", "goal": "客層を問わず自分の型で契約まで運び、成約が安定する", "vision": "どんな客層でも自分の型で安定して契約でき、勝ち型を後輩に教えられる", "visionDue": "半年後（2026年内）", "why": "型を固めて成約率を安定させたい", "focus": "まずは現状の勝ち負けを言語化する（①型を知る）", "next": "②練習へ：苦手ケースの切り返しをロープレ", "currentStage": 1, "_source": "スターター（テンプレ）。Notion未登録のため、実タスク・実進捗は要見直し（2026-06-26作成）。月初は全タスク未着手＝卵スタート。", "phases": [{"name": "型を知る", "doneDef": "自分の勝ち負けを言語化できる", "tasks": [{"name": "直近の成約・失注を5件ずつ振り返る", "status": "未着手", "done": false}, {"name": "勝ち／負けパターンを言語化する", "status": "未着手", "done": false}], "due": "2026-07-17"}, {"name": "練習", "doneDef": "苦手ケースでも型どおり切り返せる", "tasks": [{"name": "苦手ケースの切り返しをロープレ", "status": "未着手", "done": false}, {"name": "トップ商談の録音を聞く", "status": "未着手", "done": false}], "due": "2026-07-27"}, {"name": "実践", "doneDef": "商談で型を意図的に使えている", "tasks": [{"name": "商談前に型の要点を確認する", "status": "未着手", "done": false}, {"name": "ネック処理を意図的に試す", "status": "未着手", "done": false}], "due": "2026-08-07"}, {"name": "振り返り", "doneDef": "失注の共通要因を抽出できる", "tasks": [{"name": "週次で成約率の推移を確認", "status": "未着手", "done": false}, {"name": "失注の共通要因を抽出する", "status": "未着手", "done": false}], "due": "2026-08-17"}, {"name": "自走", "doneDef": "指導なしで型を回し、人に教えられる", "tasks": [{"name": "自分の型を後輩に共有する", "status": "未着手", "done": false}, {"name": "勝ち型を標準トークに言語化・共有する", "status": "未着手", "done": false}], "due": "2026-08-28"}], "startDate": "2026-07-06", "dueDate": "2026-08-28", "logs": []},
-  {"name": "門田", "note": "ピタサチ・役員兼営業", "theme": "契約を安定させる（クローザー）", "goal": "客層を問わず自分の型で契約まで運び、成約が安定する", "vision": "自分の型を確立し、ピタサチ代理店に勝ち型を展開して育てられる", "visionDue": "1年後（2027年）", "why": "成約を安定させ、チームに型を示せる状態を目指す", "focus": "まずは現状の勝ち負けを言語化する（①型を知る）", "next": "②練習へ：苦手ケースの切り返しをロープレ", "currentStage": 1, "_source": "スターター（テンプレ）。Notion未登録のため、実タスク・実進捗は要見直し（2026-06-26作成）。月初は全タスク未着手＝卵スタート。", "phases": [{"name": "型を知る", "doneDef": "自分の勝ち負けを言語化できる", "tasks": [{"name": "直近の成約・失注を5件ずつ振り返る", "status": "未着手", "done": false}, {"name": "勝ち／負けパターンを言語化する", "status": "未着手", "done": false}], "due": "2026-07-17"}, {"name": "練習", "doneDef": "苦手ケースでも型どおり切り返せる", "tasks": [{"name": "苦手ケースの切り返しをロープレ", "status": "未着手", "done": false}, {"name": "トップ商談の録音を聞く", "status": "未着手", "done": false}], "due": "2026-07-27"}, {"name": "実践", "doneDef": "商談で型を意図的に使えている", "tasks": [{"name": "商談前に型の要点を確認する", "status": "未着手", "done": false}, {"name": "ネック処理を意図的に試す", "status": "未着手", "done": false}], "due": "2026-08-07"}, {"name": "振り返り", "doneDef": "失注の共通要因を抽出できる", "tasks": [{"name": "週次で成約率の推移を確認", "status": "未着手", "done": false}, {"name": "失注の共通要因を抽出する", "status": "未着手", "done": false}, {"name": "【管理】ピタサチ全体の成約率を把握し、底上げ対象を決める", "status": "未着手", "done": false}], "due": "2026-08-17"}, {"name": "自走", "doneDef": "指導なしで型を回し、代理店メンバーを育てられる", "tasks": [{"name": "自分の型を後輩に共有する", "status": "未着手", "done": false}, {"name": "勝ち型を標準トークに言語化・共有する", "status": "未着手", "done": false}, {"name": "【管理】ピタサチメンバーと1on1し、各人のフォーカスを握る", "status": "未着手", "done": false}, {"name": "【管理】ピタサチに勝ち型を標準トークとして展開する", "status": "未着手", "done": false}], "due": "2026-08-28"}], "startDate": "2026-07-06", "dueDate": "2026-08-28", "logs": []}
+  {"name": "三浦", "note": "ピタサチ・営業", "theme": "契約を安定させる（クローザー）", "goal": "客層を問わず自分の型で契約まで運び、成約が安定する", "vision": "どんな客層でも自分の型で安定して契約でき、勝ち型を後輩に教えられる", "visionDue": "半年後（2026年内）", "midGoal": "苦手客層でも型どおり切り返せるようになる", "midDue": "2〜3ヶ月後", "why": "型を固めて成約率を安定させたい", "focus": "まずは現状の勝ち負けを言語化する（①型を知る）", "next": "②練習へ：苦手ケースの切り返しをロープレ", "currentStage": 1, "_source": "スターター（テンプレ）。Notion未登録のため、実タスク・実進捗は要見直し（2026-06-26作成）。月初は全タスク未着手＝卵スタート。", "phases": [{"name": "型を知る", "doneDef": "自分の勝ち負けを言語化できる", "tasks": [{"name": "直近の成約・失注を5件ずつ振り返る", "status": "未着手", "done": false}, {"name": "勝ち／負けパターンを言語化する", "status": "未着手", "done": false}], "due": "2026-07-17"}, {"name": "練習", "doneDef": "苦手ケースでも型どおり切り返せる", "tasks": [{"name": "苦手ケースの切り返しをロープレ", "status": "未着手", "done": false}, {"name": "トップ商談の録音を聞く", "status": "未着手", "done": false}], "due": "2026-07-27"}, {"name": "実践", "doneDef": "商談で型を意図的に使えている", "tasks": [{"name": "商談前に型の要点を確認する", "status": "未着手", "done": false}, {"name": "ネック処理を意図的に試す", "status": "未着手", "done": false}], "due": "2026-08-07"}, {"name": "振り返り", "doneDef": "失注の共通要因を抽出できる", "tasks": [{"name": "週次で成約率の推移を確認", "status": "未着手", "done": false}, {"name": "失注の共通要因を抽出する", "status": "未着手", "done": false}], "due": "2026-08-17"}, {"name": "自走", "doneDef": "指導なしで型を回し、人に教えられる", "tasks": [{"name": "自分の型を後輩に共有する", "status": "未着手", "done": false}, {"name": "勝ち型を標準トークに言語化・共有する", "status": "未着手", "done": false}], "due": "2026-08-28"}], "startDate": "2026-07-06", "dueDate": "2026-08-28", "logs": []},
+  {"name": "今川", "note": "E.L.P・営業部長", "theme": "チームの成約を仕組み化する（マネジメント）", "goal": "各メンバーの型を引き出し、チーム全体の成約率を底上げできている", "vision": "個人の勢い頼みを脱し、育成と型の仕組みでチームが自走して成約し続ける", "visionDue": "1年後（2027年）", "midGoal": "各メンバーの現在地を把握し、週次で全員のフォーカスを握れている", "midDue": "2〜3ヶ月後", "why": "個人の勢い頼みから、再現性あるチームの仕組みへ移行する", "focus": "まずは各メンバーの勝ち負けと現在地を把握する（①型を知る）", "next": "②練習へ：1on1の問いかけ設計を用意する", "currentStage": 1, "_source": "スターター（テンプレ・マネジメント版）。Notion未登録のため、実タスク・実進捗は要見直し（2026-06-26作成）。月初は全タスク未着手＝卵スタート。", "phases": [{"name": "型を知る", "doneDef": "各メンバーの勝ち負けと現在ステージを把握できている", "tasks": [{"name": "メンバー各人の勝ち／負けパターンを把握する", "status": "未着手", "done": false}, {"name": "各人の現在ステージを見立てる", "status": "未着手", "done": false}], "due": "2026-07-17"}, {"name": "練習", "doneDef": "引き出すための問いかけ・観点が用意できている", "tasks": [{"name": "1on1の問いかけ設計を用意する", "status": "未着手", "done": false}, {"name": "ロープレの観点表を作る", "status": "未着手", "done": false}], "due": "2026-07-27"}, {"name": "実践", "doneDef": "週次で各人のフォーカスを握れている", "tasks": [{"name": "週次で各人の今週フォーカスを握る", "status": "未着手", "done": false}, {"name": "商談同席でフィードバックする", "status": "未着手", "done": false}], "due": "2026-08-07"}, {"name": "振り返り", "doneDef": "チームの成約率と詰まりの要因を抽出できる", "tasks": [{"name": "チームの成約率推移をレビューする", "status": "未着手", "done": false}, {"name": "詰まりの共通要因を抽出する", "status": "未着手", "done": false}], "due": "2026-08-17"}, {"name": "自走", "doneDef": "各人が自走し、勝ち型がチームに展開されている", "tasks": [{"name": "勝ち型をチームの標準トークに展開する", "status": "未着手", "done": false}, {"name": "各人が自走できる仕組みにする", "status": "未着手", "done": false}], "due": "2026-08-28"}], "startDate": "2026-07-06", "dueDate": "2026-08-28", "logs": []},
+  {"name": "古賀", "note": "wanny・新人（2026-07-01参戦）", "theme": "営業の基礎を固める（新人クローザー）", "goal": "基本の型（ヒアリング〜クロージング）を身につけ、指導つきで商談を一周回せる", "vision": "指導なしで商談を一周回せる一人前のクローザーになり、自分の勝ち型を持つ", "visionDue": "半年後（2026年内）", "midGoal": "指導つきで商談の一部を任され、基本の型どおり話せる", "midDue": "2ヶ月後", "why": "7/1入社。まず型を覚え、自分で商談を最後まで回せる状態を目指す", "focus": "まずは商談の基本フローと勝ち筋を理解する（①型を知る）", "next": "②練習へ：基本トークをロープレで繰り返す", "currentStage": 1, "cycle": 1, "logs": [], "_source": "新人スターター（テンプレ）。2026-07-01参戦のため全タスク未着手＝卵スタート。実進捗はMTで更新（2026-06-30作成）。岡野が管理・先輩が指導役。", "phases": [{"name": "型を知る", "doneDef": "営業の基本フローと勝ち筋を説明できる", "tasks": [{"name": "商談の基本フロー（挨拶〜クロージング）を覚える", "status": "未着手", "done": false}, {"name": "先輩のトップ商談に同席し、型をメモする", "status": "未着手", "done": false}], "due": "2026-07-14"}, {"name": "練習", "doneDef": "ロープレで基本の型どおり話せる", "tasks": [{"name": "基本トークをロープレで繰り返す", "status": "未着手", "done": false}, {"name": "商品知識・よくある質問を覚える", "status": "未着手", "done": false}], "due": "2026-07-28"}, {"name": "実践", "doneDef": "指導つきで商談の一部を担当できる", "tasks": [{"name": "指導つきで商談に同席し、一部を担当する", "status": "未着手", "done": false}, {"name": "商談後に良かった点・詰まった点を記録する", "status": "未着手", "done": false}], "due": "2026-08-11"}, {"name": "振り返り", "doneDef": "うまくいった／詰まった点を言語化できる", "tasks": [{"name": "週次で自分の商談を振り返る", "status": "未着手", "done": false}, {"name": "つまずきポイントを先輩と確認する", "status": "未着手", "done": false}], "due": "2026-08-21"}, {"name": "自走", "doneDef": "指導なしで基本の商談を一周完遂できる", "tasks": [{"name": "指導なしで1商談を最後まで担当する", "status": "未着手", "done": false}, {"name": "自分の改善テーマを1つ決める", "status": "未着手", "done": false}], "due": "2026-08-31"}], "startDate": "2026-07-01", "dueDate": "2026-08-31"},
+  {"name": "宮腰", "note": "wanny・戸田指導", "theme": "契約を安定させる（クローザー）", "goal": "客層を問わず自分の型で契約まで運び、成約が安定する", "vision": "自分の成約を安定させ、戸田を一人前のクローザーに育てられる", "visionDue": "半年後（2026年内）", "midGoal": "自分の型を安定させつつ、戸田に型を教え始められる", "midDue": "2〜3ヶ月後", "why": "自分の成約を安定させつつ、戸田に型を教えられる状態を目指す", "focus": "苦手ケースの切り返しをロープレで固める（②練習・進行中）", "next": "③実践へ：商談前に型の要点を確認する", "currentStage": 2, "_source": "Notion『GMタスクDB』で宮腰ゴールに紐づく実タスク10件のミラー（2026-06-24時点）。done=ステータス『完了』。基礎④⑤の一部は未登録で、見直しで追加予定。", "phases": [{"name": "型を知る", "doneDef": "自分の勝ち負けを言語化できる", "tasks": [{"name": "直近の成約・失注を5件ずつ振り返る", "status": "完了", "done": true}, {"name": "勝ち／負けパターンを言語化する", "status": "完了", "done": true}], "due": "2026-06-19"}, {"name": "練習", "doneDef": "苦手ケースでも型どおり切り返せる", "tasks": [{"name": "苦手ケースの切り返しをロープレ", "status": "進行中", "done": false}, {"name": "トップ商談の録音を聞く", "status": "未着手", "done": false}], "due": "2026-06-28"}, {"name": "実践", "doneDef": "商談で型を意図的に使えている", "tasks": [{"name": "商談前に型の要点を確認する", "status": "未着手", "done": false}, {"name": "ネック処理を意図的に試す", "status": "未着手", "done": false}], "due": "2026-07-06"}, {"name": "振り返り", "doneDef": "失注の共通要因を、戸田に教える前提で言語化できる", "tasks": [{"name": "週次で成約率の推移を確認", "status": "未着手", "done": false}, {"name": "戸田と一緒に失注を振り返り、教える前提で言語化", "status": "未着手", "done": false}], "due": "2026-07-15"}, {"name": "自走", "doneDef": "指導なしで型を回し、戸田に教えられる", "tasks": [{"name": "戸田に自分の型を教える", "status": "未着手", "done": false}, {"name": "戸田の商談に同行してFBする", "status": "未着手", "done": false}], "due": "2026-07-23"}], "startDate": "2026-06-11", "dueDate": "2026-07-23", "logs": []},
+  {"name": "岡野", "note": "wanny", "theme": "契約を安定させる（クローザー）", "goal": "客層を問わず自分の型で契約まで運び、成約が安定する", "vision": "自分の型を安定させ、wannyメンバーの成約を底上げできる管理者になる", "visionDue": "半年後（2026年内）", "midGoal": "自分の型を安定させ、wannyの失注要因を1つ言語化できる", "midDue": "2〜3ヶ月後", "why": "成約率が客層で振れる。型を固めて安定させたい", "focus": "苦手ケースの切り返しをロープレで固める（②練習・進行中）", "next": "③実践へ：商談前に型の要点を確認する", "currentStage": 2, "_source": "Notion『GMタスクDB』の実タスク・実ステータスのミラー（2026-06-24時点）。done=ステータス『完了』。statusに実値を保持。", "phases": [{"name": "型を知る", "doneDef": "自分の勝ち負けを言語化できる", "tasks": [{"name": "直近の成約・失注を5件ずつ振り返る", "status": "完了", "done": true}, {"name": "勝ち／負けパターンを言語化する", "status": "完了", "done": true}], "due": "2026-06-19"}, {"name": "練習", "doneDef": "苦手ケースでも型どおり切り返せる", "tasks": [{"name": "苦手ケースの切り返しをロープレ", "status": "進行中", "done": false}, {"name": "トップ商談の録音を聞く", "status": "未着手", "done": false}], "due": "2026-06-28"}, {"name": "実践", "doneDef": "商談で型を意図的に使えている", "tasks": [{"name": "商談前に型の要点を確認する", "status": "未着手", "done": false}, {"name": "ネック処理を意図的に試す", "status": "未着手", "done": false}], "due": "2026-07-06"}, {"name": "振り返り", "doneDef": "失注の共通要因を抽出し、wany全体に展開できる", "tasks": [{"name": "週次で成約率の推移を確認", "status": "未着手", "done": false}, {"name": "失注の共通要因を抽出する", "status": "未着手", "done": false}, {"name": "wannyメンバーの失注商談を1件レビューし、要因を自分の型と照合", "status": "未着手", "done": false}, {"name": "【管理】wany全体の成約率を把握し、底上げ対象メンバーを決める", "status": "未着手", "done": false}], "due": "2026-07-15"}, {"name": "自走", "doneDef": "指導なしで型を回し、wanyの標準トークに言語化できる", "tasks": [{"name": "苦手客層を指名で担当する", "status": "未着手", "done": false}, {"name": "自分の型を後輩に共有する", "status": "未着手", "done": false}, {"name": "勝ち型をwannyの標準トークに言語化・共有する", "status": "未着手", "done": false}, {"name": "メンバーのロープレを主催し、教えて詰まった点を自分の再発見に使う", "status": "未着手", "done": false}, {"name": "【管理】wannyメンバーと1on1し、各人の今週フォーカスを握る", "status": "未着手", "done": false}], "due": "2026-07-23"}], "startDate": "2026-06-11", "dueDate": "2026-07-23", "logs": []},
+  {"name": "戸田", "note": "wanny・宮腰指導", "theme": "契約を安定させる（クローザー）", "goal": "客層を問わず自分の型で契約まで運び、成約が安定する", "vision": "宮腰の指導を離れ、自分の型で安定して契約できるクローザーになる", "visionDue": "半年後（2026年内）", "midGoal": "宮腰の指導つきで、苦手ケースを型どおり切り返せる", "midDue": "2〜3ヶ月後", "why": "宮腰の指導を受けながら、自分の型を固めて成約を安定させる", "focus": "まずは現状の勝ち負けを言語化する（①型を知る）", "next": "②練習へ：苦手ケースの切り返しをロープレ", "currentStage": 1, "_source": "スターター（テンプレ）。Notion未登録のため、実タスク・実進捗は要見直し（2026-06-26作成）。月初は全タスク未着手＝卵スタート。宮腰が指導役。", "phases": [{"name": "型を知る", "doneDef": "自分の勝ち負けを言語化できる", "tasks": [{"name": "直近の成約・失注を5件ずつ振り返る", "status": "未着手", "done": false}, {"name": "勝ち／負けパターンを言語化する", "status": "未着手", "done": false}], "due": "2026-07-17"}, {"name": "練習", "doneDef": "苦手ケースでも型どおり切り返せる", "tasks": [{"name": "苦手ケースの切り返しを宮腰とロープレ", "status": "未着手", "done": false}, {"name": "トップ商談の録音を聞く", "status": "未着手", "done": false}], "due": "2026-07-27"}, {"name": "実践", "doneDef": "商談で型を意図的に使えている", "tasks": [{"name": "商談前に型の要点を確認する", "status": "未着手", "done": false}, {"name": "ネック処理を意図的に試す", "status": "未着手", "done": false}], "due": "2026-08-07"}, {"name": "振り返り", "doneDef": "失注の共通要因を抽出できる", "tasks": [{"name": "週次で成約率の推移を確認", "status": "未着手", "done": false}, {"name": "失注を宮腰と振り返り、要因を言語化", "status": "未着手", "done": false}], "due": "2026-08-17"}, {"name": "自走", "doneDef": "指導なしで型を回せる", "tasks": [{"name": "指導なしで1商談を型どおり完遂する", "status": "未着手", "done": false}, {"name": "自分の勝ち型を言語化する", "status": "未着手", "done": false}], "due": "2026-08-28"}], "startDate": "2026-07-06", "dueDate": "2026-08-28", "logs": []},
+  {"name": "藤江", "note": "ピタサチ・営業", "theme": "契約を安定させる（クローザー）", "goal": "客層を問わず自分の型で契約まで運び、成約が安定する", "vision": "どんな客層でも自分の型で安定して契約でき、勝ち型を後輩に教えられる", "visionDue": "半年後（2026年内）", "midGoal": "苦手客層でも型どおり切り返せるようになる", "midDue": "2〜3ヶ月後", "why": "型を固めて成約率を安定させたい", "focus": "まずは現状の勝ち負けを言語化する（①型を知る）", "next": "②練習へ：苦手ケースの切り返しをロープレ", "currentStage": 1, "_source": "スターター（テンプレ）。Notion未登録のため、実タスク・実進捗は要見直し（2026-06-26作成）。月初は全タスク未着手＝卵スタート。", "phases": [{"name": "型を知る", "doneDef": "自分の勝ち負けを言語化できる", "tasks": [{"name": "直近の成約・失注を5件ずつ振り返る", "status": "未着手", "done": false}, {"name": "勝ち／負けパターンを言語化する", "status": "未着手", "done": false}], "due": "2026-07-17"}, {"name": "練習", "doneDef": "苦手ケースでも型どおり切り返せる", "tasks": [{"name": "苦手ケースの切り返しをロープレ", "status": "未着手", "done": false}, {"name": "トップ商談の録音を聞く", "status": "未着手", "done": false}], "due": "2026-07-27"}, {"name": "実践", "doneDef": "商談で型を意図的に使えている", "tasks": [{"name": "商談前に型の要点を確認する", "status": "未着手", "done": false}, {"name": "ネック処理を意図的に試す", "status": "未着手", "done": false}], "due": "2026-08-07"}, {"name": "振り返り", "doneDef": "失注の共通要因を抽出できる", "tasks": [{"name": "週次で成約率の推移を確認", "status": "未着手", "done": false}, {"name": "失注の共通要因を抽出する", "status": "未着手", "done": false}], "due": "2026-08-17"}, {"name": "自走", "doneDef": "指導なしで型を回し、人に教えられる", "tasks": [{"name": "自分の型を後輩に共有する", "status": "未着手", "done": false}, {"name": "勝ち型を標準トークに言語化・共有する", "status": "未着手", "done": false}], "due": "2026-08-28"}], "startDate": "2026-07-06", "dueDate": "2026-08-28", "logs": []},
+  {"name": "門田", "note": "ピタサチ・役員兼営業", "theme": "契約を安定させる（クローザー）", "goal": "客層を問わず自分の型で契約まで運び、成約が安定する", "vision": "自分の型を確立し、ピタサチ代理店に勝ち型を展開して育てられる", "visionDue": "1年後（2027年）", "midGoal": "自分の型を安定させ、ピタサチの成約率を把握・底上げ着手できる", "midDue": "2〜3ヶ月後", "why": "成約を安定させ、チームに型を示せる状態を目指す", "focus": "まずは現状の勝ち負けを言語化する（①型を知る）", "next": "②練習へ：苦手ケースの切り返しをロープレ", "currentStage": 1, "_source": "スターター（テンプレ）。Notion未登録のため、実タスク・実進捗は要見直し（2026-06-26作成）。月初は全タスク未着手＝卵スタート。", "phases": [{"name": "型を知る", "doneDef": "自分の勝ち負けを言語化できる", "tasks": [{"name": "直近の成約・失注を5件ずつ振り返る", "status": "未着手", "done": false}, {"name": "勝ち／負けパターンを言語化する", "status": "未着手", "done": false}], "due": "2026-07-17"}, {"name": "練習", "doneDef": "苦手ケースでも型どおり切り返せる", "tasks": [{"name": "苦手ケースの切り返しをロープレ", "status": "未着手", "done": false}, {"name": "トップ商談の録音を聞く", "status": "未着手", "done": false}], "due": "2026-07-27"}, {"name": "実践", "doneDef": "商談で型を意図的に使えている", "tasks": [{"name": "商談前に型の要点を確認する", "status": "未着手", "done": false}, {"name": "ネック処理を意図的に試す", "status": "未着手", "done": false}], "due": "2026-08-07"}, {"name": "振り返り", "doneDef": "失注の共通要因を抽出できる", "tasks": [{"name": "週次で成約率の推移を確認", "status": "未着手", "done": false}, {"name": "失注の共通要因を抽出する", "status": "未着手", "done": false}, {"name": "【管理】ピタサチ全体の成約率を把握し、底上げ対象を決める", "status": "未着手", "done": false}], "due": "2026-08-17"}, {"name": "自走", "doneDef": "指導なしで型を回し、代理店メンバーを育てられる", "tasks": [{"name": "自分の型を後輩に共有する", "status": "未着手", "done": false}, {"name": "勝ち型を標準トークに言語化・共有する", "status": "未着手", "done": false}, {"name": "【管理】ピタサチメンバーと1on1し、各人のフォーカスを握る", "status": "未着手", "done": false}, {"name": "【管理】ピタサチに勝ち型を標準トークとして展開する", "status": "未着手", "done": false}], "due": "2026-08-28"}], "startDate": "2026-07-06", "dueDate": "2026-08-28", "logs": []}
 ];
 const clone = x => JSON.parse(JSON.stringify(x));
 const embeddedNames = () => EMBEDDED.map(m=>m.name);
@@ -361,10 +362,13 @@ function buildSvg(d){
   const total=all.length, rate=total?Math.round(done/total*100):0;
   const order=[4,3,2,1,0];
   const hts={}; order.forEach(i=>hts[i]=phaseH((phases[i].tasks||[]).length));
-  // 中長期ゴール（北極星）＝ゴール箱のさらに上に置く「遠い頂」。未設定なら従来レイアウト
+  // 上位目標＝ゴール箱のさらに上に積む段（大枠＝vision／中目標＝midGoal）。未設定の段は描かない
   const hasVision=!!(d.vision&&String(d.vision).trim());
+  const hasMid=!!(d.midGoal&&String(d.midGoal).trim());
   const VIS_BAND=46, VIS_GAP=22, VIS_H=hasVision?(VIS_BAND+VIS_GAP):0;
-  const H=HEADER_H+VIS_H+GOAL_H+GAP+order.reduce((s,i)=>s+hts[i]+GAP,0)+PAD;
+  const MID_BAND=44, MID_GAP=20, MID_H=hasMid?(MID_BAND+MID_GAP):0;
+  const TOP_H=VIS_H+MID_H;
+  const H=HEADER_H+TOP_H+GOAL_H+GAP+order.reduce((s,i)=>s+hts[i]+GAP,0)+PAD;
   const cx=PHASE_X+PHASE_W/2;
   const o=[];
   o.push(`<svg xmlns="http://www.w3.org/2000/svg" id="gm" viewBox="0 0 ${W} ${H}" font-family="${FONT}" width="${W}" height="${H}">`);
@@ -372,8 +376,9 @@ function buildSvg(d){
   o.push(`<rect x="0" y="0" width="${W}" height="${H}" fill="#fff"/>`);
   let head=esc(d.name||"")+(d.note?`（${esc(d.note)}）`:"")+`｜${esc(d.theme||"")}`;
   o.push(`<text x="20" y="34" font-size="19" font-weight="700" fill="${COL.ink}">${head}</text>`);
-  if(hasVision){ // ヘッダーにも中長期を1行常時表示（今のゴールが霞んでも見える）
-    const vt="中長期："+String(d.vision); const vs=vt.length>22?vt.slice(0,22)+"…":vt;
+  if(hasVision||hasMid){ // ヘッダーにも上位目標を1行常時表示（今のゴールが霞んでも見える）
+    const vt=(hasVision?"大枠："+String(d.vision):"中目標："+String(d.midGoal));
+    const vs=vt.length>22?vt.slice(0,22)+"…":vt;
     o.push(`<text x="20" y="52" font-size="11" fill="${COL.sub}">${esc(vs)}</text>`);
   }
   const bx=W-210, bw=150;
@@ -385,19 +390,26 @@ function buildSvg(d){
     o.push(`<text x="${PILL_X+PILL_W/2}" y="${cy+4}" text-anchor="middle" font-size="11" font-weight="700" fill="${fg}">${esc(label)}</text>`);};
   const arrow=(yb,yt)=>{o.push(`<line x1="${cx}" y1="${yb}" x2="${cx}" y2="${yt+6}" stroke="${COL.future}" stroke-width="2"/>`);
     o.push(`<path d="M${cx-5},${yt+8} L${cx},${yt+2} L${cx+5},${yt+8} Z" fill="${COL.future}"/>`);};
-  // ゴール箱（輝くグラデーション＝到達点を一目で“ごほうび”に見せる）
-  const gy=HEADER_H+VIS_H;
-  if(hasVision){ // 遠い頂＝中長期ゴール（北極星）。今期ゴールはその通過点
-    const vy=HEADER_H;
-    o.push(`<rect x="${PHASE_X}" y="${vy}" width="${PHASE_W}" height="${VIS_BAND}" rx="10" fill="#F3F0FF" stroke="#B9AEEA" stroke-width="1.6" stroke-dasharray="5 4"/>`);
-    o.push(star(PHASE_X+PHASE_W-16, vy+14, 6, "#C9BEF2"));
-    o.push(`<text x="${PHASE_X+12}" y="${vy+17}" font-size="10.5" font-weight="700" fill="#6357CC">中長期ゴール（北極星）${d.visionDue?`・${esc(d.visionDue)}`:""}</text>`);
-    wrap(d.vision,17).slice(0,2).forEach((l,k)=>o.push(`<text x="${PHASE_X+12}" y="${vy+34+k*14}" font-size="12" font-weight="600" fill="#4B3FA0">${esc(l)}</text>`));
-    // 今期ゴール→北極星の淡い上向き矢印（この先へ）
-    o.push(`<line x1="${cx}" y1="${gy}" x2="${cx}" y2="${vy+VIS_BAND+5}" stroke="#B9AEEA" stroke-width="2" stroke-dasharray="4 3"/>`);
-    o.push(`<path d="M${cx-5},${vy+VIS_BAND+7} L${cx},${vy+VIS_BAND+1} L${cx+5},${vy+VIS_BAND+7} Z" fill="#B9AEEA"/>`);
-    o.push(`<text x="${cx+9}" y="${vy+VIS_BAND+16}" font-size="9.5" fill="#8A7FD0">その先へ</text>`);
-  }
+  // 上位目標の段（大枠＝紫破線・中目標＝青破線）を上から積み、淡い上向き矢印で連結
+  const gy=HEADER_H+TOP_H;
+  const tierBand=(y,h,fill,stroke,starFill,label,body,bodyFill)=>{
+    o.push(`<rect x="${PHASE_X}" y="${y}" width="${PHASE_W}" height="${h}" rx="10" fill="${fill}" stroke="${stroke}" stroke-width="1.6" stroke-dasharray="5 4"/>`);
+    o.push(star(PHASE_X+PHASE_W-16, y+14, 6, starFill));
+    o.push(`<text x="${PHASE_X+12}" y="${y+17}" font-size="10.5" font-weight="700" fill="${stroke}">${esc(label)}</text>`);
+    wrap(body,17).slice(0,2).forEach((l,k)=>o.push(`<text x="${PHASE_X+12}" y="${y+34+k*14}" font-size="12" font-weight="600" fill="${bodyFill}">${esc(l)}</text>`));
+  };
+  const upArrow=(yUpperBottom,yLowerTop,color,label)=>{ // 下段上端→上段下端への上向き矢印
+    o.push(`<line x1="${cx}" y1="${yLowerTop}" x2="${cx}" y2="${yUpperBottom+5}" stroke="${color}" stroke-width="2" stroke-dasharray="4 3"/>`);
+    o.push(`<path d="M${cx-5},${yUpperBottom+7} L${cx},${yUpperBottom+1} L${cx+5},${yUpperBottom+7} Z" fill="${color}"/>`);
+    if(label)o.push(`<text x="${cx+9}" y="${yUpperBottom+16}" font-size="9.5" fill="${color}">${label}</text>`);
+  };
+  if(hasVision) tierBand(HEADER_H, VIS_BAND, "#F3F0FF", "#8A7FD0", "#C9BEF2",
+    "大枠ゴール（長期・北極星）"+(d.visionDue?`・${d.visionDue}`:""), d.vision, "#4B3FA0");
+  if(hasMid) tierBand(HEADER_H+VIS_H, MID_BAND, "#EEF6FF", "#5C90CE", "#B9D6F2",
+    "中目標（中期のマイルストーン）"+(d.midDue?`・${d.midDue}`:""), d.midGoal, "#2C5A93");
+  if(hasMid) upArrow(HEADER_H+VIS_H+MID_BAND, gy, "#5C90CE", "その先へ");        // 今期→中目標
+  if(hasVision&&hasMid) upArrow(HEADER_H+VIS_BAND, HEADER_H+VIS_H, "#8A7FD0", ""); // 中目標→大枠
+  if(hasVision&&!hasMid) upArrow(HEADER_H+VIS_BAND, gy, "#8A7FD0", "その先へ");    // 今期→大枠（中目標なし）
   o.push(`<rect x="${PHASE_X}" y="${gy}" width="${PHASE_W}" height="${GOAL_H}" rx="10" fill="url(#goalGrad)" stroke="#FFD36E" stroke-width="2.5"/>`);
   o.push(`<rect x="${PHASE_X}" y="${gy}" width="${PHASE_W}" height="${GOAL_H/2}" rx="10" fill="#ffffff" opacity="0.16"/>`);
   o.push(`<text x="${PHASE_X+14}" y="${gy+22}" font-size="12" font-weight="700" fill="#fff">ゴール</text>`);
@@ -406,7 +418,7 @@ function buildSvg(d){
   pill(gy+GOAL_H/2,"達成","#B7791F","#FFF3D6");
   // ── 成長キャラ（達成感メーター：1タスク=餌、1フェーズ完食=進化）──
   const g=growth(d);
-  const ccx=402, ccy=112+VIS_H, cs=1.7, tx=ccx+46;
+  const ccx=402, ccy=112+TOP_H, cs=1.7, tx=ccx+46;
   o.push(birdMarkup(g.form,ccx,ccy,cs,g.phaseDone,g.cycle>=2?g.cycle:0));
   if(g.form<5){
     o.push(`<text x="${tx}" y="${ccy-3}" font-size="13" font-weight="700" fill="${COL.ink}">あと${g.need}コで進化</text>`);
@@ -465,8 +477,10 @@ function renderEditor(){
     <div class="field"><label>所属</label><input type="text" data-f="note" value="${esc(data.note)}"></div>
     <div class="field"><label>テーマ（分野の見出し・任意）</label><input type="text" data-f="theme" value="${esc(data.theme)}"></div>
     <div class="field"><label>ゴール（観察できる状態・今期の到達点）</label><input type="text" data-f="goal" value="${esc(data.goal)}"></div>
-    <div class="field"><label>🌟 中長期ゴール（北極星・半年〜1年後の到達像／今のタスクが何のための一歩か）</label><input type="text" data-f="vision" value="${esc(data.vision||'')}" placeholder="例：どんな客層でも自分の型で安定して契約でき、後輩に型を教えられる"></div>
-    <div class="field"><label>中長期の時期ラベル（任意・例「半年後（2026年内）」）</label><input type="text" data-f="visionDue" value="${esc(data.visionDue||'')}" placeholder="半年後（2026年内）"></div>
+    <div class="field"><label>🌟 大枠ゴール（長期・北極星／半年〜1年後の到達像。今のタスクが何のための一歩か）</label><input type="text" data-f="vision" value="${esc(data.vision||'')}" placeholder="例：どんな客層でも自分の型で安定して契約でき、後輩に型を教えられる"></div>
+    <div class="field"><label>大枠の時期ラベル（任意・例「半年後（2026年内）」）</label><input type="text" data-f="visionDue" value="${esc(data.visionDue||'')}" placeholder="半年後（2026年内）"></div>
+    <div class="field"><label>🏔 中目標（中期のマイルストーン・今期ゴールと大枠の間の一里塚）</label><input type="text" data-f="midGoal" value="${esc(data.midGoal||'')}" placeholder="例：苦手客層でも型どおり切り返せるようになる"></div>
+    <div class="field"><label>中目標の時期ラベル（任意・例「2〜3ヶ月後」）</label><input type="text" data-f="midDue" value="${esc(data.midDue||'')}" placeholder="2〜3ヶ月後"></div>
     <div class="field"><label>現在ステージ（今ここ）</label><div class="stage-pick">${stageBtns}</div></div>
     <div class="field"><label>周回（何周目／達成した不死鳥の番号）</label>
       <div class="cycle-row">
@@ -506,8 +520,63 @@ function renderEditor(){
   e.innerHTML=html;
 }
 
-let summaryMode=false;
-function renderCanvas(){document.getElementById("canvas").innerHTML=summaryMode?buildSummarySvg(data):buildSvg(data);}
+// 🔭 俯瞰（フェードアウト）ビュー：タスクを畳み、大枠▸中目標▸今期ゴールの全体像だけを見せる
+function buildOverviewSvg(d){
+  const W=680, BX=170, BW=340, cx=BX+BW/2;
+  const g=growth(d), cur=+d.currentStage||1;
+  const tiers=[];
+  if(d.vision&&String(d.vision).trim())
+    tiers.push({label:"大枠ゴール（長期・北極星）"+(d.visionDue?`・${d.visionDue}`:""),body:d.vision,fill:"#F3F0FF",stroke:"#8A7FD0",bodyFill:"#4B3FA0",labelFill:"#8A7FD0",dashed:true});
+  if(d.midGoal&&String(d.midGoal).trim())
+    tiers.push({label:"中目標（中期のマイルストーン）"+(d.midDue?`・${d.midDue}`:""),body:d.midGoal,fill:"#EEF6FF",stroke:"#5C90CE",bodyFill:"#2C5A93",labelFill:"#5C90CE",dashed:true});
+  tiers.push({label:"今期ゴール",body:d.goal||"",fill:"url(#goalGrad)",stroke:"#FFD36E",bodyFill:"#fff",labelFill:"#fff",dashed:false});
+  const boxes=tiers.map(t=>{const lines=wrap(t.body,24).slice(0,3);return Object.assign({},t,{lines,h:34+lines.length*17});});
+  const HEAD=64, ARROW=34, STRIP=96, PAD=24;
+  const H=HEAD+boxes.reduce((s,b)=>s+b.h,0)+ARROW*boxes.length+STRIP+PAD;
+  const o=[];
+  o.push(`<svg xmlns="http://www.w3.org/2000/svg" id="gm" viewBox="0 0 ${W} ${H}" font-family="${FONT}" width="${W}" height="${H}">`);
+  o.push(SVG_DEFS);
+  o.push(`<rect x="0" y="0" width="${W}" height="${H}" fill="#fff"/>`);
+  const head=esc(d.name||"")+(d.note?`（${esc(d.note)}）`:"")+`｜${esc(d.theme||"")}`;
+  o.push(`<text x="24" y="32" font-size="18" font-weight="700" fill="${COL.ink}">${head}</text>`);
+  o.push(`<text x="24" y="52" font-size="12" fill="${COL.sub}">🔭 俯瞰ビュー：目標の全体像（タスクは畳んで表示）</text>`);
+  o.push(`<text x="${W-24}" y="28" text-anchor="end" font-size="14" font-weight="700" fill="${COL.done}">達成率 ${g.rate}%</text>`);
+  o.push(`<rect x="${W-160}" y="38" width="136" height="9" rx="4.5" fill="${COL.futureBg}"/>`);
+  o.push(`<rect x="${W-160}" y="38" width="${Math.round(136*g.rate/100)}" height="9" rx="4.5" fill="${COL.done}"/>`);
+  o.push(birdMarkup(g.form,W-52,HEAD+8,1.15,g.phaseDone,g.cycle>=2?g.cycle:0));
+  let y=HEAD;
+  boxes.forEach((b,i)=>{
+    if(i>0){const ay=y-ARROW;
+      o.push(`<line x1="${cx}" y1="${y-6}" x2="${cx}" y2="${ay+9}" stroke="${b.stroke}" stroke-width="2.5"${b.dashed?' stroke-dasharray="5 4"':''}/>`);
+      o.push(`<path d="M${cx-6},${ay+12} L${cx},${ay+3} L${cx+6},${ay+12} Z" fill="${b.stroke}"/>`);
+      o.push(`<text x="${cx+11}" y="${ay+14}" font-size="10" fill="${b.stroke}">その先へ</text>`);}
+    o.push(`<rect x="${BX}" y="${y}" width="${BW}" height="${b.h}" rx="12" fill="${b.fill}" stroke="${b.stroke}" stroke-width="2"${b.dashed?' stroke-dasharray="6 4"':''}/>`);
+    if(String(b.fill).indexOf("goalGrad")>=0){o.push(`<rect x="${BX}" y="${y}" width="${BW}" height="${b.h/2}" rx="12" fill="#fff" opacity="0.16"/>`);o.push(star(BX+BW-18,y+16,7,"#FFF1B8"));}
+    o.push(`<text x="${BX+16}" y="${y+20}" font-size="11" font-weight="700" fill="${b.labelFill}">${esc(b.label)}</text>`);
+    b.lines.forEach((l,k)=>o.push(`<text x="${BX+16}" y="${y+40+k*17}" font-size="14" font-weight="600" fill="${b.bodyFill}">${esc(l)}</text>`));
+    y+=b.h+ARROW;
+  });
+  // 今のタスク群→今期ゴールの矢印＋フェーズ帯（タスクは畳む＝淡色でフェードアウト）
+  const ay=y-ARROW;
+  o.push(`<line x1="${cx}" y1="${y+2}" x2="${cx}" y2="${ay+9}" stroke="${COL.future}" stroke-width="2.5"/>`);
+  o.push(`<path d="M${cx-6},${ay+12} L${cx},${ay+3} L${cx+6},${ay+12} Z" fill="${COL.future}"/>`);
+  o.push(`<text x="${BX}" y="${y+8}" font-size="12" font-weight="700" fill="${COL.now}">今ここ：${esc(STAGE_NAMES[cur-1])}（この下のタスクは畳み中）</text>`);
+  const cw=(BW)/5, chipY=y+18;
+  (d.phases||[]).forEach((p,idx)=>{
+    const tasks=p.tasks||[], done=tasks.filter(t=>t.done).length, sn=idx+1;
+    let fg,bg; if(sn<cur){fg=COL.done;bg=COL.doneBg;} else if(sn===cur){fg=COL.now;bg=COL.nowBg;} else {fg=COL.future;bg=COL.futureBg;}
+    const x=BX+idx*cw;
+    o.push(`<g opacity="${sn===cur?1:0.5}">`);
+    o.push(`<rect x="${x}" y="${chipY}" width="${cw-8}" height="42" rx="9" fill="${bg}" stroke="${fg}" stroke-width="${sn===cur?2:1}"/>`);
+    o.push(`<text x="${x+(cw-8)/2}" y="${chipY+20}" text-anchor="middle" font-size="16" font-weight="700" fill="${fg}">${esc(STAGE_NAMES[idx].charAt(0))}</text>`);
+    o.push(`<text x="${x+(cw-8)/2}" y="${chipY+35}" text-anchor="middle" font-size="10" fill="${fg}">✓${done}/${tasks.length}</text>`);
+    o.push(`</g>`);
+  });
+  o.push("</svg>");
+  return o.join("\n");
+}
+let summaryMode=false, overviewMode=false;
+function renderCanvas(){const c=document.getElementById("canvas");c.innerHTML=overviewMode?buildOverviewSvg(data):(summaryMode?buildSummarySvg(data):buildSvg(data));}
 
 // 今週の最優先タスク：現在ステージ以降で最初の未完タスク
 function topTask(d){
@@ -526,7 +595,10 @@ function buildSummarySvg(d){
   const W=430, PAD=12, taskH=16;     // LINE可読性のため横幅を広げ文字を一回り大きく
   const g=growth(d), cur=+d.currentStage||1, tt=topTask(d), todayIso=todayISO();
   const blocks=(d.phases||[]).map((p,idx)=>{const tasks=p.tasks||[];return{idx,p,tasks,h:22+Math.max(1,tasks.length)*taskH+6};});
-  const hasV=!!(d.vision&&String(d.vision).trim()), visH=hasV?20:0;
+  const topLines=[];
+  if(d.vision&&String(d.vision).trim())topLines.push({t:"大枠："+String(d.vision),c:"#6357CC"});
+  if(d.midGoal&&String(d.midGoal).trim())topLines.push({t:"中目標："+String(d.midGoal),c:"#2C5A93"});
+  const visH=topLines.length?topLines.length*14+6:0;
   const gy=48+visH, gw=270, gh=64;
   const py=gy+gh+12, stripH=46;      // 最優先ストリップ
   const headH=py+stripH+10;
@@ -538,10 +610,10 @@ function buildSummarySvg(d){
   // 名前・テーマ／達成率・バー
   o.push(`<text x="${PAD}" y="22" font-size="16" font-weight="700" fill="${COL.ink}">${esc(d.name||"")}${d.note?`（${esc(d.note)}）`:""}</text>`);
   o.push(`<text x="${PAD}" y="40" font-size="11.5" fill="${COL.sub}">${esc(d.theme||"")}</text>`);
-  if(hasV){ // 中長期ゴール（北極星）を先頭に一行（今のゴールの“その先”）
-    const vt="中長期："+String(d.vision), vs=vt.length>34?vt.slice(0,34)+"…":vt;
-    o.push(`<text x="${PAD}" y="${40+visH-2}" font-size="11" font-weight="700" fill="#6357CC">${esc(vs)}</text>`);
-  }
+  topLines.forEach((ln,i)=>{ // 上位目標（大枠／中目標）を先頭に最大2行（今のゴールの“その先”）
+    const vs=ln.t.length>34?ln.t.slice(0,34)+"…":ln.t;
+    o.push(`<text x="${PAD}" y="${54+i*14}" font-size="11" font-weight="700" fill="${ln.c}">${esc(vs)}</text>`);
+  });
   o.push(`<text x="${W-PAD}" y="22" text-anchor="end" font-size="17" font-weight="700" fill="${COL.done}">達成率 ${g.rate}%</text>`);
   o.push(`<rect x="${W-150}" y="30" width="138" height="8" rx="4" fill="${COL.futureBg}"/>`);
   o.push(`<rect x="${W-150}" y="30" width="${Math.round(138*g.rate/100)}" height="8" rx="4" fill="${COL.done}"/>`);
@@ -843,10 +915,20 @@ document.getElementById("exportJson").addEventListener("click",()=>{
 document.getElementById("print").addEventListener("click",()=>window.print());
 document.getElementById("summary").addEventListener("click",()=>{
   summaryMode=!summaryMode;
+  if(summaryMode)overviewMode=false;
   document.getElementById("summary").classList.toggle("primary",summaryMode);
+  document.getElementById("overview").classList.toggle("primary",false);
   document.body.classList.toggle("summary",summaryMode);   // ロスターを隠してスッキリ
   renderCanvas();
   if(summaryMode)document.getElementById("canvas").scrollIntoView({behavior:"smooth",block:"start"});
+});
+document.getElementById("overview").addEventListener("click",()=>{
+  overviewMode=!overviewMode;
+  if(overviewMode){summaryMode=false;document.body.classList.remove("summary");}
+  document.getElementById("overview").classList.toggle("primary",overviewMode);
+  document.getElementById("summary").classList.toggle("primary",false);
+  renderCanvas();
+  document.getElementById("canvas").scrollIntoView({behavior:"smooth",block:"start"});
 });
 document.getElementById("exportAvatar").addEventListener("click",()=>{
   const xml=buildAvatarCard(data);

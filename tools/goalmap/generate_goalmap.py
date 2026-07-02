@@ -280,11 +280,15 @@ def build_svg(d: dict, font: str = FONT) -> str:
     # 各箱の高さを先に計算して総高さを決める（描画は上→下: goal,⑤,④,③,②,①）
     order = [4, 3, 2, 1, 0]  # phases index、上から
     heights = {i: phase_box_height(len(phases[i].get("tasks", []))) for i in order}
-    # 中長期ゴール（北極星）＝ゴール箱のさらに上の「遠い頂」。未設定なら従来レイアウト
+    # 上位目標＝ゴール箱のさらに上に積む段（大枠＝vision／中目標＝midGoal）。未設定の段は描かない
     has_vision = bool(str(d.get("vision", "")).strip())
+    has_mid = bool(str(d.get("midGoal", "")).strip())
     VIS_BAND, VIS_GAP = 46, 22
+    MID_BAND, MID_GAP = 44, 20
     VIS_H = (VIS_BAND + VIS_GAP) if has_vision else 0
-    H = HEADER_H + VIS_H + GOAL_H + GAP + sum(heights[i] + GAP for i in order) + PAD_BOTTOM
+    MID_H = (MID_BAND + MID_GAP) if has_mid else 0
+    TOP_H = VIS_H + MID_H
+    H = HEADER_H + TOP_H + GOAL_H + GAP + sum(heights[i] + GAP for i in order) + PAD_BOTTOM
 
     out: list[str] = []
     out.append(
@@ -328,8 +332,8 @@ def build_svg(d: dict, font: str = FONT) -> str:
     out.append(
         f'<text x="20" y="34" font-size="19" font-weight="700" fill="{C_INK}">{esc(head)}</text>'
     )
-    if has_vision:  # ヘッダーにも中長期を1行常時表示（今のゴールが霞んでも見える）
-        vt = "中長期：" + str(d.get("vision", ""))
+    if has_vision or has_mid:  # ヘッダーにも上位目標を1行常時表示（今のゴールが霞んでも見える）
+        vt = ("大枠：" + str(d.get("vision", ""))) if has_vision else ("中目標：" + str(d.get("midGoal", "")))
         vs = vt[:22] + "…" if len(vt) > 22 else vt
         out.append(
             f'<text x="20" y="52" font-size="11" fill="{C_SUB}">{esc(vs)}</text>'
@@ -362,39 +366,53 @@ def build_svg(d: dict, font: str = FONT) -> str:
             f'<path d="M{cx-5},{y_top+8} L{cx},{y_top+2} L{cx+5},{y_top+8} Z" fill="{C_FUTURE}"/>'
         )
 
-    # ── 遠い頂＝中長期ゴール（北極星）。今期ゴールはその通過点 ──────
-    gy = HEADER_H + VIS_H
-    if has_vision:
-        vy = HEADER_H
+    # ── 上位目標の段（大枠＝紫破線・中目標＝青破線）を上から積み、上向き矢印で連結 ──
+    gy = HEADER_H + TOP_H
+
+    def tier_band(y, h, fill, stroke, star_fill, label, body, body_fill):
         out.append(
-            f'<rect x="{PHASE_X}" y="{vy}" width="{PHASE_W}" height="{VIS_BAND}" rx="10" '
-            f'fill="#F3F0FF" stroke="#B9AEEA" stroke-width="1.6" stroke-dasharray="5 4"/>'
+            f'<rect x="{PHASE_X}" y="{y}" width="{PHASE_W}" height="{h}" rx="10" '
+            f'fill="{fill}" stroke="{stroke}" stroke-width="1.6" stroke-dasharray="5 4"/>'
         )
-        out.append(star(PHASE_X + PHASE_W - 16, vy + 14, 6, "#C9BEF2"))
-        vlabel = "中長期ゴール（北極星）"
-        if d.get("visionDue"):
-            vlabel += f"・{d['visionDue']}"
+        out.append(star(PHASE_X + PHASE_W - 16, y + 14, 6, star_fill))
         out.append(
-            f'<text x="{PHASE_X+12}" y="{vy+17}" font-size="10.5" font-weight="700" '
-            f'fill="#6357CC">{esc(vlabel)}</text>'
+            f'<text x="{PHASE_X+12}" y="{y+17}" font-size="10.5" font-weight="700" '
+            f'fill="{stroke}">{esc(label)}</text>'
         )
-        for k, line in enumerate(wrap(d.get("vision", ""), 17)[:2]):
+        for k, line in enumerate(wrap(body, 17)[:2]):
             out.append(
-                f'<text x="{PHASE_X+12}" y="{vy+34+k*14}" font-size="12" font-weight="600" '
-                f'fill="#4B3FA0">{esc(line)}</text>'
+                f'<text x="{PHASE_X+12}" y="{y+34+k*14}" font-size="12" font-weight="600" '
+                f'fill="{body_fill}">{esc(line)}</text>'
             )
-        # 今期ゴール→北極星の淡い上向き矢印（その先へ）
+
+    def dashed_up_arrow(y_upper_bottom, y_lower_top, color, label):
         out.append(
-            f'<line x1="{cx}" y1="{gy}" x2="{cx}" y2="{vy+VIS_BAND+5}" '
-            f'stroke="#B9AEEA" stroke-width="2" stroke-dasharray="4 3"/>'
+            f'<line x1="{cx}" y1="{y_lower_top}" x2="{cx}" y2="{y_upper_bottom+5}" '
+            f'stroke="{color}" stroke-width="2" stroke-dasharray="4 3"/>'
         )
         out.append(
-            f'<path d="M{cx-5},{vy+VIS_BAND+7} L{cx},{vy+VIS_BAND+1} '
-            f'L{cx+5},{vy+VIS_BAND+7} Z" fill="#B9AEEA"/>'
+            f'<path d="M{cx-5},{y_upper_bottom+7} L{cx},{y_upper_bottom+1} '
+            f'L{cx+5},{y_upper_bottom+7} Z" fill="{color}"/>'
         )
-        out.append(
-            f'<text x="{cx+9}" y="{vy+VIS_BAND+16}" font-size="9.5" fill="#8A7FD0">その先へ</text>'
-        )
+        if label:
+            out.append(
+                f'<text x="{cx+9}" y="{y_upper_bottom+16}" font-size="9.5" fill="{color}">{label}</text>'
+            )
+
+    if has_vision:
+        vlabel = "大枠ゴール（長期・北極星）" + (f"・{d['visionDue']}" if d.get("visionDue") else "")
+        tier_band(HEADER_H, VIS_BAND, "#F3F0FF", "#8A7FD0", "#C9BEF2",
+                  vlabel, d.get("vision", ""), "#4B3FA0")
+    if has_mid:
+        mlabel = "中目標（中期のマイルストーン）" + (f"・{d['midDue']}" if d.get("midDue") else "")
+        tier_band(HEADER_H + VIS_H, MID_BAND, "#EEF6FF", "#5C90CE", "#B9D6F2",
+                  mlabel, d.get("midGoal", ""), "#2C5A93")
+    if has_mid:
+        dashed_up_arrow(HEADER_H + VIS_H + MID_BAND, gy, "#5C90CE", "その先へ")
+    if has_vision and has_mid:
+        dashed_up_arrow(HEADER_H + VIS_BAND, HEADER_H + VIS_H, "#8A7FD0", "")
+    if has_vision and not has_mid:
+        dashed_up_arrow(HEADER_H + VIS_BAND, gy, "#8A7FD0", "その先へ")
     # ── ゴール箱（輝くグラデーション・金枠）──────────────
     out.append(
         f'<rect x="{PHASE_X}" y="{gy}" width="{PHASE_W}" height="{GOAL_H}" rx="10" '
@@ -420,7 +438,7 @@ def build_svg(d: dict, font: str = FONT) -> str:
 
     # ── 成長キャラ（達成感メーター：1タスク=餌、1フェーズ完食=進化）──
     g = growth(d)
-    ccx, ccy, cs, tx = 402, 112 + VIS_H, 1.7, 448
+    ccx, ccy, cs, tx = 402, 112 + TOP_H, 1.7, 448
     out.append(bird_markup(g["form"], ccx, ccy, cs, g["phaseDone"],
                            g["cycle"] if g["cycle"] >= 2 else 0))
     if g["form"] < 5:
@@ -603,8 +621,12 @@ def build_summary_svg(d: dict, font: str = FONT) -> str:
     blocks = [{"idx": i, "p": p, "tasks": p.get("tasks", []),
                "h": 22 + max(1, len(p.get("tasks", []))) * task_h + 6}
               for i, p in enumerate(phases)]
-    has_v = bool(str(d.get("vision", "")).strip())
-    vis_h = 20 if has_v else 0
+    top_lines = []
+    if str(d.get("vision", "")).strip():
+        top_lines.append(("大枠：" + str(d.get("vision", "")), "#6357CC"))
+    if str(d.get("midGoal", "")).strip():
+        top_lines.append(("中目標：" + str(d.get("midGoal", "")), "#2C5A93"))
+    vis_h = len(top_lines) * 14 + 6 if top_lines else 0
     gy, gw, gh = 48 + vis_h, 270, 64
     py, strip_h = gy + gh + 12, 46
     head_h = py + strip_h + 10
@@ -618,11 +640,10 @@ def build_summary_svg(d: dict, font: str = FONT) -> str:
     head = esc(d.get("name", "")) + (f"（{esc(d['note'])}）" if d.get("note") else "")
     o.append(f'<text x="{PAD}" y="22" font-size="16" font-weight="700" fill="{C_INK}">{head}</text>')
     o.append(f'<text x="{PAD}" y="40" font-size="11.5" fill="{C_SUB}">{esc(d.get("theme",""))}</text>')
-    if has_v:  # 中長期ゴール（北極星）を先頭に一行
-        vt = "中長期：" + str(d.get("vision", ""))
-        vs = vt[:34] + "…" if len(vt) > 34 else vt
-        o.append(f'<text x="{PAD}" y="{40+vis_h-2}" font-size="11" font-weight="700" '
-                 f'fill="#6357CC">{esc(vs)}</text>')
+    for i, (t, c) in enumerate(top_lines):  # 上位目標（大枠／中目標）を先頭に最大2行
+        vs = t[:34] + "…" if len(t) > 34 else t
+        o.append(f'<text x="{PAD}" y="{54+i*14}" font-size="11" font-weight="700" '
+                 f'fill="{c}">{esc(vs)}</text>')
     o.append(f'<text x="{W-PAD}" y="22" text-anchor="end" font-size="17" font-weight="700" '
              f'fill="{C_DONE}">達成率 {g["rate"]}%</text>')
     o.append(f'<rect x="{W-150}" y="30" width="138" height="8" rx="4" fill="{C_FUTURE_BG}"/>')
