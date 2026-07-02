@@ -1,0 +1,121 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 680 980" font-family="Hiragino Sans, 'Noto Sans CJK JP', 'Yu Gothic', sans-serif" width="680" height="980">
+<defs><linearGradient id="goalGrad" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#5B4BE0"/><stop offset="0.5" stop-color="#B14BE0"/><stop offset="1" stop-color="#FFC24B"/></linearGradient><linearGradient id="phx" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFE259"/><stop offset="0.5" stop-color="#FF9A00"/><stop offset="1" stop-color="#FF3D00"/></linearGradient><linearGradient id="phx2" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFF0A0"/><stop offset="1" stop-color="#FF7A00"/></linearGradient><linearGradient id="hen" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#37C9B0"/><stop offset="0.6" stop-color="#3DA0E8"/><stop offset="1" stop-color="#7A5BE0"/></linearGradient><linearGradient id="pcock" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2BD0C0"/><stop offset="0.55" stop-color="#2E8FD0"/><stop offset="1" stop-color="#2E4BB0"/></linearGradient><linearGradient id="gold" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFF0A8"/><stop offset="0.5" stop-color="#F2C230"/><stop offset="1" stop-color="#C8901A"/></linearGradient></defs>
+<rect x="0" y="0" width="680" height="980" fill="#FFFFFF"/>
+<text x="20" y="34" font-size="17" font-weight="700" fill="#1F2933">岡野（wanny）｜契約を安定させる（クローザー）</text>
+<text x="660" y="26" text-anchor="end" font-size="13" fill="#67707A">達成率</text>
+<text x="462" y="50" text-anchor="end" font-size="20" font-weight="700" fill="#1D9E75">13%</text>
+<rect x="470" y="38" width="150" height="12" rx="6" fill="#F2F4F6"/>
+<rect x="470" y="38" width="20" height="12" rx="6" fill="#1D9E75"/>
+<rect x="130" y="70" width="210" height="54" rx="10" fill="#F3F0FF" stroke="#8A7FD0" stroke-width="1.6" stroke-dasharray="5 4"/>
+<text x="142" y="86" font-size="10.5" font-weight="700" fill="#8A7FD0">大枠ゴール（長期）</text>
+<text x="330" y="86" text-anchor="end" font-size="9.5" fill="#8A7FD0">半年後（2026年内）</text>
+<text x="142" y="102" font-size="12" font-weight="600" fill="#4B3FA0">自分の型を安定させ、wannyメンバ</text>
+<text x="142" y="117" font-size="12" font-weight="600" fill="#4B3FA0">ーの成約を底上げできる管理者になる</text>
+<rect x="130" y="146" width="210" height="54" rx="10" fill="#EEF6FF" stroke="#5C90CE" stroke-width="1.6" stroke-dasharray="5 4"/>
+<text x="142" y="162" font-size="10.5" font-weight="700" fill="#5C90CE">中目標（中期）</text>
+<text x="330" y="162" text-anchor="end" font-size="9.5" fill="#5C90CE">2〜3ヶ月後</text>
+<text x="142" y="178" font-size="12" font-weight="600" fill="#2C5A93">自分の型を安定させ、wannyの失注</text>
+<text x="142" y="193" font-size="12" font-weight="600" fill="#2C5A93">要因を1つ言語化できる</text>
+<line x1="235.0" y1="220" x2="235.0" y2="205" stroke="#5C90CE" stroke-width="2" stroke-dasharray="4 3"/>
+<path d="M230.0,207 L235.0,201 L240.0,207 Z" fill="#5C90CE"/>
+<text x="244.0" y="216" font-size="9.5" fill="#5C90CE">その先へ</text>
+<line x1="235.0" y1="146" x2="235.0" y2="129" stroke="#8A7FD0" stroke-width="2" stroke-dasharray="4 3"/>
+<path d="M230.0,131 L235.0,125 L240.0,131 Z" fill="#8A7FD0"/>
+<rect x="130" y="220" width="210" height="66" rx="10" fill="url(#goalGrad)" stroke="#FFD36E" stroke-width="2.5"/>
+<rect x="130" y="220" width="210" height="33.0" rx="10" fill="#FFFFFF" opacity="0.16"/>
+<text x="144" y="240" font-size="12" font-weight="700" fill="#FFFFFF">ゴール</text>
+<polygon points="324.0,229.0 325.4,233.6 330.0,235.0 325.4,236.4 324.0,241.0 322.6,236.4 318.0,235.0 322.6,233.6" fill="#FFF1B8"/>
+<text x="144" y="258" font-size="13" font-weight="600" fill="#FFFFFF">客層を問わず自分の型で契約まで</text>
+<text x="144" y="274" font-size="13" font-weight="600" fill="#FFFFFF">運び、成約が安定する</text>
+<rect x="16" y="242.0" width="80" height="22" rx="11" fill="#FFF3D6" stroke="#B7791F" stroke-width="1"/>
+<text x="56.0" y="257.0" text-anchor="middle" font-size="11" font-weight="700" fill="#B7791F">達成</text>
+<line x1="395.2" y1="281.1" x2="395.2" y2="291.3" stroke="#F2A30D" stroke-width="3.4" stroke-linecap="round"/><line x1="408.8" y1="281.1" x2="408.8" y2="291.3" stroke="#F2A30D" stroke-width="3.4" stroke-linecap="round"/><circle cx="402.0" cy="262.4" r="22.1" fill="#FFD23F"/><ellipse cx="388.4" cy="264.1" rx="7.6" ry="11.9" fill="#F4C12B"/><circle cx="402.0" cy="243.7" r="13.6" fill="#FFD23F"/><polygon points="413.9,240.0 424.1,243.7 413.9,247.4" fill="#F2870D"/><circle cx="407.1" cy="240.3" r="3.6" fill="#FFFFFF"/><circle cx="407.6" cy="240.3" r="2.0" fill="#33270D"/><path d="M400.3,231.8Q396.9,223.3 403.7,223.3" fill="none" stroke="#F4C12B" stroke-width="2.7" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="448" y="256" font-size="13" font-weight="700" fill="#1F2933">あと2コで進化</text>
+<text x="448" y="274" font-size="11" fill="#67707A">餌 0/2　累計 2/15</text>
+<text x="16" y="62" font-size="10" fill="#67707A">目標時期</text>
+<line x1="235.0" y1="312" x2="235.0" y2="292" stroke="#9AA3AD" stroke-width="2"/>
+<path d="M230.0,294 L235.0,288 L240.0,294 Z" fill="#9AA3AD"/>
+<rect x="130" y="312" width="210" height="162" rx="10" fill="#F2F4F6" stroke="#9AA3AD" stroke-width="1"/>
+<circle cx="118" cy="332" r="9" fill="#9AA3AD"/>
+<text x="142" y="334" font-size="14" font-weight="700" fill="#1F2933">⑤自走</text>
+<text x="142" y="352" font-size="11" fill="#67707A">完了：指導なしで型を回し、wa</text>
+<text x="142" y="367" font-size="11" fill="#67707A">nyの標準トークに言語化できる</text>
+<rect x="16" y="382.0" width="80" height="22" rx="11" fill="#F2F4F6" stroke="#9AA3AD" stroke-width="1"/>
+<text x="56.0" y="397.0" text-anchor="middle" font-size="11" font-weight="700" fill="#9AA3AD">7月第4週</text>
+<rect x="360" y="319" width="14" height="14" rx="3" fill="#fff" stroke="#9AA3AD" stroke-width="1.5"/>
+<text x="382" y="330" font-size="12.5" fill="#1F2933">苦手客層を指名で担当する</text>
+<rect x="360" y="340" width="14" height="14" rx="3" fill="#fff" stroke="#9AA3AD" stroke-width="1.5"/>
+<text x="382" y="351" font-size="12.5" fill="#1F2933">自分の型を後輩に共有する</text>
+<rect x="360" y="361" width="14" height="14" rx="3" fill="#fff" stroke="#9AA3AD" stroke-width="1.5"/>
+<text x="382" y="372" font-size="12.5" fill="#1F2933">勝ち型をwannyの標準トークに言語化・共有</text>
+<text x="382" y="387" font-size="12.5" fill="#1F2933">する</text>
+<rect x="360" y="397" width="14" height="14" rx="3" fill="#fff" stroke="#9AA3AD" stroke-width="1.5"/>
+<text x="382" y="408" font-size="12.5" fill="#1F2933">メンバーのロープレを主催し、教えて詰まった点</text>
+<text x="382" y="423" font-size="12.5" fill="#1F2933">を自分の再発見に使う</text>
+<rect x="360" y="433" width="14" height="14" rx="3" fill="#fff" stroke="#9AA3AD" stroke-width="1.5"/>
+<text x="382" y="444" font-size="12.5" fill="#1F2933">【管理】wannyメンバーと1on1し、各人</text>
+<text x="382" y="459" font-size="12.5" fill="#1F2933">の今週フォーカスを握る</text>
+<line x1="235.0" y1="500" x2="235.0" y2="480" stroke="#9AA3AD" stroke-width="2"/>
+<path d="M230.0,482 L235.0,476 L240.0,482 Z" fill="#9AA3AD"/>
+<rect x="130" y="500" width="210" height="126" rx="10" fill="#F2F4F6" stroke="#9AA3AD" stroke-width="1"/>
+<circle cx="118" cy="520" r="9" fill="#9AA3AD"/>
+<text x="142" y="522" font-size="14" font-weight="700" fill="#1F2933">④振り返り</text>
+<text x="142" y="540" font-size="11" fill="#67707A">完了：失注の共通要因を抽出し、</text>
+<text x="142" y="555" font-size="11" fill="#67707A">wany全体に展開できる</text>
+<rect x="16" y="552.0" width="80" height="22" rx="11" fill="#F2F4F6" stroke="#9AA3AD" stroke-width="1"/>
+<text x="56.0" y="567.0" text-anchor="middle" font-size="11" font-weight="700" fill="#9AA3AD">7月第3週</text>
+<rect x="360" y="507" width="14" height="14" rx="3" fill="#fff" stroke="#9AA3AD" stroke-width="1.5"/>
+<text x="382" y="518" font-size="12.5" fill="#1F2933">週次で成約率の推移を確認</text>
+<rect x="360" y="528" width="14" height="14" rx="3" fill="#fff" stroke="#9AA3AD" stroke-width="1.5"/>
+<text x="382" y="539" font-size="12.5" fill="#1F2933">失注の共通要因を抽出する</text>
+<rect x="360" y="549" width="14" height="14" rx="3" fill="#fff" stroke="#9AA3AD" stroke-width="1.5"/>
+<text x="382" y="560" font-size="12.5" fill="#1F2933">wannyメンバーの失注商談を1件レビューし</text>
+<text x="382" y="575" font-size="12.5" fill="#1F2933">、要因を自分の型と照合</text>
+<rect x="360" y="585" width="14" height="14" rx="3" fill="#fff" stroke="#9AA3AD" stroke-width="1.5"/>
+<text x="382" y="596" font-size="12.5" fill="#1F2933">【管理】wany全体の成約率を把握し、底上げ</text>
+<text x="382" y="611" font-size="12.5" fill="#1F2933">対象メンバーを決める</text>
+<line x1="235.0" y1="652" x2="235.0" y2="632" stroke="#9AA3AD" stroke-width="2"/>
+<path d="M230.0,634 L235.0,628 L240.0,634 Z" fill="#9AA3AD"/>
+<rect x="130" y="652" width="210" height="74" rx="10" fill="#F2F4F6" stroke="#9AA3AD" stroke-width="1"/>
+<circle cx="118" cy="672" r="9" fill="#9AA3AD"/>
+<text x="142" y="674" font-size="14" font-weight="700" fill="#1F2933">③実践</text>
+<text x="142" y="692" font-size="11" fill="#67707A">完了：商談で型を意図的に使えて</text>
+<text x="142" y="707" font-size="11" fill="#67707A">いる</text>
+<rect x="16" y="678.0" width="80" height="22" rx="11" fill="#F2F4F6" stroke="#9AA3AD" stroke-width="1"/>
+<text x="56.0" y="693.0" text-anchor="middle" font-size="11" font-weight="700" fill="#9AA3AD">7月第1週</text>
+<rect x="360" y="659" width="14" height="14" rx="3" fill="#fff" stroke="#9AA3AD" stroke-width="1.5"/>
+<text x="382" y="670" font-size="12.5" fill="#1F2933">商談前に型の要点を確認する</text>
+<rect x="360" y="680" width="14" height="14" rx="3" fill="#fff" stroke="#9AA3AD" stroke-width="1.5"/>
+<text x="382" y="691" font-size="12.5" fill="#1F2933">ネック処理を意図的に試す</text>
+<line x1="235.0" y1="752" x2="235.0" y2="732" stroke="#9AA3AD" stroke-width="2"/>
+<path d="M230.0,734 L235.0,728 L240.0,734 Z" fill="#9AA3AD"/>
+<rect x="130" y="752" width="210" height="74" rx="10" fill="#FDF3E2" stroke="#EF9F27" stroke-width="2"/>
+<circle cx="118" cy="772" r="9" fill="#EF9F27"/>
+<text x="142" y="774" font-size="14" font-weight="700" fill="#1F2933">②練習</text>
+<text x="142" y="792" font-size="11" fill="#67707A">完了：苦手ケースでも型どおり切</text>
+<text x="142" y="807" font-size="11" fill="#67707A">り返せる</text>
+<rect x="16" y="778.0" width="80" height="22" rx="11" fill="#FEE2E2" stroke="#DC2626" stroke-width="1"/>
+<text x="56.0" y="793.0" text-anchor="middle" font-size="11" font-weight="700" fill="#DC2626">⚠6月第4週</text>
+<rect x="360" y="759" width="14" height="14" rx="3" fill="#fff" stroke="#9AA3AD" stroke-width="1.5"/>
+<text x="382" y="770" font-size="12.5" fill="#1F2933">苦手ケースの切り返しをロープレ</text>
+<rect x="360" y="780" width="14" height="14" rx="3" fill="#fff" stroke="#9AA3AD" stroke-width="1.5"/>
+<text x="382" y="791" font-size="12.5" fill="#1F2933">トップ商談の録音を聞く</text>
+<line x1="235.0" y1="852" x2="235.0" y2="832" stroke="#9AA3AD" stroke-width="2"/>
+<path d="M230.0,834 L235.0,828 L240.0,834 Z" fill="#9AA3AD"/>
+<rect x="130" y="852" width="210" height="74" rx="10" fill="#E7F5EF" stroke="#1D9E75" stroke-width="1"/>
+<circle cx="118" cy="872" r="9" fill="#1D9E75"/>
+<path d="M114,872 l3,3 l6,-7" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="142" y="874" font-size="14" font-weight="700" fill="#1F2933">①型を知る</text>
+<text x="142" y="892" font-size="11" fill="#67707A">完了：自分の勝ち負けを言語化で</text>
+<text x="142" y="907" font-size="11" fill="#67707A">きる</text>
+<rect x="16" y="878.0" width="80" height="22" rx="11" fill="#E7F5EF" stroke="#1D9E75" stroke-width="1"/>
+<text x="56.0" y="893.0" text-anchor="middle" font-size="11" font-weight="700" fill="#1D9E75">クリア</text>
+<rect x="360" y="859" width="14" height="14" rx="3" fill="#1D9E75" stroke="#1D9E75" stroke-width="1.5"/>
+<path d="M363,866 l3,3 l5,-6" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="382" y="870" font-size="12.5" fill="#67707A" text-decoration="line-through">直近の成約・失注を5件ずつ振り返る</text>
+<rect x="360" y="880" width="14" height="14" rx="3" fill="#1D9E75" stroke="#1D9E75" stroke-width="1.5"/>
+<path d="M363,887 l3,3 l5,-6" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="382" y="891" font-size="12.5" fill="#67707A" text-decoration="line-through">勝ち／負けパターンを言語化する</text>
+<rect x="196" y="44" width="176" height="22" rx="11" fill="#DC2626"/>
+<text x="284.0" y="59" text-anchor="middle" font-size="12" font-weight="700" fill="#FFFFFF">⚠ 期限に遅れあり</text>
+</svg>
