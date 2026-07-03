@@ -30,7 +30,14 @@
   button.primary{background:var(--goal);color:#fff;border-color:var(--goal)}
   .wrap{display:grid;grid-template-columns:420px 1fr;gap:0;align-items:start}
   .editor{padding:16px;border-right:1px solid var(--line);height:calc(100vh - 52px);overflow:auto}
-  .canvas{padding:20px;height:calc(100vh - 52px);overflow:auto;background:#fff}
+  .canvas{padding:0;height:calc(100vh - 52px);overflow:hidden;background:#fff;position:relative;touch-action:none;cursor:grab}
+  .canvas:active{cursor:grabbing}
+  #zoomstage{transform-origin:0 0;will-change:transform}
+  #zoomstage svg{max-width:none;border:none}
+  #zoomhud{position:absolute;left:10px;bottom:10px;display:flex;align-items:center;gap:8px;background:rgba(255,255,255,0.92);border:1px solid var(--line);border-radius:20px;padding:5px 12px;font-size:12px;color:var(--sub);pointer-events:none;box-shadow:0 1px 4px rgba(0,0,0,0.08)}
+  #zoomhud #zoomword{font-weight:700;color:var(--ink)}
+  #zoomhud #zoompct{font-weight:700;color:var(--goal)}
+  #zoomhud .zhint{font-size:10px;opacity:0.75}
   .field{margin-bottom:10px}
   .field label{display:block;font-size:11px;color:var(--sub);margin-bottom:3px}
   .field input[type=text]{width:100%;padding:6px 8px;border:1px solid var(--line);border-radius:6px}
@@ -66,7 +73,10 @@
   .rtile .rname{font-size:11px;font-weight:700;color:var(--ink)}
   .rtile .rrate{font-size:10px;color:var(--sub)}
   body.summary .roster{display:none}
-  body.summary .canvas{padding:8px;background:#fff}
+  body.summary .canvas{padding:8px;background:#fff;overflow:auto;touch-action:auto;cursor:default}
+  body.summary #zoomstage{transform:none!important}
+  body.summary #zoomstage svg{max-width:100%;height:auto}
+  body.summary #zoomhud{display:none}
   .ro-banner{display:flex;align-items:center;gap:12px;padding:8px 14px;background:#FFF3D6;border-bottom:1px solid #E0B43A;color:#7A3E00;font-size:13px;font-weight:700}
   .ro-banner button{margin-left:auto;font-size:12px;font-weight:700;padding:4px 10px;border:1px solid #C8901A;border-radius:8px;background:#fff;color:#7A3E00;cursor:pointer}
   .ro-note{background:#FFFDF7;border:1px dashed #E0B43A;border-radius:10px;padding:14px;color:#7A3E00;font-size:13px;line-height:1.7}
@@ -115,7 +125,8 @@
     header h1{font-size:14px;margin:0;flex:1 1 100%}
     select,button{font-size:14px;padding:7px 11px}
     .wrap{grid-template-columns:1fr}
-    .canvas{order:1;height:auto;padding:10px}
+    .canvas{order:1;height:72vh;padding:0}
+    body.summary .canvas{height:auto;padding:8px}
     .editor{order:2;height:auto;border-right:none;border-top:1px solid var(--line);padding:12px}
     /* iOSの入力フォーカス時の自動ズーム防止のため16px以上に */
     .field input[type=text],.task input[type=text],.doneDef,input[type=date]{font-size:16px}
@@ -125,7 +136,7 @@
     .mtlog input[type=date],.mtlog textarea{font-size:16px}
   }
   body.summary #mtlog{display:none}
-  @media print{header,.editor,.roster,.ro-banner,#mtlog{display:none}.wrap{grid-template-columns:1fr}.canvas{height:auto;border:none}svg{border:none}}
+  @media print{header,.editor,.roster,.ro-banner,#mtlog,#zoomhud{display:none}.wrap{grid-template-columns:1fr}.canvas{height:auto;overflow:visible;border:none}#zoomstage{transform:none!important}#zoomstage svg{max-width:100%}svg{border:none}}
 </style>
 </head>
 <body>
@@ -154,7 +165,10 @@
 <div id="roBanner" class="ro-banner" style="display:none"></div>
 <div class="wrap">
   <div class="editor" id="editor"></div>
-  <div class="canvas" id="canvas"></div>
+  <div class="canvas" id="canvas">
+    <div id="zoomstage"></div>
+    <div id="zoomhud"><span id="zoomword">🌌 宇宙（全体）</span><span id="zoompct">100%</span><span class="zhint">スクロール／ピンチで拡大・ドラッグで移動・ダブルクリックで全体</span></div>
+  </div>
 </div>
 <section id="mtlog" class="mtlog"></section>
 
@@ -412,8 +426,8 @@ function buildSvg(d){
     o.push(`<path d="M${cx-5},${yt+8} L${cx},${yt+2} L${cx+5},${yt+8} Z" fill="${COL.future}"/>`);};
   // 上位目標の段（大枠＝紫破線・中目標＝青破線）を上から積み、淡い上向き矢印で連結
   const gy=HEADER_H+TOP_H;
-  const tierBand=(y,h,fill,stroke,label,due,lines,bodyFill)=>{
-    o.push(`<rect x="${PHASE_X}" y="${y}" width="${PHASE_W}" height="${h}" rx="10" fill="${fill}" stroke="${stroke}" stroke-width="1.6" stroke-dasharray="5 4"/>`);
+  const tierBand=(y,h,fill,stroke,label,due,lines,bodyFill,id)=>{
+    o.push(`<rect${id?` id="${id}"`:""} x="${PHASE_X}" y="${y}" width="${PHASE_W}" height="${h}" rx="10" fill="${fill}" stroke="${stroke}" stroke-width="1.6" stroke-dasharray="5 4"/>`);
     o.push(`<text x="${PHASE_X+12}" y="${y+16}" font-size="10.5" font-weight="700" fill="${stroke}">${esc(label)}</text>`);
     if(due)o.push(`<text x="${PHASE_X+PHASE_W-10}" y="${y+16}" text-anchor="end" font-size="9.5" fill="${stroke}">${esc(due)}</text>`);
     lines.forEach((l,k)=>o.push(`<text x="${PHASE_X+12}" y="${y+32+k*15}" font-size="12" font-weight="600" fill="${bodyFill}">${esc(l)}</text>`));
@@ -423,12 +437,12 @@ function buildSvg(d){
     o.push(`<path d="M${cx-5},${yUpperBottom+7} L${cx},${yUpperBottom+1} L${cx+5},${yUpperBottom+7} Z" fill="${color}"/>`);
     if(label)o.push(`<text x="${cx+9}" y="${yUpperBottom+16}" font-size="9.5" fill="${color}">${label}</text>`);
   };
-  if(hasVision) tierBand(HEADER_H, VIS_BAND, "#F3F0FF", "#8A7FD0", "大枠ゴール（長期）", d.visionDue, visLines, "#4B3FA0");
-  if(hasMid) tierBand(HEADER_H+VIS_H, MID_BAND, "#EEF6FF", "#5C90CE", "中目標（中期）", d.midDue, midLines, "#2C5A93");
+  if(hasVision) tierBand(HEADER_H, VIS_BAND, "#F3F0FF", "#8A7FD0", "大枠ゴール（長期）", d.visionDue, visLines, "#4B3FA0", "z-vision");
+  if(hasMid) tierBand(HEADER_H+VIS_H, MID_BAND, "#EEF6FF", "#5C90CE", "中目標（中期）", d.midDue, midLines, "#2C5A93", "z-mid");
   if(hasMid) upArrow(HEADER_H+VIS_H+MID_BAND, gy, "#5C90CE", "その先へ");        // 今期→中目標
   if(hasVision&&hasMid) upArrow(HEADER_H+VIS_BAND, HEADER_H+VIS_H, "#8A7FD0", ""); // 中目標→大枠
   if(hasVision&&!hasMid) upArrow(HEADER_H+VIS_BAND, gy, "#8A7FD0", "その先へ");    // 今期→大枠（中目標なし）
-  o.push(`<rect x="${PHASE_X}" y="${gy}" width="${PHASE_W}" height="${GOAL_H}" rx="10" fill="url(#goalGrad)" stroke="#FFD36E" stroke-width="2.5"/>`);
+  o.push(`<rect id="z-goal" x="${PHASE_X}" y="${gy}" width="${PHASE_W}" height="${GOAL_H}" rx="10" fill="url(#goalGrad)" stroke="#FFD36E" stroke-width="2.5"/>`);
   o.push(`<rect x="${PHASE_X}" y="${gy}" width="${PHASE_W}" height="${GOAL_H/2}" rx="10" fill="#ffffff" opacity="0.16"/>`);
   o.push(`<text x="${PHASE_X+14}" y="${gy+20}" font-size="12" font-weight="700" fill="#fff">ゴール</text>`);
   o.push(star(PHASE_X+PHASE_W-16, gy+15, 6, "#FFF1B8"));
@@ -464,7 +478,7 @@ function buildSvg(d){
     else if(due && due<todayIso){pl="⚠"+weekLabelDate(due);pf="#DC2626";pb="#FEE2E2";overdueAny=true;}
     else{pl=due?weekLabelDate(due):"—";pf=(st==="now")?COL.now:COL.future;pb=(st==="now")?COL.nowBg:COL.futureBg;}
     const sw=st==="now"?2:1;
-    o.push(`<rect x="${PHASE_X}" y="${y}" width="${PHASE_W}" height="${h}" rx="10" fill="${bg}" stroke="${fg}" stroke-width="${sw}"/>`);
+    o.push(`<rect${sn===cur?' id="z-home"':""} x="${PHASE_X}" y="${y}" width="${PHASE_W}" height="${h}" rx="10" fill="${bg}" stroke="${fg}" stroke-width="${sw}"/>`);
     const mcy=y+20;
     o.push(`<circle cx="${PHASE_X-12}" cy="${mcy}" r="9" fill="${fg}"/>`);
     if(st==="done")o.push(`<path d="M${PHASE_X-16},${mcy} l3,3 l6,-7" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`);
@@ -540,64 +554,55 @@ function renderEditor(){
   e.innerHTML=html;
 }
 
-// 🔭 望遠鏡ズーム：宇宙(大枠)→地球(中目標)→日本(今期)→家(現在地)。引くほど上位・寄るほど現在地。
-// level 2=今期(日本) / 3=中目標(地球) / 4=大枠(宇宙)。level1(家)は通常地図(buildSvg)。
-function buildZoomSvg(d,level){
-  const W=680, g=growth(d), cur=+d.currentStage||1, tt=topTask(d);
-  const TI={
-    4:{icon:"🌌",name:"大枠ゴール",place:"宇宙",body:d.vision,due:d.visionDue,fill:"#F3F0FF",stroke:"#8A7FD0",bf:"#4B3FA0",grad:false},
-    3:{icon:"🌏",name:"中目標",place:"地球",body:d.midGoal,due:d.midDue,fill:"#EEF6FF",stroke:"#5C90CE",bf:"#2C5A93",grad:false},
-    2:{icon:"🗾",name:"今期ゴール",place:"日本",body:d.goal,due:"",fill:"url(#goalGrad)",stroke:"#FFD36E",bf:"#fff",grad:true},
-  };
-  const focus=TI[level]||TI[2];
-  const cardX=110, cardW=460, midx=cardX+cardW/2;
-  const trunc=(t,n)=>{t=String(t||"");return t.length>n?t.slice(0,n-1)+"…":t;};
-  const body=[]; let y=30;
-  const head=esc(d.name||"")+(d.note?`（${esc(d.note)}）`:"")+`｜${esc(d.theme||"")}`;
-  body.push(`<text x="24" y="${y}" font-size="16" font-weight="700" fill="${COL.ink}">${head}</text>`);
-  body.push(`<text x="${W-24}" y="${y-3}" text-anchor="end" font-size="13" font-weight="700" fill="${COL.done}">達成率 ${g.rate}%</text>`);
-  y+=24;
-  body.push(`<text x="24" y="${y}" font-size="12" font-weight="700" fill="${focus.grad?'#B7791F':focus.stroke}">${focus.icon} ${esc(focus.name)}（${focus.place}）から俯瞰中</text>`);
-  body.push(`<text x="${W-24}" y="${y}" text-anchor="end" font-size="10.5" fill="${COL.sub}">🔭 引く＝上位／寄る＝現在地</text>`);
-  y+=20;
-  const ups=[]; for(let l=level+1;l<=4;l++){ if(TI[l]&&String(TI[l].body||"").trim()) ups.push(`${TI[l].icon}${TI[l].name}`); }
-  if(ups.length){ body.push(`<text x="24" y="${y}" font-size="11" fill="${COL.sub}">▲ この先の上位：${esc(ups.join(" › "))}</text>`); y+=18; }
-  y+=4;
-  // フォーカス大カード（今いる高度の目標を大きく）
-  const bigLines=wrap(String(focus.body||"").trim()||"（未設定 — エディタで入力できます）",20).slice(0,3);
-  const bh=Math.max(72,40+bigLines.length*22);
-  body.push(`<rect x="${cardX}" y="${y}" width="${cardW}" height="${bh}" rx="14" fill="${focus.fill}" stroke="${focus.stroke}" stroke-width="3"${focus.grad?'':' stroke-dasharray="7 4"'}/>`);
-  if(focus.grad){body.push(`<rect x="${cardX}" y="${y}" width="${cardW}" height="${bh/2}" rx="14" fill="#fff" opacity="0.16"/>`);body.push(star(cardX+cardW-20,y+18,7,"#FFF1B8"));}
-  body.push(`<text x="${cardX+20}" y="${y+25}" font-size="12" font-weight="700" fill="${focus.grad?'#fff':focus.stroke}">${focus.icon} ${esc(focus.name)}${focus.due?`（${esc(focus.due)}）`:""}</text>`);
-  bigLines.forEach((l,k)=>body.push(`<text x="${cardX+20}" y="${y+52+k*22}" font-size="17" font-weight="700" fill="${focus.bf}">${esc(l)}</text>`));
-  y+=bh;
-  // 下へドリルダウン（この下に何があるか＝家＝現在地まで funnel）
-  const downArrow=(label)=>{ body.push(`<line x1="${midx}" y1="${y+3}" x2="${midx}" y2="${y+15}" stroke="${COL.future}" stroke-width="2"/>`); body.push(`<path d="M${midx-5},${y+13} L${midx},${y+19} L${midx+5},${y+13} Z" fill="${COL.future}"/>`); if(label)body.push(`<text x="${midx+10}" y="${y+16}" font-size="9.5" fill="${COL.sub}">${label}</text>`); y+=22; };
-  const downs=[]; for(let l=level-1;l>=2;l--){ if(String(TI[l].body||"").trim()) downs.push(TI[l]); }
-  downs.forEach((t,i)=>{
-    downArrow(i===0?"この下に":"");
-    const ls=wrap(String(t.body||""),26).slice(0,2);
-    const hh=Math.max(44,26+ls.length*16), w=cardW-80, x=cardX+40;
-    body.push(`<rect x="${x}" y="${y}" width="${w}" height="${hh}" rx="10" fill="${t.fill}" stroke="${t.stroke}" stroke-width="1.5" opacity="0.94"${t.grad?'':' stroke-dasharray="5 4"'}/>`);
-    if(t.grad)body.push(`<rect x="${x}" y="${y}" width="${w}" height="${hh/2}" rx="10" fill="#fff" opacity="0.16"/>`);
-    body.push(`<text x="${x+16}" y="${y+18}" font-size="10.5" font-weight="700" fill="${t.grad?'#fff':t.stroke}">${t.icon} ${esc(t.name)}</text>`);
-    ls.forEach((l,k)=>body.push(`<text x="${x+16}" y="${y+34+k*16}" font-size="12.5" font-weight="600" fill="${t.bf}">${esc(l)}</text>`));
-    y+=hh;
-  });
-  // 家（現在地）＝今のフェーズ＋最優先タスク
-  downArrow(downs.length?"":"この下に");
-  const hw=cardW-140, hx=cardX+70, hh=54;
-  body.push(`<rect x="${hx}" y="${y}" width="${hw}" height="${hh}" rx="10" fill="${COL.nowBg}" stroke="${COL.now}" stroke-width="1.5"/>`);
-  body.push(`<text x="${hx+16}" y="${y+19}" font-size="10.5" font-weight="700" fill="${COL.now}">🏠 現在地（家）｜${esc(STAGE_NAMES[cur-1])}・達成率 ${g.rate}%</text>`);
-  body.push(`<text x="${hx+16}" y="${y+40}" font-size="12.5" font-weight="700" fill="${COL.ink}">${esc(trunc(tt.task,26))}</text>`);
-  y+=hh;
-  const H=y+24;
-  return `<svg xmlns="http://www.w3.org/2000/svg" id="gm" viewBox="0 0 ${W} ${H}" font-family="${FONT}" width="${W}" height="${H}">`+
-    SVG_DEFS+`<rect x="0" y="0" width="${W}" height="${H}" fill="#fff"/>`+body.join("")+`</svg>`;
+let summaryMode=false, lastRenderedName=null;
+// ── 🔭 連続ズーム（スクロール／ピンチ／ドラッグ）：地図全体を宇宙(全体)↔家(タスク)へ滑らかに ──
+const ZS={s:1,x:0,y:0,fit:1};
+const zStage=()=>document.getElementById("zoomstage");
+const zSvg=()=>document.querySelector("#zoomstage svg");
+const zCanvas=()=>document.getElementById("canvas");
+function zApply(){const st=zStage();if(st)st.style.transform=`translate(${ZS.x}px,${ZS.y}px) scale(${ZS.s})`;const p=document.getElementById("zoompct");if(p)p.textContent=Math.round(ZS.s/ZS.fit*100)+"%";}
+function zNatural(){const s=zSvg();if(!s)return{w:680,h:900};const vb=s.viewBox.baseVal;return{w:vb.width||680,h:vb.height||900};}
+function setZoomWord(w){const e=document.getElementById("zoomword");if(e)e.textContent=w;}
+function clampS(s){return Math.max(ZS.fit*0.9,Math.min(6,s));}
+function fitAll(word){const c=zCanvas().getBoundingClientRect(),n=zNatural(),pad=20;
+  const s=Math.min((c.width-pad)/n.w,(c.height-pad)/n.h);
+  ZS.fit=s; ZS.s=s; ZS.x=(c.width-n.w*s)/2; ZS.y=Math.max(8,(c.height-n.h*s)/2);
+  if(word)setZoomWord("🌌 宇宙（全体）"); zApply();}
+function zoomAt(cx,cy,factor){const ns=clampS(ZS.s*factor),k=ns/ZS.s;ZS.x=cx-(cx-ZS.x)*k;ZS.y=cy-(cy-ZS.y)*k;ZS.s=ns;zApply();}
+// 指定の段(セレクタ)を画面いっぱいに寄せる（宇宙/地球/日本/家 のプリセット）。fullWidth=タスク列も含める
+function frameTo(sel,word,fill,fullWidth){
+  if(summaryMode){summaryMode=false;document.body.classList.remove("summary");document.getElementById("summary").classList.remove("primary");lastRenderedName=null;renderCanvas();}
+  const svg=zSvg(); if(!svg)return;
+  const el=svg.querySelector(sel); if(!el){fitAll(true);return;}
+  let bb; try{bb=el.getBBox();}catch(e){fitAll(true);return;}
+  const n=zNatural(); if(fullWidth)bb={x:0,y:bb.y-6,width:n.w,height:bb.height+12};
+  const c=zCanvas().getBoundingClientRect(); fill=fill||0.85;
+  const s=clampS(Math.min(c.width*fill/bb.width,c.height*fill/bb.height));
+  const st=zStage(); st.style.transition="transform .4s ease";
+  ZS.s=s; ZS.x=c.width/2-s*(bb.x+bb.width/2); ZS.y=c.height/2-s*(bb.y+bb.height/2);
+  setZoomWord(word); zApply(); setTimeout(()=>{const q=zStage();if(q)q.style.transition="";},430);
 }
-let summaryMode=false, zoomLevel=1;
-function syncZoomButtons(){const el=document.getElementById("zoomctl");if(!el)return;[...el.querySelectorAll("[data-zoom]")].forEach(b=>b.classList.toggle("on",+b.dataset.zoom===zoomLevel));}
-function renderCanvas(){const c=document.getElementById("canvas");c.innerHTML=(zoomLevel>1)?buildZoomSvg(data,zoomLevel):(summaryMode?buildSummarySvg(data):buildSvg(data));syncZoomButtons();}
+function renderCanvas(){
+  const st=zStage(); if(!st)return;
+  st.innerHTML=summaryMode?buildSummarySvg(data):buildSvg(data);
+  if(summaryMode)return;
+  if(data.name!==lastRenderedName){lastRenderedName=data.name;requestAnimationFrame(()=>fitAll(true));}
+  else zApply();
+}
+// スクロール／ピンチ／ドラッグの入力（#canvas をビューポートに）
+(function(){
+  const cv=zCanvas(); if(!cv)return;
+  cv.addEventListener("wheel",e=>{if(summaryMode)return;e.preventDefault();const r=cv.getBoundingClientRect();zStage().style.transition="";zoomAt(e.clientX-r.left,e.clientY-r.top,Math.exp(-e.deltaY*0.0015));},{passive:false});
+  const pts=new Map(); let pd=0;
+  cv.addEventListener("pointerdown",e=>{if(summaryMode)return;cv.setPointerCapture(e.pointerId);pts.set(e.pointerId,{x:e.clientX,y:e.clientY});zStage().style.transition="";});
+  cv.addEventListener("pointermove",e=>{if(!pts.has(e.pointerId))return;const prev=pts.get(e.pointerId);pts.set(e.pointerId,{x:e.clientX,y:e.clientY});
+    if(pts.size===1){ZS.x+=e.clientX-prev.x;ZS.y+=e.clientY-prev.y;zApply();}
+    else if(pts.size===2){const a=[...pts.values()],d=Math.hypot(a[0].x-a[1].x,a[0].y-a[1].y),r=cv.getBoundingClientRect();
+      if(pd)zoomAt((a[0].x+a[1].x)/2-r.left,(a[0].y+a[1].y)/2-r.top,d/pd);pd=d;}});
+  const up=e=>{pts.delete(e.pointerId);if(pts.size<2)pd=0;};
+  cv.addEventListener("pointerup",up);cv.addEventListener("pointercancel",up);cv.addEventListener("pointerleave",up);
+  cv.addEventListener("dblclick",e=>{if(summaryMode)return;e.preventDefault();fitAll(true);});
+})();
 
 // 今週の最優先タスク：現在ステージ以降で最初の未完タスク
 function topTask(d){
@@ -936,19 +941,20 @@ document.getElementById("exportJson").addEventListener("click",()=>{
 document.getElementById("print").addEventListener("click",()=>window.print());
 document.getElementById("summary").addEventListener("click",()=>{
   summaryMode=!summaryMode;
-  if(summaryMode)zoomLevel=1;   // 1枚表示に入る時はズームを現在地に戻す
+  if(!summaryMode)lastRenderedName=null;   // 地図に戻る時は再フィット
   document.getElementById("summary").classList.toggle("primary",summaryMode);
   document.body.classList.toggle("summary",summaryMode);   // ロスターを隠してスッキリ
   renderCanvas();
   if(summaryMode)document.getElementById("canvas").scrollIntoView({behavior:"smooth",block:"start"});
 });
-// 🔭 望遠鏡ズーム（宇宙→地球→日本→家）：セグメントで高度を選ぶ
+// 🔭 望遠鏡ズームのプリセット（宇宙→地球→日本→家 の高度へ一気に寄せる）
 document.getElementById("zoomctl").addEventListener("click",ev=>{
   const b=ev.target.closest("[data-zoom]"); if(!b)return;
-  zoomLevel=+b.dataset.zoom;
-  if(zoomLevel>1&&summaryMode){summaryMode=false;document.body.classList.remove("summary");document.getElementById("summary").classList.remove("primary");}
-  renderCanvas();
-  document.getElementById("canvas").scrollIntoView({behavior:"smooth",block:"start"});
+  const P={1:["#z-home","🏠 家（現在地）",0.92,true],2:["#z-goal","🗾 日本（今期ゴール）",0.8,false],
+           3:["#z-mid","🌏 地球（中目標）",0.8,false],4:["#z-vision","🌌 宇宙（大枠）",0.8,false]};
+  const p=P[+b.dataset.zoom]; if(!p)return;
+  frameTo(p[0],p[1],p[2],p[3]);
+  [...document.querySelectorAll('#zoomctl [data-zoom]')].forEach(x=>x.classList.toggle("on",x===b));
 });
 document.getElementById("exportAvatar").addEventListener("click",()=>{
   const xml=buildAvatarCard(data);
