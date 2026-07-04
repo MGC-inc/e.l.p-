@@ -1,0 +1,103 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 680 855" font-family="Hiragino Sans, 'Noto Sans CJK JP', 'Yu Gothic', sans-serif" width="680" height="855">
+<defs><linearGradient id="goalGrad" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#5B4BE0"/><stop offset="0.5" stop-color="#B14BE0"/><stop offset="1" stop-color="#FFC24B"/></linearGradient><linearGradient id="phx" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFE259"/><stop offset="0.5" stop-color="#FF9A00"/><stop offset="1" stop-color="#FF3D00"/></linearGradient><linearGradient id="phx2" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFF0A0"/><stop offset="1" stop-color="#FF7A00"/></linearGradient><linearGradient id="hen" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#37C9B0"/><stop offset="0.6" stop-color="#3DA0E8"/><stop offset="1" stop-color="#7A5BE0"/></linearGradient><linearGradient id="pcock" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2BD0C0"/><stop offset="0.55" stop-color="#2E8FD0"/><stop offset="1" stop-color="#2E4BB0"/></linearGradient><linearGradient id="gold" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFF0A8"/><stop offset="0.5" stop-color="#F2C230"/><stop offset="1" stop-color="#C8901A"/></linearGradient></defs>
+<rect x="0" y="0" width="680" height="855" fill="#FFFFFF"/>
+<text x="20" y="34" font-size="13" font-weight="700" fill="#1F2933">古賀（wanny・新人（2026-07-01参戦））｜営業の基礎を固める（新人クローザー）</text>
+<text x="660" y="26" text-anchor="end" font-size="13" fill="#67707A">達成率</text>
+<text x="462" y="50" text-anchor="end" font-size="20" font-weight="700" fill="#1D9E75">0%</text>
+<rect x="470" y="38" width="150" height="12" rx="6" fill="#F2F4F6"/>
+<rect x="470" y="38" width="0" height="12" rx="6" fill="#1D9E75"/>
+<rect x="130" y="70" width="210" height="54" rx="10" fill="#F3F0FF" stroke="#8A7FD0" stroke-width="1.6" stroke-dasharray="5 4"/>
+<text x="142" y="86" font-size="10.5" font-weight="700" fill="#8A7FD0">大枠ゴール（長期）</text>
+<text x="330" y="86" text-anchor="end" font-size="9.5" fill="#8A7FD0">半年後（2026年内）</text>
+<text x="142" y="102" font-size="12" font-weight="600" fill="#4B3FA0">指導なしで商談を一周回せる一人前のク</text>
+<text x="142" y="117" font-size="12" font-weight="600" fill="#4B3FA0">ローザーになり、自分の勝ち型を持つ</text>
+<rect x="130" y="146" width="210" height="54" rx="10" fill="#EEF6FF" stroke="#5C90CE" stroke-width="1.6" stroke-dasharray="5 4"/>
+<text x="142" y="162" font-size="10.5" font-weight="700" fill="#5C90CE">中目標（中期）</text>
+<text x="330" y="162" text-anchor="end" font-size="9.5" fill="#5C90CE">2ヶ月後</text>
+<text x="142" y="178" font-size="12" font-weight="600" fill="#2C5A93">指導つきで商談の一部を任され、基本の</text>
+<text x="142" y="193" font-size="12" font-weight="600" fill="#2C5A93">型どおり話せる</text>
+<line x1="235.0" y1="220" x2="235.0" y2="205" stroke="#5C90CE" stroke-width="2" stroke-dasharray="4 3"/>
+<path d="M230.0,207 L235.0,201 L240.0,207 Z" fill="#5C90CE"/>
+<text x="244.0" y="216" font-size="9.5" fill="#5C90CE">その先へ</text>
+<line x1="235.0" y1="146" x2="235.0" y2="129" stroke="#8A7FD0" stroke-width="2" stroke-dasharray="4 3"/>
+<path d="M230.0,131 L235.0,125 L240.0,131 Z" fill="#8A7FD0"/>
+<rect x="130" y="220" width="210" height="81" rx="10" fill="url(#goalGrad)" stroke="#FFD36E" stroke-width="2.5"/>
+<rect x="130" y="220" width="210" height="40.5" rx="10" fill="#FFFFFF" opacity="0.16"/>
+<text x="144" y="240" font-size="12" font-weight="700" fill="#FFFFFF">ゴール</text>
+<polygon points="324.0,229.0 325.4,233.6 330.0,235.0 325.4,236.4 324.0,241.0 322.6,236.4 318.0,235.0 322.6,233.6" fill="#FFF1B8"/>
+<text x="144" y="258" font-size="13" font-weight="600" fill="#FFFFFF">基本の型（ヒアリング〜クロージ</text>
+<text x="144" y="274" font-size="13" font-weight="600" fill="#FFFFFF">ング）を身につけ、指導つきで商</text>
+<text x="144" y="290" font-size="13" font-weight="600" fill="#FFFFFF">談を一周回せる</text>
+<rect x="16" y="249.5" width="80" height="22" rx="11" fill="#FFF3D6" stroke="#B7791F" stroke-width="1"/>
+<text x="56.0" y="264.5" text-anchor="middle" font-size="11" font-weight="700" fill="#B7791F">達成</text>
+<ellipse cx="402.0" cy="266.0" rx="25.5" ry="32.3" fill="#FFF3D6"/><ellipse cx="402.0" cy="266.0" rx="25.5" ry="32.3" fill="none" stroke="#E2D2A0" stroke-width="2.4"/><circle cx="393.5" cy="260.9" r="2.5" fill="#E6D3A0"/><circle cx="410.5" cy="274.5" r="2.2" fill="#E6D3A0"/><circle cx="403.7" cy="284.7" r="2.0" fill="#E6D3A0"/>
+<text x="448" y="263" font-size="13" font-weight="700" fill="#1F2933">あと2コで進化</text>
+<text x="448" y="281" font-size="11" fill="#67707A">餌 0/2　累計 0/10</text>
+<text x="16" y="62" font-size="10" fill="#67707A">目標時期</text>
+<line x1="235.0" y1="327" x2="235.0" y2="307" stroke="#9AA3AD" stroke-width="2"/>
+<path d="M230.0,309 L235.0,303 L240.0,309 Z" fill="#9AA3AD"/>
+<rect x="130" y="327" width="210" height="74" rx="10" fill="#F2F4F6" stroke="#9AA3AD" stroke-width="1"/>
+<circle cx="118" cy="347" r="9" fill="#9AA3AD"/>
+<text x="142" y="349" font-size="14" font-weight="700" fill="#1F2933">⑤自走</text>
+<text x="142" y="367" font-size="11" fill="#67707A">完了：指導なしで基本の商談を一</text>
+<text x="142" y="382" font-size="11" fill="#67707A">周完遂できる</text>
+<rect x="16" y="353.0" width="80" height="22" rx="11" fill="#F2F4F6" stroke="#9AA3AD" stroke-width="1"/>
+<text x="56.0" y="368.0" text-anchor="middle" font-size="11" font-weight="700" fill="#9AA3AD">8月第5週</text>
+<rect x="360" y="334" width="14" height="14" rx="3" fill="#fff" stroke="#9AA3AD" stroke-width="1.5"/>
+<text x="382" y="345" font-size="12.5" fill="#1F2933">指導なしで1商談を最後まで担当する</text>
+<rect x="360" y="355" width="14" height="14" rx="3" fill="#fff" stroke="#9AA3AD" stroke-width="1.5"/>
+<text x="382" y="366" font-size="12.5" fill="#1F2933">自分の改善テーマを1つ決める</text>
+<line x1="235.0" y1="427" x2="235.0" y2="407" stroke="#9AA3AD" stroke-width="2"/>
+<path d="M230.0,409 L235.0,403 L240.0,409 Z" fill="#9AA3AD"/>
+<rect x="130" y="427" width="210" height="74" rx="10" fill="#F2F4F6" stroke="#9AA3AD" stroke-width="1"/>
+<circle cx="118" cy="447" r="9" fill="#9AA3AD"/>
+<text x="142" y="449" font-size="14" font-weight="700" fill="#1F2933">④振り返り</text>
+<text x="142" y="467" font-size="11" fill="#67707A">完了：うまくいった／詰まった点</text>
+<text x="142" y="482" font-size="11" fill="#67707A">を言語化できる</text>
+<rect x="16" y="453.0" width="80" height="22" rx="11" fill="#F2F4F6" stroke="#9AA3AD" stroke-width="1"/>
+<text x="56.0" y="468.0" text-anchor="middle" font-size="11" font-weight="700" fill="#9AA3AD">8月第3週</text>
+<rect x="360" y="434" width="14" height="14" rx="3" fill="#fff" stroke="#9AA3AD" stroke-width="1.5"/>
+<text x="382" y="445" font-size="12.5" fill="#1F2933">週次で自分の商談を振り返る</text>
+<rect x="360" y="455" width="14" height="14" rx="3" fill="#fff" stroke="#9AA3AD" stroke-width="1.5"/>
+<text x="382" y="466" font-size="12.5" fill="#1F2933">つまずきポイントを先輩と確認する</text>
+<line x1="235.0" y1="527" x2="235.0" y2="507" stroke="#9AA3AD" stroke-width="2"/>
+<path d="M230.0,509 L235.0,503 L240.0,509 Z" fill="#9AA3AD"/>
+<rect x="130" y="527" width="210" height="74" rx="10" fill="#F2F4F6" stroke="#9AA3AD" stroke-width="1"/>
+<circle cx="118" cy="547" r="9" fill="#9AA3AD"/>
+<text x="142" y="549" font-size="14" font-weight="700" fill="#1F2933">③実践</text>
+<text x="142" y="567" font-size="11" fill="#67707A">完了：指導つきで商談の一部を担</text>
+<text x="142" y="582" font-size="11" fill="#67707A">当できる</text>
+<rect x="16" y="553.0" width="80" height="22" rx="11" fill="#F2F4F6" stroke="#9AA3AD" stroke-width="1"/>
+<text x="56.0" y="568.0" text-anchor="middle" font-size="11" font-weight="700" fill="#9AA3AD">8月第2週</text>
+<rect x="360" y="534" width="14" height="14" rx="3" fill="#fff" stroke="#9AA3AD" stroke-width="1.5"/>
+<text x="382" y="545" font-size="12.5" fill="#1F2933">指導つきで商談に同席し、一部を担当する</text>
+<rect x="360" y="555" width="14" height="14" rx="3" fill="#fff" stroke="#9AA3AD" stroke-width="1.5"/>
+<text x="382" y="566" font-size="12.5" fill="#1F2933">商談後に良かった点・詰まった点を記録する</text>
+<line x1="235.0" y1="627" x2="235.0" y2="607" stroke="#9AA3AD" stroke-width="2"/>
+<path d="M230.0,609 L235.0,603 L240.0,609 Z" fill="#9AA3AD"/>
+<rect x="130" y="627" width="210" height="74" rx="10" fill="#F2F4F6" stroke="#9AA3AD" stroke-width="1"/>
+<circle cx="118" cy="647" r="9" fill="#9AA3AD"/>
+<text x="142" y="649" font-size="14" font-weight="700" fill="#1F2933">②練習</text>
+<text x="142" y="667" font-size="11" fill="#67707A">完了：ロープレで基本の型どおり</text>
+<text x="142" y="682" font-size="11" fill="#67707A">話せる</text>
+<rect x="16" y="653.0" width="80" height="22" rx="11" fill="#F2F4F6" stroke="#9AA3AD" stroke-width="1"/>
+<text x="56.0" y="668.0" text-anchor="middle" font-size="11" font-weight="700" fill="#9AA3AD">7月第4週</text>
+<rect x="360" y="634" width="14" height="14" rx="3" fill="#fff" stroke="#9AA3AD" stroke-width="1.5"/>
+<text x="382" y="645" font-size="12.5" fill="#1F2933">基本トークをロープレで繰り返す</text>
+<rect x="360" y="655" width="14" height="14" rx="3" fill="#fff" stroke="#9AA3AD" stroke-width="1.5"/>
+<text x="382" y="666" font-size="12.5" fill="#1F2933">商品知識・よくある質問を覚える</text>
+<line x1="235.0" y1="727" x2="235.0" y2="707" stroke="#9AA3AD" stroke-width="2"/>
+<path d="M230.0,709 L235.0,703 L240.0,709 Z" fill="#9AA3AD"/>
+<rect x="130" y="727" width="210" height="74" rx="10" fill="#FDF3E2" stroke="#EF9F27" stroke-width="2"/>
+<circle cx="118" cy="747" r="9" fill="#EF9F27"/>
+<text x="142" y="749" font-size="14" font-weight="700" fill="#1F2933">①型を知る</text>
+<text x="142" y="767" font-size="11" fill="#67707A">完了：営業の基本フローと勝ち筋</text>
+<text x="142" y="782" font-size="11" fill="#67707A">を説明できる</text>
+<rect x="16" y="753.0" width="80" height="22" rx="11" fill="#FDF3E2" stroke="#EF9F27" stroke-width="1"/>
+<text x="56.0" y="768.0" text-anchor="middle" font-size="11" font-weight="700" fill="#EF9F27">7月第2週</text>
+<rect x="360" y="734" width="14" height="14" rx="3" fill="#fff" stroke="#9AA3AD" stroke-width="1.5"/>
+<text x="382" y="745" font-size="12.5" fill="#1F2933">商談の基本フロー（挨拶〜クロージング）を覚え</text>
+<text x="382" y="760" font-size="12.5" fill="#1F2933">る</text>
+<rect x="360" y="770" width="14" height="14" rx="3" fill="#fff" stroke="#9AA3AD" stroke-width="1.5"/>
+<text x="382" y="781" font-size="12.5" fill="#1F2933">先輩のトップ商談に同席し、型をメモする</text>
+</svg>
