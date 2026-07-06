@@ -34,6 +34,7 @@
   .canvas:active{cursor:grabbing}
   #zoomstage{transform-origin:0 0;will-change:transform}
   #zoomstage svg{max-width:none;border:none}
+  #zoomstage svg [id^="z-"]{cursor:zoom-in}
   #zoomhud{position:absolute;left:10px;bottom:10px;display:flex;align-items:center;gap:8px;background:rgba(255,255,255,0.92);border:1px solid var(--line);border-radius:20px;padding:5px 12px;font-size:12px;color:var(--sub);pointer-events:none;box-shadow:0 1px 4px rgba(0,0,0,0.08)}
   #zoomhud #zoomword{font-weight:700;color:var(--ink)}
   #zoomhud #zoompct{font-weight:700;color:var(--goal)}
@@ -167,7 +168,7 @@
   <div class="editor" id="editor"></div>
   <div class="canvas" id="canvas">
     <div id="zoomstage"></div>
-    <div id="zoomhud"><span id="zoomword">🌌 宇宙（全体）</span><span id="zoompct">100%</span><span class="zhint">スクロール／ピンチで拡大・ドラッグで移動・ダブルクリックで全体</span></div>
+    <div id="zoomhud"><span id="zoomword">🌌 宇宙（全体）</span><span id="zoompct">100%</span><span class="zhint">タップで寄る・スクロール／ピンチで拡大・ドラッグで移動・ダブルクリックで全体</span></div>
   </div>
 </div>
 <section id="mtlog" class="mtlog"></section>
@@ -478,7 +479,7 @@ function buildSvg(d){
     else if(due && due<todayIso){pl="⚠"+weekLabelDate(due);pf="#DC2626";pb="#FEE2E2";overdueAny=true;}
     else{pl=due?weekLabelDate(due):"—";pf=(st==="now")?COL.now:COL.future;pb=(st==="now")?COL.nowBg:COL.futureBg;}
     const sw=st==="now"?2:1;
-    o.push(`<rect${sn===cur?' id="z-home"':""} x="${PHASE_X}" y="${y}" width="${PHASE_W}" height="${h}" rx="10" fill="${bg}" stroke="${fg}" stroke-width="${sw}"/>`);
+    o.push(`<rect id="z-phase-${idx}" x="${PHASE_X}" y="${y}" width="${PHASE_W}" height="${h}" rx="10" fill="${bg}" stroke="${fg}" stroke-width="${sw}"/>`);
     const mcy=y+20;
     o.push(`<circle cx="${PHASE_X-12}" cy="${mcy}" r="9" fill="${fg}"/>`);
     if(st==="done")o.push(`<path d="M${PHASE_X-16},${mcy} l3,3 l6,-7" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`);
@@ -589,18 +590,37 @@ function renderCanvas(){
   if(data.name!==lastRenderedName){lastRenderedName=data.name;requestAnimationFrame(()=>fitAll(true));}
   else zApply();
 }
-// スクロール／ピンチ／ドラッグの入力（#canvas をビューポートに）
+// タップした段（大枠→中目標→今期→フェーズ）へ寄る＝中の細かいタスクへ入っていく演出
+function drillTo(el){
+  const id=el&&el.id||"";
+  if(id.indexOf("z-phase-")===0){const i=+id.slice(8);frameTo("#"+id,"▶ "+STAGE_NAMES[i]+"（この中のタスク）",0.92,true);}
+  else if(id==="z-goal")frameTo("#z-goal","🎯 今期ゴール → ①〜⑤のアクションへ",0.82,false);
+  else if(id==="z-mid")frameTo("#z-mid","🌏 中目標",0.82,false);
+  else if(id==="z-vision")frameTo("#z-vision","🌌 大枠ゴール",0.82,false);
+  else return false;
+  return true;
+}
+// スクロール／ピンチ／ドラッグ／タップの入力（#canvas をビューポートに）
 (function(){
   const cv=zCanvas(); if(!cv)return;
   cv.addEventListener("wheel",e=>{if(summaryMode)return;e.preventDefault();const r=cv.getBoundingClientRect();zStage().style.transition="";zoomAt(e.clientX-r.left,e.clientY-r.top,Math.exp(-e.deltaY*0.0015));},{passive:false});
-  const pts=new Map(); let pd=0;
-  cv.addEventListener("pointerdown",e=>{if(summaryMode)return;cv.setPointerCapture(e.pointerId);pts.set(e.pointerId,{x:e.clientX,y:e.clientY});zStage().style.transition="";});
+  const pts=new Map(); let pd=0, moved=false, downX=0, downY=0;
+  cv.addEventListener("pointerdown",e=>{if(summaryMode)return;cv.setPointerCapture(e.pointerId);pts.set(e.pointerId,{x:e.clientX,y:e.clientY});if(pts.size===1){moved=false;downX=e.clientX;downY=e.clientY;}zStage().style.transition="";});
   cv.addEventListener("pointermove",e=>{if(!pts.has(e.pointerId))return;const prev=pts.get(e.pointerId);pts.set(e.pointerId,{x:e.clientX,y:e.clientY});
-    if(pts.size===1){ZS.x+=e.clientX-prev.x;ZS.y+=e.clientY-prev.y;zApply();}
-    else if(pts.size===2){const a=[...pts.values()],d=Math.hypot(a[0].x-a[1].x,a[0].y-a[1].y),r=cv.getBoundingClientRect();
+    if(pts.size===1){if(Math.hypot(e.clientX-downX,e.clientY-downY)>6)moved=true;ZS.x+=e.clientX-prev.x;ZS.y+=e.clientY-prev.y;zApply();}
+    else{moved=true;const a=[...pts.values()],d=Math.hypot(a[0].x-a[1].x,a[0].y-a[1].y),r=cv.getBoundingClientRect();
       if(pd)zoomAt((a[0].x+a[1].x)/2-r.left,(a[0].y+a[1].y)/2-r.top,d/pd);pd=d;}});
-  const up=e=>{pts.delete(e.pointerId);if(pts.size<2)pd=0;};
-  cv.addEventListener("pointerup",up);cv.addEventListener("pointercancel",up);cv.addEventListener("pointerleave",up);
+  const up=e=>{
+    const wasSingle=pts.size===1; pts.delete(e.pointerId); if(pts.size<2)pd=0;
+    if(wasSingle&&!moved&&!summaryMode){ // タップ＝寄る（ドラッグと区別）。テキストが上に載るので重なり全部から z- 段を探す
+      const els=document.elementsFromPoint(e.clientX,e.clientY);
+      const hit=els.find(el=>el.id&&el.id.indexOf("z-")===0);
+      if(hit)drillTo(hit);
+    }
+  };
+  cv.addEventListener("pointerup",up);
+  cv.addEventListener("pointercancel",e=>{pts.delete(e.pointerId);if(pts.size<2)pd=0;});
+  cv.addEventListener("pointerleave",e=>{pts.delete(e.pointerId);if(pts.size<2)pd=0;});
   cv.addEventListener("dblclick",e=>{if(summaryMode)return;e.preventDefault();fitAll(true);});
 })();
 
@@ -950,7 +970,8 @@ document.getElementById("summary").addEventListener("click",()=>{
 // 🔭 望遠鏡ズームのプリセット（宇宙→地球→日本→家 の高度へ一気に寄せる）
 document.getElementById("zoomctl").addEventListener("click",ev=>{
   const b=ev.target.closest("[data-zoom]"); if(!b)return;
-  const P={1:["#z-home","🏠 家（現在地）",0.92,true],2:["#z-goal","🗾 日本（今期ゴール）",0.8,false],
+  const cur=(+data.currentStage||1)-1;
+  const P={1:["#z-phase-"+cur,"🏠 家（現在地）",0.92,true],2:["#z-goal","🗾 日本（今期ゴール）",0.8,false],
            3:["#z-mid","🌏 地球（中目標）",0.8,false],4:["#z-vision","🌌 宇宙（大枠）",0.8,false]};
   const p=P[+b.dataset.zoom]; if(!p)return;
   frameTo(p[0],p[1],p[2],p[3]);
