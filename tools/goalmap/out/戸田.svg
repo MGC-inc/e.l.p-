@@ -1,6 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 680 700" font-family="Hiragino Sans, 'Noto Sans CJK JP', 'Yu Gothic', sans-serif" width="680" height="700">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 680 746" font-family="Hiragino Sans, 'Noto Sans CJK JP', 'Yu Gothic', sans-serif" width="680" height="746">
 <defs><linearGradient id="goalGrad" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#5B4BE0"/><stop offset="0.5" stop-color="#B14BE0"/><stop offset="1" stop-color="#FFC24B"/></linearGradient><linearGradient id="phx" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFE259"/><stop offset="0.5" stop-color="#FF9A00"/><stop offset="1" stop-color="#FF3D00"/></linearGradient><linearGradient id="phx2" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFF0A0"/><stop offset="1" stop-color="#FF7A00"/></linearGradient><linearGradient id="hen" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#37C9B0"/><stop offset="0.6" stop-color="#3DA0E8"/><stop offset="1" stop-color="#7A5BE0"/></linearGradient><linearGradient id="pcock" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2BD0C0"/><stop offset="0.55" stop-color="#2E8FD0"/><stop offset="1" stop-color="#2E4BB0"/></linearGradient><linearGradient id="gold" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFF0A8"/><stop offset="0.5" stop-color="#F2C230"/><stop offset="1" stop-color="#C8901A"/></linearGradient></defs>
-<rect x="0" y="0" width="680" height="700" fill="#FFFFFF"/>
+<rect x="0" y="0" width="680" height="746" fill="#FFFFFF"/>
 <text x="20" y="34" font-size="13" font-weight="700" fill="#1F2933">戸田（クローザー）｜一方的なセリフ伝達をやめ、間と聞く力でお客様主導に話させて取り切る</text>
 <text x="660" y="26" text-anchor="end" font-size="13" fill="#67707A">達成率</text>
 <text x="462" y="50" text-anchor="end" font-size="20" font-weight="700" fill="#1D9E75">0%</text>
@@ -16,8 +16,8 @@
 <rect x="16" y="99.5" width="80" height="22" rx="11" fill="#FFF3D6" stroke="#B7791F" stroke-width="1"/>
 <text x="56.0" y="114.5" text-anchor="middle" font-size="11" font-weight="700" fill="#B7791F">達成</text>
 <ellipse cx="402.0" cy="116.0" rx="25.5" ry="32.3" fill="#FFF3D6"/><ellipse cx="402.0" cy="116.0" rx="25.5" ry="32.3" fill="none" stroke="#E2D2A0" stroke-width="2.4"/><circle cx="393.5" cy="110.9" r="2.5" fill="#E6D3A0"/><circle cx="410.5" cy="124.5" r="2.2" fill="#E6D3A0"/><circle cx="403.7" cy="134.7" r="2.0" fill="#E6D3A0"/>
-<text x="448" y="113" font-size="13" font-weight="700" fill="#1F2933">あと1コで進化</text>
-<text x="448" y="131" font-size="11" fill="#67707A">餌 0/1　累計 0/6</text>
+<text x="448" y="113" font-size="13" font-weight="700" fill="#1F2933">あと0コで進化</text>
+<text x="448" y="131" font-size="11" fill="#67707A">餌 0/0　累計 0/5</text>
 <text x="16" y="62" font-size="10" fill="#67707A">目標時期</text>
 <line x1="235.0" y1="177" x2="235.0" y2="157" stroke="#9AA3AD" stroke-width="2"/>
 <path d="M230.0,159 L235.0,153 L240.0,159 Z" fill="#9AA3AD"/>
@@ -27,9 +27,6 @@
 <text x="142" y="217" font-size="11" fill="#67707A">完了：指導なしで型を回せる</text>
 <rect x="16" y="195.5" width="80" height="22" rx="11" fill="#F2F4F6" stroke="#9AA3AD" stroke-width="1"/>
 <text x="56.0" y="210.5" text-anchor="middle" font-size="11" font-weight="700" fill="#9AA3AD">—</text>
-<rect x="360" y="184" width="14" height="14" rx="3" fill="#fff" stroke="#9AA3AD" stroke-width="1.5"/>
-<text x="382" y="195" font-size="12.5" fill="#1F2933">（週次MTで具体タスクを設定・Notion </text>
-<text x="382" y="210" font-size="12.5" fill="#1F2933">GMタスクDBから同期予定）</text>
 <line x1="235.0" y1="262" x2="235.0" y2="242" stroke="#9AA3AD" stroke-width="2"/>
 <path d="M230.0,244 L235.0,238 L240.0,244 Z" fill="#9AA3AD"/>
 <rect x="130" y="262" width="210" height="74" rx="10" fill="#F2F4F6" stroke="#9AA3AD" stroke-width="1"/>
@@ -39,47 +36,47 @@
 <text x="142" y="317" font-size="11" fill="#67707A">を言語化できる</text>
 <rect x="16" y="288.0" width="80" height="22" rx="11" fill="#F2F4F6" stroke="#9AA3AD" stroke-width="1"/>
 <text x="56.0" y="303.0" text-anchor="middle" font-size="11" font-weight="700" fill="#9AA3AD">—</text>
-<rect x="360" y="269" width="14" height="14" rx="3" fill="#fff" stroke="#9AA3AD" stroke-width="1.5"/>
-<text x="382" y="280" font-size="12.5" fill="#1F2933">（週次MTで具体タスクを設定・Notion </text>
-<text x="382" y="295" font-size="12.5" fill="#1F2933">GMタスクDBから同期予定）</text>
 <line x1="235.0" y1="362" x2="235.0" y2="342" stroke="#9AA3AD" stroke-width="2"/>
 <path d="M230.0,344 L235.0,338 L240.0,344 Z" fill="#9AA3AD"/>
-<rect x="130" y="362" width="210" height="74" rx="10" fill="#F2F4F6" stroke="#9AA3AD" stroke-width="1"/>
+<rect x="130" y="362" width="210" height="84" rx="10" fill="#F2F4F6" stroke="#9AA3AD" stroke-width="1"/>
 <circle cx="118" cy="382" r="9" fill="#9AA3AD"/>
 <text x="142" y="384" font-size="14" font-weight="700" fill="#1F2933">③実践</text>
 <text x="142" y="402" font-size="11" fill="#67707A">完了：商談で意図的に型を使えて</text>
 <text x="142" y="417" font-size="11" fill="#67707A">いる</text>
-<rect x="16" y="388.0" width="80" height="22" rx="11" fill="#F2F4F6" stroke="#9AA3AD" stroke-width="1"/>
-<text x="56.0" y="403.0" text-anchor="middle" font-size="11" font-weight="700" fill="#9AA3AD">—</text>
+<rect x="16" y="393.0" width="80" height="22" rx="11" fill="#F2F4F6" stroke="#9AA3AD" stroke-width="1"/>
+<text x="56.0" y="408.0" text-anchor="middle" font-size="11" font-weight="700" fill="#9AA3AD">—</text>
 <rect x="360" y="369" width="14" height="14" rx="3" fill="#fff" stroke="#9AA3AD" stroke-width="1.5"/>
-<text x="382" y="380" font-size="12.5" fill="#1F2933">（週次MTで具体タスクを設定・Notion </text>
-<text x="382" y="395" font-size="12.5" fill="#1F2933">GMタスクDBから同期予定）</text>
-<line x1="235.0" y1="462" x2="235.0" y2="442" stroke="#9AA3AD" stroke-width="2"/>
-<path d="M230.0,444 L235.0,438 L240.0,444 Z" fill="#9AA3AD"/>
-<rect x="130" y="462" width="210" height="84" rx="10" fill="#FDF3E2" stroke="#EF9F27" stroke-width="2"/>
-<circle cx="118" cy="482" r="9" fill="#EF9F27"/>
-<text x="142" y="484" font-size="14" font-weight="700" fill="#1F2933">②練習</text>
-<text x="142" y="502" font-size="11" fill="#67707A">完了：苦手ケースでも型どおり実</text>
-<text x="142" y="517" font-size="11" fill="#67707A">行できる</text>
-<rect x="16" y="493.0" width="80" height="22" rx="11" fill="#FDF3E2" stroke="#EF9F27" stroke-width="1"/>
-<text x="56.0" y="508.0" text-anchor="middle" font-size="11" font-weight="700" fill="#EF9F27">—</text>
-<rect x="360" y="469" width="14" height="14" rx="3" fill="#fff" stroke="#9AA3AD" stroke-width="1.5"/>
-<text x="382" y="480" font-size="12.5" fill="#1F2933">0.5倍速＋間で聞くスタンスに切り替え、お客</text>
-<text x="382" y="495" font-size="12.5" fill="#1F2933">様に話させる</text>
-<rect x="360" y="505" width="14" height="14" rx="3" fill="#fff" stroke="#9AA3AD" stroke-width="1.5"/>
-<text x="382" y="516" font-size="12.5" fill="#1F2933">アポ中「自分：お客様」の話す割合を体感で半々</text>
-<text x="382" y="531" font-size="12.5" fill="#1F2933">以下に抑える</text>
-<line x1="235.0" y1="572" x2="235.0" y2="552" stroke="#9AA3AD" stroke-width="2"/>
-<path d="M230.0,554 L235.0,548 L240.0,554 Z" fill="#9AA3AD"/>
-<rect x="130" y="572" width="210" height="74" rx="10" fill="#E7F5EF" stroke="#1D9E75" stroke-width="1"/>
-<circle cx="118" cy="592" r="9" fill="#1D9E75"/>
-<path d="M114,592 l3,3 l6,-7" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<text x="142" y="594" font-size="14" font-weight="700" fill="#1F2933">①型を知る</text>
-<text x="142" y="612" font-size="11" fill="#67707A">完了：自分の勝ち負け・型を言語</text>
-<text x="142" y="627" font-size="11" fill="#67707A">化できる</text>
-<rect x="16" y="598.0" width="80" height="22" rx="11" fill="#E7F5EF" stroke="#1D9E75" stroke-width="1"/>
-<text x="56.0" y="613.0" text-anchor="middle" font-size="11" font-weight="700" fill="#1D9E75">クリア</text>
-<rect x="360" y="579" width="14" height="14" rx="3" fill="#fff" stroke="#9AA3AD" stroke-width="1.5"/>
-<text x="382" y="590" font-size="12.5" fill="#1F2933">（週次MTで具体タスクを設定・Notion </text>
-<text x="382" y="605" font-size="12.5" fill="#1F2933">GMタスクDBから同期予定）</text>
+<text x="382" y="380" font-size="12.5" fill="#1F2933">当たり前感＋見える情報（リッター数・築年数）</text>
+<text x="382" y="395" font-size="12.5" fill="#1F2933">を業者口調で話し、温度感を上げてから日程切り</text>
+<rect x="360" y="405" width="14" height="14" rx="3" fill="#fff" stroke="#9AA3AD" stroke-width="1.5"/>
+<text x="382" y="416" font-size="12.5" fill="#1F2933">決裁者（旦那様）には確認依頼の前に「受けたい</text>
+<text x="382" y="431" font-size="12.5" fill="#1F2933">」温度感まで上げ、可能なら直接説明する流れ…</text>
+<line x1="235.0" y1="472" x2="235.0" y2="452" stroke="#9AA3AD" stroke-width="2"/>
+<path d="M230.0,454 L235.0,448 L240.0,454 Z" fill="#9AA3AD"/>
+<rect x="130" y="472" width="210" height="120" rx="10" fill="#FDF3E2" stroke="#EF9F27" stroke-width="2"/>
+<circle cx="118" cy="492" r="9" fill="#EF9F27"/>
+<text x="142" y="494" font-size="14" font-weight="700" fill="#1F2933">②練習</text>
+<text x="142" y="512" font-size="11" fill="#67707A">完了：苦手ケースでも型どおり実</text>
+<text x="142" y="527" font-size="11" fill="#67707A">行できる</text>
+<rect x="16" y="521.0" width="80" height="22" rx="11" fill="#FDF3E2" stroke="#EF9F27" stroke-width="1"/>
+<text x="56.0" y="536.0" text-anchor="middle" font-size="11" font-weight="700" fill="#EF9F27">—</text>
+<rect x="360" y="479" width="14" height="14" rx="3" fill="#fff" stroke="#9AA3AD" stroke-width="1.5"/>
+<text x="382" y="490" font-size="12.5" fill="#1F2933">0.5倍速でゆっくり話し、思うより「間」を取</text>
+<text x="382" y="505" font-size="12.5" fill="#1F2933">る話し方をロープレで体に入れる</text>
+<rect x="360" y="515" width="14" height="14" rx="3" fill="#fff" stroke="#9AA3AD" stroke-width="1.5"/>
+<text x="382" y="526" font-size="12.5" fill="#1F2933">【今週の1点】対象→対話の突破：0.5倍速＋</text>
+<text x="382" y="541" font-size="12.5" fill="#1F2933">間でお客様に話させる（対話率41%→70%）</text>
+<rect x="360" y="551" width="14" height="14" rx="3" fill="#fff" stroke="#9AA3AD" stroke-width="1.5"/>
+<text x="382" y="562" font-size="12.5" fill="#1F2933">一方的に説明せず「相手が知りたくなる言い方→</text>
+<text x="382" y="577" font-size="12.5" fill="#1F2933">質問させてから答える」型を固める</text>
+<line x1="235.0" y1="618" x2="235.0" y2="598" stroke="#9AA3AD" stroke-width="2"/>
+<path d="M230.0,600 L235.0,594 L240.0,600 Z" fill="#9AA3AD"/>
+<rect x="130" y="618" width="210" height="74" rx="10" fill="#E7F5EF" stroke="#1D9E75" stroke-width="1"/>
+<circle cx="118" cy="638" r="9" fill="#1D9E75"/>
+<path d="M114,638 l3,3 l6,-7" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="142" y="640" font-size="14" font-weight="700" fill="#1F2933">①型を知る</text>
+<text x="142" y="658" font-size="11" fill="#67707A">完了：自分の勝ち負け・型を言語</text>
+<text x="142" y="673" font-size="11" fill="#67707A">化できる</text>
+<rect x="16" y="644.0" width="80" height="22" rx="11" fill="#E7F5EF" stroke="#1D9E75" stroke-width="1"/>
+<text x="56.0" y="659.0" text-anchor="middle" font-size="11" font-weight="700" fill="#1D9E75">クリア</text>
 </svg>

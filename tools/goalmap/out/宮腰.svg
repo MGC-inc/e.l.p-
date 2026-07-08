@@ -16,8 +16,8 @@
 <rect x="16" y="99.5" width="80" height="22" rx="11" fill="#FFF3D6" stroke="#B7791F" stroke-width="1"/>
 <text x="56.0" y="114.5" text-anchor="middle" font-size="11" font-weight="700" fill="#B7791F">達成</text>
 <ellipse cx="402.0" cy="116.0" rx="25.5" ry="32.3" fill="#FFF3D6"/><ellipse cx="402.0" cy="116.0" rx="25.5" ry="32.3" fill="none" stroke="#E2D2A0" stroke-width="2.4"/><circle cx="393.5" cy="110.9" r="2.5" fill="#E6D3A0"/><circle cx="410.5" cy="124.5" r="2.2" fill="#E6D3A0"/><circle cx="403.7" cy="134.7" r="2.0" fill="#E6D3A0"/>
-<text x="448" y="113" font-size="13" font-weight="700" fill="#1F2933">あと1コで進化</text>
-<text x="448" y="131" font-size="11" fill="#67707A">餌 0/1　累計 0/6</text>
+<text x="448" y="113" font-size="13" font-weight="700" fill="#1F2933">あと0コで進化</text>
+<text x="448" y="131" font-size="11" fill="#67707A">餌 0/0　累計 0/4</text>
 <text x="16" y="62" font-size="10" fill="#67707A">目標時期</text>
 <line x1="235.0" y1="177" x2="235.0" y2="157" stroke="#9AA3AD" stroke-width="2"/>
 <path d="M230.0,159 L235.0,153 L240.0,159 Z" fill="#9AA3AD"/>
@@ -27,9 +27,6 @@
 <text x="142" y="217" font-size="11" fill="#67707A">完了：指導なしで型を回せる</text>
 <rect x="16" y="195.5" width="80" height="22" rx="11" fill="#F2F4F6" stroke="#9AA3AD" stroke-width="1"/>
 <text x="56.0" y="210.5" text-anchor="middle" font-size="11" font-weight="700" fill="#9AA3AD">—</text>
-<rect x="360" y="184" width="14" height="14" rx="3" fill="#fff" stroke="#9AA3AD" stroke-width="1.5"/>
-<text x="382" y="195" font-size="12.5" fill="#1F2933">（週次MTで具体タスクを設定・Notion </text>
-<text x="382" y="210" font-size="12.5" fill="#1F2933">GMタスクDBから同期予定）</text>
 <line x1="235.0" y1="262" x2="235.0" y2="242" stroke="#9AA3AD" stroke-width="2"/>
 <path d="M230.0,244 L235.0,238 L240.0,244 Z" fill="#9AA3AD"/>
 <rect x="130" y="262" width="210" height="74" rx="10" fill="#F2F4F6" stroke="#9AA3AD" stroke-width="1"/>
@@ -40,8 +37,8 @@
 <rect x="16" y="288.0" width="80" height="22" rx="11" fill="#F2F4F6" stroke="#9AA3AD" stroke-width="1"/>
 <text x="56.0" y="303.0" text-anchor="middle" font-size="11" font-weight="700" fill="#9AA3AD">—</text>
 <rect x="360" y="269" width="14" height="14" rx="3" fill="#fff" stroke="#9AA3AD" stroke-width="1.5"/>
-<text x="382" y="280" font-size="12.5" fill="#1F2933">（週次MTで具体タスクを設定・Notion </text>
-<text x="382" y="295" font-size="12.5" fill="#1F2933">GMタスクDBから同期予定）</text>
+<text x="382" y="280" font-size="12.5" fill="#1F2933">深い褒め（「こうだから凄いですね」）→本音引</text>
+<text x="382" y="295" font-size="12.5" fill="#1F2933">き出しが効いた場面を週次で記録して再現性を…</text>
 <line x1="235.0" y1="362" x2="235.0" y2="342" stroke="#9AA3AD" stroke-width="2"/>
 <path d="M230.0,344 L235.0,338 L240.0,344 Z" fill="#9AA3AD"/>
 <rect x="130" y="362" width="210" height="84" rx="10" fill="#FDF3E2" stroke="#EF9F27" stroke-width="2"/>
@@ -52,11 +49,11 @@
 <rect x="16" y="393.0" width="80" height="22" rx="11" fill="#FDF3E2" stroke="#EF9F27" stroke-width="1"/>
 <text x="56.0" y="408.0" text-anchor="middle" font-size="11" font-weight="700" fill="#EF9F27">—</text>
 <rect x="360" y="369" width="14" height="14" rx="3" fill="#fff" stroke="#9AA3AD" stroke-width="1.5"/>
-<text x="382" y="380" font-size="12.5" fill="#1F2933">間を作る＋温度感スイッチング（初手を上げすぎ</text>
-<text x="382" y="395" font-size="12.5" fill="#1F2933">ない）</text>
+<text x="382" y="380" font-size="12.5" fill="#1F2933">不信感でお願いスタンスに陥ったら「取れていた</text>
+<text x="382" y="395" font-size="12.5" fill="#1F2933">時の当たり前スタンス」を思い出して立て直す</text>
 <rect x="360" y="405" width="14" height="14" rx="3" fill="#fff" stroke="#9AA3AD" stroke-width="1.5"/>
-<text x="382" y="416" font-size="12.5" fill="#1F2933">1商談ごとに『早口になっていないか』『当たり</text>
-<text x="382" y="431" font-size="12.5" fill="#1F2933">前スタンスを保てたか』を終礼で自己採点</text>
+<text x="382" y="416" font-size="12.5" fill="#1F2933">初手のテンションを上げすぎず、相手の反応に合</text>
+<text x="382" y="431" font-size="12.5" fill="#1F2933">わせて温度を切り替える「温度感スイッチング…</text>
 <line x1="235.0" y1="472" x2="235.0" y2="452" stroke="#9AA3AD" stroke-width="2"/>
 <path d="M230.0,454 L235.0,448 L240.0,454 Z" fill="#9AA3AD"/>
 <rect x="130" y="472" width="210" height="74" rx="10" fill="#E7F5EF" stroke="#1D9E75" stroke-width="1"/>
@@ -68,8 +65,8 @@
 <rect x="16" y="498.0" width="80" height="22" rx="11" fill="#E7F5EF" stroke="#1D9E75" stroke-width="1"/>
 <text x="56.0" y="513.0" text-anchor="middle" font-size="11" font-weight="700" fill="#1D9E75">クリア</text>
 <rect x="360" y="479" width="14" height="14" rx="3" fill="#fff" stroke="#9AA3AD" stroke-width="1.5"/>
-<text x="382" y="490" font-size="12.5" fill="#1F2933">（週次MTで具体タスクを設定・Notion </text>
-<text x="382" y="505" font-size="12.5" fill="#1F2933">GMタスクDBから同期予定）</text>
+<text x="382" y="490" font-size="12.5" fill="#1F2933">早口を抑えて「間」を意識的に作り、質問→沈黙</text>
+<text x="382" y="505" font-size="12.5" fill="#1F2933">で待ってお客様に話させる練習</text>
 <line x1="235.0" y1="572" x2="235.0" y2="552" stroke="#9AA3AD" stroke-width="2"/>
 <path d="M230.0,554 L235.0,548 L240.0,554 Z" fill="#9AA3AD"/>
 <rect x="130" y="572" width="210" height="74" rx="10" fill="#E7F5EF" stroke="#1D9E75" stroke-width="1"/>
@@ -80,7 +77,4 @@
 <text x="142" y="627" font-size="11" fill="#67707A">化できる</text>
 <rect x="16" y="598.0" width="80" height="22" rx="11" fill="#E7F5EF" stroke="#1D9E75" stroke-width="1"/>
 <text x="56.0" y="613.0" text-anchor="middle" font-size="11" font-weight="700" fill="#1D9E75">クリア</text>
-<rect x="360" y="579" width="14" height="14" rx="3" fill="#fff" stroke="#9AA3AD" stroke-width="1.5"/>
-<text x="382" y="590" font-size="12.5" fill="#1F2933">（週次MTで具体タスクを設定・Notion </text>
-<text x="382" y="605" font-size="12.5" fill="#1F2933">GMタスクDBから同期予定）</text>
 </svg>

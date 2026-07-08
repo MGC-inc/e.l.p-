@@ -1,6 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 680 700" font-family="Hiragino Sans, 'Noto Sans CJK JP', 'Yu Gothic', sans-serif" width="680" height="700">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 680 690" font-family="Hiragino Sans, 'Noto Sans CJK JP', 'Yu Gothic', sans-serif" width="680" height="690">
 <defs><linearGradient id="goalGrad" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#5B4BE0"/><stop offset="0.5" stop-color="#B14BE0"/><stop offset="1" stop-color="#FFC24B"/></linearGradient><linearGradient id="phx" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFE259"/><stop offset="0.5" stop-color="#FF9A00"/><stop offset="1" stop-color="#FF3D00"/></linearGradient><linearGradient id="phx2" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFF0A0"/><stop offset="1" stop-color="#FF7A00"/></linearGradient><linearGradient id="hen" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#37C9B0"/><stop offset="0.6" stop-color="#3DA0E8"/><stop offset="1" stop-color="#7A5BE0"/></linearGradient><linearGradient id="pcock" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2BD0C0"/><stop offset="0.55" stop-color="#2E8FD0"/><stop offset="1" stop-color="#2E4BB0"/></linearGradient><linearGradient id="gold" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFF0A8"/><stop offset="0.5" stop-color="#F2C230"/><stop offset="1" stop-color="#C8901A"/></linearGradient></defs>
-<rect x="0" y="0" width="680" height="700" fill="#FFFFFF"/>
+<rect x="0" y="0" width="680" height="690" fill="#FFFFFF"/>
 <text x="20" y="34" font-size="18" font-weight="700" fill="#1F2933">古賀（新人）｜アポの型を習得する（新人立ち上げ）</text>
 <text x="660" y="26" text-anchor="end" font-size="13" fill="#67707A">達成率</text>
 <text x="462" y="50" text-anchor="end" font-size="20" font-weight="700" fill="#1D9E75">0%</text>
@@ -17,7 +17,7 @@
 <text x="56.0" y="114.5" text-anchor="middle" font-size="11" font-weight="700" fill="#B7791F">達成</text>
 <ellipse cx="402.0" cy="116.0" rx="25.5" ry="32.3" fill="#FFF3D6"/><ellipse cx="402.0" cy="116.0" rx="25.5" ry="32.3" fill="none" stroke="#E2D2A0" stroke-width="2.4"/><circle cx="393.5" cy="110.9" r="2.5" fill="#E6D3A0"/><circle cx="410.5" cy="124.5" r="2.2" fill="#E6D3A0"/><circle cx="403.7" cy="134.7" r="2.0" fill="#E6D3A0"/>
 <text x="448" y="113" font-size="13" font-weight="700" fill="#1F2933">あと2コで進化</text>
-<text x="448" y="131" font-size="11" fill="#67707A">餌 0/2　累計 0/6</text>
+<text x="448" y="131" font-size="11" fill="#67707A">餌 0/2　累計 0/10</text>
 <text x="16" y="62" font-size="10" fill="#67707A">目標時期</text>
 <line x1="235.0" y1="177" x2="235.0" y2="157" stroke="#9AA3AD" stroke-width="2"/>
 <path d="M230.0,159 L235.0,153 L240.0,159 Z" fill="#9AA3AD"/>
@@ -28,8 +28,9 @@
 <rect x="16" y="195.5" width="80" height="22" rx="11" fill="#F2F4F6" stroke="#9AA3AD" stroke-width="1"/>
 <text x="56.0" y="210.5" text-anchor="middle" font-size="11" font-weight="700" fill="#9AA3AD">—</text>
 <rect x="360" y="184" width="14" height="14" rx="3" fill="#fff" stroke="#9AA3AD" stroke-width="1.5"/>
-<text x="382" y="195" font-size="12.5" fill="#1F2933">（週次MTで具体タスクを設定・Notion </text>
-<text x="382" y="210" font-size="12.5" fill="#1F2933">GMタスクDBから同期予定）</text>
+<text x="382" y="195" font-size="12.5" fill="#1F2933">指導なしで１商談を最後まで担当する</text>
+<rect x="360" y="205" width="14" height="14" rx="3" fill="#fff" stroke="#9AA3AD" stroke-width="1.5"/>
+<text x="382" y="216" font-size="12.5" fill="#1F2933">自分の改善テーマを1つ決める</text>
 <line x1="235.0" y1="262" x2="235.0" y2="242" stroke="#9AA3AD" stroke-width="2"/>
 <path d="M230.0,244 L235.0,238 L240.0,244 Z" fill="#9AA3AD"/>
 <rect x="130" y="262" width="210" height="74" rx="10" fill="#F2F4F6" stroke="#9AA3AD" stroke-width="1"/>
@@ -40,8 +41,9 @@
 <rect x="16" y="288.0" width="80" height="22" rx="11" fill="#F2F4F6" stroke="#9AA3AD" stroke-width="1"/>
 <text x="56.0" y="303.0" text-anchor="middle" font-size="11" font-weight="700" fill="#9AA3AD">—</text>
 <rect x="360" y="269" width="14" height="14" rx="3" fill="#fff" stroke="#9AA3AD" stroke-width="1.5"/>
-<text x="382" y="280" font-size="12.5" fill="#1F2933">（週次MTで具体タスクを設定・Notion </text>
-<text x="382" y="295" font-size="12.5" fill="#1F2933">GMタスクDBから同期予定）</text>
+<text x="382" y="280" font-size="12.5" fill="#1F2933">つまずきポイントを先輩と確認する</text>
+<rect x="360" y="290" width="14" height="14" rx="3" fill="#fff" stroke="#9AA3AD" stroke-width="1.5"/>
+<text x="382" y="301" font-size="12.5" fill="#1F2933">週次で自分の商談を振り返る</text>
 <line x1="235.0" y1="362" x2="235.0" y2="342" stroke="#9AA3AD" stroke-width="2"/>
 <path d="M230.0,344 L235.0,338 L240.0,344 Z" fill="#9AA3AD"/>
 <rect x="130" y="362" width="210" height="74" rx="10" fill="#F2F4F6" stroke="#9AA3AD" stroke-width="1"/>
@@ -52,8 +54,9 @@
 <rect x="16" y="388.0" width="80" height="22" rx="11" fill="#F2F4F6" stroke="#9AA3AD" stroke-width="1"/>
 <text x="56.0" y="403.0" text-anchor="middle" font-size="11" font-weight="700" fill="#9AA3AD">—</text>
 <rect x="360" y="369" width="14" height="14" rx="3" fill="#fff" stroke="#9AA3AD" stroke-width="1.5"/>
-<text x="382" y="380" font-size="12.5" fill="#1F2933">（週次MTで具体タスクを設定・Notion </text>
-<text x="382" y="395" font-size="12.5" fill="#1F2933">GMタスクDBから同期予定）</text>
+<text x="382" y="380" font-size="12.5" fill="#1F2933">指導つきで商談に同席し、一部を担当する</text>
+<rect x="360" y="390" width="14" height="14" rx="3" fill="#fff" stroke="#9AA3AD" stroke-width="1.5"/>
+<text x="382" y="401" font-size="12.5" fill="#1F2933">商談後に良かった点・詰まった点を記録する</text>
 <line x1="235.0" y1="462" x2="235.0" y2="442" stroke="#9AA3AD" stroke-width="2"/>
 <path d="M230.0,444 L235.0,438 L240.0,444 Z" fill="#9AA3AD"/>
 <rect x="130" y="462" width="210" height="74" rx="10" fill="#F2F4F6" stroke="#9AA3AD" stroke-width="1"/>
@@ -64,21 +67,21 @@
 <rect x="16" y="488.0" width="80" height="22" rx="11" fill="#F2F4F6" stroke="#9AA3AD" stroke-width="1"/>
 <text x="56.0" y="503.0" text-anchor="middle" font-size="11" font-weight="700" fill="#9AA3AD">—</text>
 <rect x="360" y="469" width="14" height="14" rx="3" fill="#fff" stroke="#9AA3AD" stroke-width="1.5"/>
-<text x="382" y="480" font-size="12.5" fill="#1F2933">（週次MTで具体タスクを設定・Notion </text>
-<text x="382" y="495" font-size="12.5" fill="#1F2933">GMタスクDBから同期予定）</text>
+<text x="382" y="480" font-size="12.5" fill="#1F2933">商品知識・よくある質問を覚える</text>
+<rect x="360" y="490" width="14" height="14" rx="3" fill="#fff" stroke="#9AA3AD" stroke-width="1.5"/>
+<text x="382" y="501" font-size="12.5" fill="#1F2933">基本トークをロープレで繰り返す</text>
 <line x1="235.0" y1="562" x2="235.0" y2="542" stroke="#9AA3AD" stroke-width="2"/>
 <path d="M230.0,544 L235.0,538 L240.0,544 Z" fill="#9AA3AD"/>
-<rect x="130" y="562" width="210" height="84" rx="10" fill="#FDF3E2" stroke="#EF9F27" stroke-width="2"/>
+<rect x="130" y="562" width="210" height="74" rx="10" fill="#FDF3E2" stroke="#EF9F27" stroke-width="2"/>
 <circle cx="118" cy="582" r="9" fill="#EF9F27"/>
 <text x="142" y="584" font-size="14" font-weight="700" fill="#1F2933">①型を知る</text>
 <text x="142" y="602" font-size="11" fill="#67707A">完了：自分の勝ち負け・型を言語</text>
 <text x="142" y="617" font-size="11" fill="#67707A">化できる</text>
-<rect x="16" y="593.0" width="80" height="22" rx="11" fill="#FDF3E2" stroke="#EF9F27" stroke-width="1"/>
-<text x="56.0" y="608.0" text-anchor="middle" font-size="11" font-weight="700" fill="#EF9F27">—</text>
+<rect x="16" y="588.0" width="80" height="22" rx="11" fill="#FDF3E2" stroke="#EF9F27" stroke-width="1"/>
+<text x="56.0" y="603.0" text-anchor="middle" font-size="11" font-weight="700" fill="#EF9F27">—</text>
 <rect x="360" y="569" width="14" height="14" rx="3" fill="#fff" stroke="#9AA3AD" stroke-width="1.5"/>
-<text x="382" y="580" font-size="12.5" fill="#1F2933">マニュアル暗記と工事挨拶トークの習得、先輩同</text>
-<text x="382" y="595" font-size="12.5" fill="#1F2933">行での型の観察</text>
+<text x="382" y="580" font-size="12.5" fill="#1F2933">商談の基本フロー（挨拶〜クロージング）を覚え</text>
+<text x="382" y="595" font-size="12.5" fill="#1F2933">る</text>
 <rect x="360" y="605" width="14" height="14" rx="3" fill="#fff" stroke="#9AA3AD" stroke-width="1.5"/>
-<text x="382" y="616" font-size="12.5" fill="#1F2933">基本トークを音読・ロープレし、毎日アポ結果と</text>
-<text x="382" y="631" font-size="12.5" fill="#1F2933">気づきを学びログに投稿</text>
+<text x="382" y="616" font-size="12.5" fill="#1F2933">先輩のトップ商談に同席し、型をメモする</text>
 </svg>
