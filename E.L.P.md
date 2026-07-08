@@ -31,6 +31,7 @@
 | GitHub×DB×アプリの全体設計を知りたい | [運用設計.md](./運用設計.md) |
 | 週次MTGで個人ゴールの進捗図解を作る運用を知りたい | [ゴールマップ運用.md](./ゴールマップ運用.md) ＋ [tools/goalmap/](./tools/goalmap/) |
 | Notion AIでゴールマップDBを再現するプロンプトが欲しい | [tools/goalmap/notion_setup_prompt.md](./tools/goalmap/notion_setup_prompt.md) |
+| 会社→組織→チーム→個人と地図のようにズームして辿る組織全体のゴールマップを見たい | [tools/roadmap/README.md](./tools/roadmap/README.md) |
 | Claude Codeからシステムを操作する手順を知りたい | [Claude操作マニュアル.md](./Claude操作マニュアル.md) |
 
 ## 3. システム構成（ホワイトボード設計の写し）

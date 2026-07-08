@@ -1004,7 +1004,10 @@ document.getElementById("exportPng").addEventListener("click",()=>{
   // 内蔵メンバーで、まだlocalStorageに無いものを初期投入（既存の編集は上書きしない）
   EMBEDDED.forEach(m=>{ if(!load(m.name)) localStorage.setItem(KEY(m.name),JSON.stringify(m)); });
   const members=listMembers();
-  data=load(members[0])||clone(EMBEDDED[0]);
+  // ?member=名前 が付いていれば、そのメンバーを自動選択（組織ゴールマップからの遷移用）
+  const qMember=new URLSearchParams(location.search).get("member");
+  const initial=(qMember&&(load(qMember)||findEmbedded(qMember)))||load(members[0])||clone(EMBEDDED[0]);
+  data=initial;
   renderAll();
 })();
 </script>
