@@ -4,14 +4,15 @@
 
 > 個人ゴールマップ（`tools/goalmap/`）は**引き続きオフライン単体HTMLとして独立に配布・編集**できる。今回追加した組織ビュー（このディレクトリ）は**ビルドが必要**で、Vercel等にホスティングして使う別アプリ。
 
-## 現在の実装状況（Phase A）
+## 現在の実装状況（Phase A完了・Phase B進行中）
 
 - ✅ React + TypeScript + [`@xyflow/react`](https://reactflow.dev/)（React Flow）でLevel0〜3（会社/組織/チーム/個人）の展開・パン/ズーム・パンくずを実装
 - ✅ 個人（Level3）ノードをクリックすると `goalmap-studio.html?member=<名前>` へ遷移し、studio側で自動的にそのメンバーが選択される
-- ✅ データは `public/data/roadmap.json`（静的JSON）を起動時にfetch。**サンプル/プレースホルダデータ**（会社目標・組織4部署・チーム分けは仮）
-- ⬜ Notion「🏢 組織ロードマップ」DBの実作成・実データ投入（Phase B）
-- ⬜ Vercel等への実デプロイ（Phase B・Vercelコネクタの認可が必要）
-- ⬜ Level4（タスク）/Level5（サブタスク）専用UI（当面は個人ゴールマップ内のフェーズ/タスクで代替）
+- ✅ Notion「🏢 組織ロードマップ」DB作成・実データ投入（会社/組織/チーム10行、自己リレーション「親」でツリー化）。既存🧭目標マップDBに「所属チーム」リレーションを追加し、実データ15行に設定済み（Phase B項目1・2）
+- ✅ データは `public/data/roadmap.json`（静的JSON）を起動時にfetch。**実データ**（会社KGI：売上30億円=代理店30社×平均年商1億円・期限2029-03、営業部/管理部/施工部の3組織、ピタサチ/wannyチーム）に更新済み（Phase B項目3）
+- ✅ `sync_notion_to_json.py`：Notion→`roadmap.json`を生成するバッチを追加（Phase B項目4。ロジックはローカルの模擬データで検証済みだが、実際のNotion APIに対する実行はまだ未実施 — 要 `NOTION_TOKEN`）
+- ⬜ Vercel等への実デプロイ（Phase B項目5・Vercelコネクタの認可が必要）
+- ⬜ Level4（タスク）/Level5（サブタスク）専用UI（当面は個人ゴールマップ内のフェーズ/タスクで代替・Phase C）
 
 ## セットアップ・起動
 
@@ -55,13 +56,21 @@ interface RoadmapNode {
 - **パンくず**（左上）：今どの階層にいるか常時表示。クリックでその階層まで一気に戻れる
 - **スクロール/ピンチ/ドラッグ**：地図のような連続パン・ズーム（React Flow標準機能）
 
-## Phase B（次のステップ・未着手）
+## Phase B（進行中）
 
-1. Notionに新DB「🏢 組織ロードマップ」を作成（タイトル／レベル／説明／進捗率／期限／担当／優先度／ステータス／親（自己リレーション））
-2. 既存🧭目標マップDBに「所属チーム」リレーションを追加し、Level2→Level3を接続
-3. 実際の会社目標・組織名・チーム名をヒアリングし投入（`public/data/roadmap.json` はプレースホルダ）
-4. `sync_notion_to_json.py`（`tools/goalmap/generate_goalmap.py` と同じ立て付け）でNotion→`roadmap.json`を生成するバッチを追加
-5. Vercelへデプロイ（要 Vercel コネクタの認可）
+1. ✅ Notionに新DB「🏢 組織ロードマップ」を作成（名称／レベル／説明／進捗率／期限／責任者／優先度／ステータス／親・子（自己リレーション））。配置：「🧭 個人ゴールマップ」ページ直下
+2. ✅ 既存🧭目標マップDBに「所属チーム」リレーションを追加し、Level2→Level3を接続（兼務者は複数チームを選択。例：岡野＝wanny＋マネジメント、門田＝ピタサチ＋マネジメント）
+3. ✅ 実際の会社目標・組織名・チーム名をヒアリングし投入（`public/data/roadmap.json` を実データに更新済み。会社KGI：売上30億円＝代理店30社×平均年商1億円、期限2029-03-31）
+4. ✅ `sync_notion_to_json.py`（`tools/goalmap/generate_goalmap.py` と同じ立て付け）でNotion→`roadmap.json`を生成するバッチを追加。**未実施**：実際の`NOTION_TOKEN`を使った実行確認（ロジックは模擬データで検証済み）
+5. ⬜ Vercelへデプロイ（要 Vercel コネクタの認可）
+
+### `sync_notion_to_json.py` の使い方
+
+```bash
+export NOTION_TOKEN=secret_xxx   # Notion Internal Integrationのトークン（要事前作成・DB共有）
+python3 tools/roadmap/sync_notion_to_json.py
+```
+スクリプト冒頭のセットアップ手順（インテグレーション作成・DB共有）を参照。
 
 ## 関連
 
