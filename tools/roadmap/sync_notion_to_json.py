@@ -211,10 +211,14 @@ def build_org_tree(org_pages: list[dict]) -> dict:
 
 
 def attach_members(company: dict, goal_pages: list[dict]) -> None:
-    """🧭目標マップDBの各行を、「所属チーム」で紐づくLevel2チームの子として追加する。
+    """🧭目標マップDBの各行を、「所属チーム」で紐づくノードの子として追加する。
 
-    1メンバーが同じチームに複数の目標行（テーマ）を持っていても、個人の
-    ゴールマップ（goalmap-studio.html）は原則1人1枚なので、チームごとに
+    「所属チーム」はLevel2（チーム）だけでなく、代理店チームを持たない
+    マネジメント担当者（今川など）をLevel1（組織）へ直接ぶら下げる場合も
+    あるため、Level0〜2のどのノードでも接続先になれる。
+
+    1メンバーが同じ接続先に複数の目標行（テーマ）を持っていても、個人の
+    ゴールマップ（goalmap-studio.html）は原則1人1枚なので、接続先ごとに
     メンバー名で重複除去し、Level3リーフは1人1枚にする（最初に見つかった
     行のテーマ・ステータスを採用）。ただし members/ 配下に「〇〇（育成）」
     のような本人名のバリエーションファイルが複数存在するメンバー（岡野・
@@ -223,7 +227,7 @@ def attach_members(company: dict, goal_pages: list[dict]) -> None:
     team_index: dict[str, dict] = {}
 
     def index_teams(node: dict) -> None:
-        if node["level"] == 2:
+        if node["level"] in (0, 1, 2):
             team_index[node["id"]] = node
         for child in node.get("children", []):
             index_teams(child)

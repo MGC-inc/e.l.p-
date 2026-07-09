@@ -9,7 +9,7 @@
 - ✅ React + TypeScript + [`@xyflow/react`](https://reactflow.dev/)（React Flow）でLevel0〜3（会社/組織/チーム/個人）の展開・パン/ズーム・パンくずを実装
 - ✅ 個人（Level3）ノードをクリックすると `goalmap-studio.html?member=<名前>` へ遷移し、studio側で自動的にそのメンバーが選択される
 - ✅ Notion「🏢 組織ロードマップ」DB作成・実データ投入（会社/組織/チーム10行、自己リレーション「親」でツリー化）。既存🧭目標マップDBに「所属チーム」リレーションを追加し、実データ15行に設定済み（Phase B項目1・2）
-- ✅ データは `public/data/roadmap.json`（静的JSON）を起動時にfetch。**実データ**（会社KGI：売上30億円=代理店30社×平均年商1億円・期限2029-03、営業部/管理部/施工部の3組織、ピタサチ/wannyチーム）に更新済み（Phase B項目3）
+- ✅ データは `public/data/roadmap.json`（静的JSON）を起動時にfetch。**実データ**（会社KGI：売上30億円=代理店30社×平均年商1億円・期限2029-03、営業部/施工部の2組織、営業部内にピタサチ/wannyチーム＋今川（マネジメント）を直接配置）に更新済み（Phase B項目3。2026-07-09に管理部/マネジメントチームを廃止し営業部へ統合）
 - ✅ `sync_notion_to_json.py`：Notion→`roadmap.json`を生成するバッチを追加し、実際の`NOTION_TOKEN`で実行確認済み（Phase B項目4完了）。チームごとにメンバー名で重複除去し、`tools/goalmap/members/*.json`の実ファイル名（〇〇／〇〇（育成）等）に基づいてリーフを割り当てる
 - ⬜ Vercel等への実デプロイ（Phase B項目5・Vercelコネクタの認可が必要）
 - ⬜ Level4（タスク）/Level5（サブタスク）専用UI（当面は個人ゴールマップ内のフェーズ/タスクで代替・Phase C）
@@ -59,7 +59,7 @@ interface RoadmapNode {
 ## Phase B（進行中）
 
 1. ✅ Notionに新DB「🏢 組織ロードマップ」を作成（名称／レベル／説明／進捗率／期限／責任者／優先度／ステータス／親・子（自己リレーション））。配置：「🧭 個人ゴールマップ」ページ直下
-2. ✅ 既存🧭目標マップDBに「所属チーム」リレーションを追加し、Level2→Level3を接続（兼務者は複数チームを選択。例：岡野＝wanny＋マネジメント、門田＝ピタサチ＋マネジメント）
+2. ✅ 既存🧭目標マップDBに「所属チーム」リレーションを追加し、Level2→Level3を接続。接続先はLevel2（チーム）に限らずLevel1（組織）も可（代理店チームを持たない今川は営業部に直接接続）
 3. ✅ 実際の会社目標・組織名・チーム名をヒアリングし投入（`public/data/roadmap.json` を実データに更新済み。会社KGI：売上30億円＝代理店30社×平均年商1億円、期限2029-03-31）
 4. ✅ `sync_notion_to_json.py`（`tools/goalmap/generate_goalmap.py` と同じ立て付け）でNotion→`roadmap.json`を生成するバッチを追加。実際の`NOTION_TOKEN`で実行確認済み（`public/data/roadmap.json`・`src/data/roadmap.sample.json`ともNotion発のデータに更新済み）
 5. ⬜ Vercelへデプロイ（要 Vercel コネクタの認可）

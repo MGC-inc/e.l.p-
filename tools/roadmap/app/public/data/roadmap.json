@@ -119,61 +119,20 @@
           "owner": "岡野",
           "status": "in_progress",
           "progress": 0.0
+        },
+        {
+          "id": "38bda094-9999-8111-90a7-f7ced01f09fe:398da094-9999-8138-8528-e7986c1e767e",
+          "level": 3,
+          "title": "今川",
+          "owner": "今川",
+          "status": "in_progress",
+          "externalLink": "/goalmap-studio.html?member=%E4%BB%8A%E5%B7%9D",
+          "description": "チーム・代理店の「売れる仕組み」を構築し、事業部売上を過去最高へ（マネジメント）",
+          "progress": 0
         }
       ],
       "description": "アポ〜クロージングまでの営業組織（代理店：ピタサチ／wanny）",
       "owner": "今川",
-      "status": "in_progress",
-      "progress": 0.0
-    },
-    {
-      "id": "398da094-9999-8199-b7e4-ec2532975721",
-      "level": 1,
-      "title": "管理部",
-      "children": [
-        {
-          "id": "398da094-9999-8141-81b0-d250723fc3a1",
-          "level": 2,
-          "title": "マネジメント",
-          "children": [
-            {
-              "id": "2dd26939-14ca-4180-b899-fc4de5ed3707:398da094-9999-8141-81b0-d250723fc3a1",
-              "level": 3,
-              "title": "岡野",
-              "owner": "岡野",
-              "status": "in_progress",
-              "externalLink": "/goalmap-studio.html?member=%E5%B2%A1%E9%87%8E",
-              "description": "保証の価値を具体イメージで伝え、『高い』を越えて契約を取り切る（クローザー）",
-              "progress": 0
-            },
-            {
-              "id": "38bda094-9999-8111-90a7-f7ced01f09fe:398da094-9999-8141-81b0-d250723fc3a1",
-              "level": 3,
-              "title": "今川",
-              "owner": "今川",
-              "status": "in_progress",
-              "externalLink": "/goalmap-studio.html?member=%E4%BB%8A%E5%B7%9D",
-              "description": "チーム・代理店の「売れる仕組み」を構築し、事業部売上を過去最高へ（マネジメント）",
-              "progress": 0
-            },
-            {
-              "id": "38bda094-9999-8136-8293-fa093c682fc0:398da094-9999-8141-81b0-d250723fc3a1",
-              "level": 3,
-              "title": "門田",
-              "owner": "門田",
-              "status": "in_progress",
-              "externalLink": "/goalmap-studio.html?member=%E9%96%80%E7%94%B0",
-              "description": "契約を安定させる（クローザー）",
-              "progress": 0
-            }
-          ],
-          "description": "各代理店のマネージャー兼プレイヤー（ピタサチ：門田／wanny：岡野）と全体統括（今川）",
-          "owner": "今川",
-          "status": "in_progress",
-          "progress": 0.0
-        }
-      ],
-      "description": "マネジメント・代理店統括",
       "status": "in_progress",
       "progress": 0.0
     },
