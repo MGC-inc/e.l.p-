@@ -192,6 +192,10 @@ const SVG_DEFS = `<defs>`+
   `<linearGradient id="hen" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#37C9B0"/><stop offset="0.6" stop-color="#3DA0E8"/><stop offset="1" stop-color="#7A5BE0"/></linearGradient>`+
   `<linearGradient id="pcock" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2BD0C0"/><stop offset="0.55" stop-color="#2E8FD0"/><stop offset="1" stop-color="#2E4BB0"/></linearGradient>`+
   `<linearGradient id="gold" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFF0A8"/><stop offset="0.5" stop-color="#F2C230"/><stop offset="1" stop-color="#C8901A"/></linearGradient>`+
+  `<linearGradient id="koiB" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#9FD8F7"/><stop offset="1" stop-color="#2E7BC4"/></linearGradient>`+
+  `<linearGradient id="koiW" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFFFFF"/><stop offset="1" stop-color="#E9EEF3"/></linearGradient>`+
+  `<linearGradient id="drgB" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#5AE6C8"/><stop offset="0.5" stop-color="#2E8FD0"/><stop offset="1" stop-color="#5B4BE0"/></linearGradient>`+
+  `<linearGradient id="drgG" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFF3B0"/><stop offset="0.45" stop-color="#F7C531"/><stop offset="1" stop-color="#C8901A"/></linearGradient>`+
   `</defs>`;
 
 function template(name){
@@ -239,8 +243,9 @@ const esc = s => String(s==null?"":s).replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt
 const wrap = (t,n) => {t=String(t||"");const r=[];for(let i=0;i<t.length;i+=n)r.push(t.slice(i,i+n));return r.length?r:[""];};
 const phaseH = n => Math.max(60, 24 + 18*n);
 
-// ───────── 成長キャラ（鶏→不死鳥）。1タスク=餌1つ、1フェーズ食べ切る=進化 ─────────
-const FORM_NAMES=["たまご","ひよこ","小鶏","とさか鶏","極彩鶏","不死鳥"];
+// ───────── 成長キャラ（卵→鯉→龍）。1タスク=餌1つ、1フェーズ食べ切る=進化 ─────────
+// 卵からかえった鯉が育ち、滝を登りきって龍（覚醒）になる。育成ロードマップ「鯉→龍」と同じ世界観。
+const FORM_NAMES=["たまご","稚鯉","若鯉","錦鯉","滝登り","天龍"];
 function growth(d){
   const per=(d.phases||[]).map(p=>{const t=p.tasks||[];return{done:t.filter(x=>x.done).length,total:t.length};});
   const all=per.reduce((s,p)=>s+p.total,0), allDone=per.reduce((s,p)=>s+p.done,0);
@@ -272,82 +277,99 @@ function birdMarkup(form,cx,cy,s,phaseDone,gen){
   const M=(x,y)=>`M${X(x)},${Y(y)}`,Q=(a,b,x,y)=>`Q${X(a)},${Y(b)} ${X(x)},${Y(y)}`,L=(x,y)=>`L${X(x)},${Y(y)}`;
   const path=(d,f,st,w)=>o.push(`<path d="${d}" fill="${f||'none'}"${st?` stroke="${st}" stroke-width="${R(w||2)}" stroke-linecap="round" stroke-linejoin="round"`:''}/>`);
   if(form===0){
+    // たまご：まだ孵っていない。phaseDoneでヒビが入る
     ell(0,0,15,19,"#FFF3D6");
     o.push(`<ellipse cx="${X(0)}" cy="${Y(0)}" rx="${R(15)}" ry="${R(19)}" fill="none" stroke="#E2D2A0" stroke-width="${R(1.4)}"/>`);
     circ(-5,-3,1.5,"#E6D3A0");circ(5,5,1.3,"#E6D3A0");circ(1,11,1.2,"#E6D3A0");
     if(phaseDone>0)path(M(-6,-7)+L(-2,-3)+L(-6,1)+L(-1,5),null,"#C9B27A",1.6);
   }else if(form===1){
-    line(-4,13,-4,19,"#F2A30D",2);line(4,13,4,19,"#F2A30D",2);
-    circ(0,2,13,"#FFD23F");ell(-8,3,4.5,7,"#F4C12B");
-    circ(0,-9,8,"#FFD23F");beak(7,-9,6);eye(3,-11);
-    path(M(-1,-16)+Q(-3,-21,1,-21),null,"#F4C12B",1.6);
+    // 稚鯉：かえったばかりの小さな鯉
+    path(M(-8,0)+Q(-15,-7,-18,-1)+Q(-16,6,-8,1)+"Z","url(#koiB)");
+    ell(3,0,12,8,"url(#koiB)");
+    path(M(-1,-7)+Q(4,-13,10,-8)+"Z","url(#koiB)");
+    eye(10,-1);
+    path(M(14,1)+Q(19,0,21,3),null,"#67707A",1.1);
   }else if(form===2){
-    line(-5,15,-5,21,"#F2A30D",2);line(5,15,5,21,"#F2A30D",2);
-    path(M(-13,2)+Q(-21,0,-22,-8),null,"#F4C12B",3);
-    ell(0,3,15,14,"#FFE066");ell(-7,4,5.5,9,"#F4C12B");line(-9,0,-5,7,"#E8B23A",1.4);
-    circ(2,-9,9,"#FFE066");comb(2,-18,2,2.4);beak(11,-9,6);eye(6,-11);
+    // 若鯉：ひとまわり大きく、ひれ・ひげが伸びる
+    path(M(-11,0)+Q(-20,-9,-23,-1)+Q(-21,8,-11,1)+"Z","url(#koiB)");
+    ell(2,0,16,10,"url(#koiB)");
+    path(M(-2,-9)+Q(4,-17,13,-11)+"Z","url(#koiB)");
+    path(M(2,9)+Q(6,16,13,12)+"Z","url(#koiB)");
+    line(-6,-2,-1,6,"#2E7BC4",1.2);line(0,-3,4,6,"#2E7BC4",1.2);
+    eye(12,-2);
+    path(M(16,0)+Q(23,-1,25,3),null,"#67707A",1.3);
+    path(M(16,3)+Q(22,3,24,7),null,"#67707A",1.1);
   }else if(form===3){
-    line(-5,17,-5,24,"#E8901F",2.2);line(5,17,5,24,"#E8901F",2.2);
-    path(M(-14,2)+Q(-26,-2,-24,-14),null,"#E8B04B",4);
-    path(M(-13,5)+Q(-24,4,-26,-6),null,"#C98A2E",3);
-    ell(0,4,17,15,"#FBEFD0");ell(-6,5,7,10,"#E8B04B");line(-8,1,-3,9,"#CC9A3D",1.5);
-    circ(4,-9,9,"#FBEFD0");comb(4,-19,3,2.6);
-    o.push(`<ellipse cx="${X(11)}" cy="${Y(-4)}" rx="${R(1.8)}" ry="${R(3.4)}" fill="#E0352B"/>`);
-    beak(12,-8,6);eye(7,-11);
+    // 錦鯉：紅白模様。数だけでなく「質＝商談を作れる」証
+    path(M(-12,0)+Q(-22,-10,-26,-1)+Q(-23,9,-12,1)+"Z","url(#koiW)");
+    path(M(-12,0)+Q(-20,-3,-26,-1),null,"#E0352B",1.4);
+    ell(2,0,17,11,"url(#koiW)");
+    ell(-3,-3,7,4.5,"#E0352B");ell(9,3,5.5,3.5,"#F2870D");circ(3,4,2.6,"#E0352B");
+    path(M(-2,-10)+Q(5,-18,14,-12)+"Z","#E0352B");
+    path(M(3,10)+Q(7,17,15,13)+"Z","url(#koiW)");
+    eye(13,-2);
+    path(M(17,-1)+Q(25,-2,27,2),null,"#67707A",1.3);
+    path(M(17,3)+Q(24,3,26,8),null,"#67707A",1.1);
+    o.push(star(cx+16*s,cy-13*s,2.4*s,"#FFF3D6"));
   }else if(form===4){
-    line(-5,18,-5,25,"#E8901F",2.4);line(5,18,5,25,"#E8901F",2.4);
-    path(M(-14,3)+Q(-30,-3,-27,-18),null,"#37C9B0",4.5);
-    path(M(-15,6)+Q(-30,4,-30,-9),null,"#FF8A3D",4);
-    path(M(-13,9)+Q(-26,11,-29,1),null,"#FFD23F",3.5);
-    ell(0,5,18,16,"url(#hen)");ell(-5,6,7.5,11,"#FF8A3D");line(-7,2,-2,11,"#E0702A",1.6);
-    circ(5,-9,10,"url(#hen)");comb(5,-21,3,3);
-    o.push(`<ellipse cx="${X(13)}" cy="${Y(-4)}" rx="${R(2)}" ry="${R(3.8)}" fill="#E0352B"/>`);
-    beak(13,-8,7);eye(8,-11);
-    o.push(star(cx+15*s,cy-16*s,3.4*s,"#FFFFFF"));
+    // 滝登り：斜めに跳ねる。角・長いひげが生え始め、龍の兆し
+    o.push(`<g transform="rotate(-30 ${X(0)} ${Y(0)})">`);
+    path(M(-12,0)+Q(-23,-10,-27,-1)+Q(-24,10,-12,1)+"Z","url(#drgG)");
+    ell(2,0,17,11,"url(#drgG)");
+    ell(-3,-2,7,4.5,"#E0352B");circ(8,3,3,"#B34700");
+    path(M(-2,-10)+Q(6,-19,15,-12)+"Z","url(#drgG)");
+    path(M(12,-8)+Q(14,-16,9,-19),null,"#C8901A",1.9);
+    path(M(16,-7)+Q(19,-15,15,-18),null,"#C8901A",1.9);
+    eye(14,-2);
+    path(M(18,-1)+Q(27,-2,30,3),null,"#67707A",1.4);
+    path(M(18,3)+Q(26,4,28,9),null,"#67707A",1.2);
+    o.push(`</g>`);
+    [[-12,20,4],[0,25,5],[12,22,3.5],[-4,28,3],[7,29,3]].forEach(b=>
+      o.push(`<circle cx="${X(b[0])}" cy="${Y(b[1])}" r="${R(b[2])}" fill="#7FC4F0" opacity="0.55"/>`));
+    o.push(star(cx+18*s,cy-17*s,3*s,"#FFF3D6"));
   }else{
-    // 最終進化：クジャク×黄金のゴージャス版（青緑〜金イリデッセント・特大の羽・目玉の大扇・黄金の装飾）
+    // 覚醒＝天龍：光背・瑞雲・黄金のたてがみ・長いひげ・王冠のかっこいい龍
     const RAYS=[[31,0],[22,22],[0,31],[-22,22],[-31,0],[-22,-22],[0,-31],[22,-22]];
-    RAYS.forEach((p,i)=>o.push(`<line x1="${X(0)}" y1="${Y(0)}" x2="${X(p[0])}" y2="${Y(p[1])}" stroke="#F2C230" stroke-width="${R(i%2?1.4:2.4)}" stroke-linecap="round" opacity="0.28"/>`));
-    o.push(`<circle cx="${X(0)}" cy="${Y(0)}" r="${R(30)}" fill="#2BD0C0" opacity="0.10"/>`);
-    o.push(`<circle cx="${X(0)}" cy="${Y(0)}" r="${R(24)}" fill="none" stroke="#F2C230" stroke-width="${R(1.4)}" opacity="0.45"/>`);
-    o.push(`<circle cx="${X(0)}" cy="${Y(0)}" r="${R(20)}" fill="#FFF6D8" opacity="0.14"/>`);
-    // 孔雀の大扇（黄金の羽軸＋目玉模様）
-    const UF=[[-0.914,-0.407],[-0.695,-0.719],[-0.375,-0.927],[0,-1],[0.375,-0.927],[0.695,-0.719],[0.914,-0.407]];
-    const Rf=32, bX=0, bY=6;
-    UF.forEach(d2=>{
-      const tx=bX+d2[0]*Rf, ty=bY+d2[1]*Rf, mx=bX+d2[0]*Rf*0.55, my=bY+d2[1]*Rf*0.55;
-      path(M(bX,bY)+Q(mx,my,tx,ty),null,"#C9A227",2.4);
-      circ(tx,ty,6,"#E6B422");circ(tx,ty,4.4,"#C9A227");circ(tx,ty,3.2,"#1FA6A0");circ(tx,ty,1.9,"#173A8C");
-      o.push(`<circle cx="${X(tx-0.6)}" cy="${Y(ty-0.6)}" r="${R(0.7)}" fill="#FFFFFF"/>`);
-    });
-    // 特大の翼（金の縁取り）
-    path(M(-3,0)+Q(-22,-6,-35,-16)+Q(-20,-12,-5,-5)+"Z","url(#pcock)");
-    path(M(-3,3)+Q(-24,2,-35,-3)+Q(-18,-2,-5,-1)+"Z","#1746A0");
-    path(M(-3,0)+Q(-22,-6,-35,-16),null,"#F2C230",1.6);
-    path(M(3,0)+Q(22,-6,35,-16)+Q(20,-12,5,-5)+"Z","url(#pcock)");
-    path(M(3,3)+Q(24,2,35,-3)+Q(18,-2,5,-1)+"Z","#1746A0");
-    path(M(3,0)+Q(22,-6,35,-16),null,"#F2C230",1.6);
-    // 胴＋黄金の胸当て
-    ell(0,6,12,15,"url(#pcock)");
-    o.push(`<ellipse cx="${X(0)}" cy="${Y(9)}" rx="${R(6)}" ry="${R(9.5)}" fill="url(#gold)" opacity="0.95"/>`);
-    o.push(`<ellipse cx="${X(-2)}" cy="${Y(5)}" rx="${R(2.4)}" ry="${R(4.5)}" fill="#FFF6D8" opacity="0.55"/>`);
-    // 首〜頭（濃紺）
-    circ(0,-9,7.5,"#1C4FB0");
-    // 黄金の冠
-    path(M(-5,-15)+L(-4,-21)+L(-2,-16)+L(0,-22)+L(2,-16)+L(4,-21)+L(5,-15)+"Z","url(#gold)");
-    circ(0,-22.5,1.5,"#FFF0A8");
-    beak(7,-9,7,"#E8E0C8");eye(3,-11);
+    RAYS.forEach((p,i)=>o.push(`<line x1="${X(0)}" y1="${Y(0)}" x2="${X(p[0])}" y2="${Y(p[1])}" stroke="#F2C230" stroke-width="${R(i%2?1.4:2.6)}" stroke-linecap="round" opacity="0.30"/>`));
+    o.push(`<circle cx="${X(0)}" cy="${Y(0)}" r="${R(30)}" fill="#F2C230" opacity="0.08"/>`);
+    o.push(`<circle cx="${X(0)}" cy="${Y(0)}" r="${R(23)}" fill="none" stroke="#F2C230" stroke-width="${R(1.2)}" opacity="0.42"/>`);
+    // 瑞雲
+    o.push(`<g fill="#FFFFFF" opacity="0.5"><ellipse cx="${X(-16)}" cy="${Y(23)}" rx="${R(11)}" ry="${R(4.5)}"/><ellipse cx="${X(15)}" cy="${Y(25)}" rx="${R(9)}" ry="${R(4)}"/></g>`);
+    // 蛇体（S字・青緑〜紫のイリデッセント）
+    const bodyD=`M${X(-20)},${Y(15)} C${X(-28)},${Y(2)} ${X(-8)},${Y(-2)} ${X(0)},${Y(5)} C${X(11)},${Y(13)} ${X(9)},${Y(-13)} ${X(-6)},${Y(-16)} C${X(-18)},${Y(-19)} ${X(-11)},${Y(-31)} ${X(6)},${Y(-28)}`;
+    o.push(`<path d="${bodyD}" fill="none" stroke="url(#drgB)" stroke-width="${R(12)}" stroke-linecap="round" stroke-linejoin="round"/>`);
+    // 背の黄金たてがみ（ギザギザ）
+    [[-14,6],[-6,-4],[-9,-14],[-2,-22]].forEach(m=>o.push(`<path d="${M(m[0],m[1])+L(m[0]-3,m[1]-6)+L(m[0]+2,m[1]-3)}" fill="none" stroke="url(#drgG)" stroke-width="${R(2)}" stroke-linejoin="round"/>`));
+    // 尾の炎
+    path(M(-20,15)+Q(-31,18,-34,10)+Q(-27,12,-25,6)+"Z","url(#drgG)");
+    // 爪
+    o.push(`<path d="${M(-6,-13)+L(-10,-5)} ${M(-6,-13)+L(-6,-3)} ${M(-6,-13)+L(-1,-5)}" fill="none" stroke="url(#drgB)" stroke-width="${R(2)}" stroke-linecap="round"/>`);
+    o.push(`<path d="${M(1,7)+L(-3,15)} ${M(1,7)+L(1,17)} ${M(1,7)+L(6,15)}" fill="none" stroke="url(#drgB)" stroke-width="${R(2)}" stroke-linecap="round"/>`);
+    // 頭（右上）
+    circ(6,-26,10,"url(#drgB)");
+    // 枝角（金）
+    path(M(2,-33)+Q(-1,-42,-7,-44),null,"url(#drgG)",2.6);
+    path(M(10,-33)+Q(13,-42,19,-44),null,"url(#drgG)",2.6);
+    path(M(-3,-40)+Q(-6,-41,-10,-40),null,"url(#drgG)",1.5);
+    path(M(15,-41)+Q(18,-42,22,-41),null,"url(#drgG)",1.5);
+    // 長く流れるひげ
+    path(M(14,-24)+Q(29,-22,33,-13),null,"#F2C230",1.6);
+    path(M(14,-21)+Q(27,-15,29,-5),null,"#F2C230",1.4);
+    eye(9,-27);
+    // 王冠
+    path(M(1,-34)+L(2,-40)+L(5,-36)+L(6,-42)+L(7,-36)+L(10,-40)+L(11,-34)+"Z","url(#drgG)");
+    circ(6,-43,1.4,"#E0352B");
     // 輝き
-    o.push(star(cx,cy-13*s,2*s,"#FFFFFF"));
-    o.push(star(cx-27*s,cy-9*s,2.6*s,"#FFF1B8"));
-    o.push(star(cx+28*s,cy-3*s,2.2*s,"#FFF1B8"));
-    o.push(star(cx+20*s,cy+15*s,2*s,"#FFE7A0"));
+    o.push(star(cx,cy-2*s,2*s,"#FFFFFF"));
+    o.push(star(cx-26*s,cy-8*s,2.4*s,"#FFF1B8"));
+    o.push(star(cx+28*s,cy+2*s,2*s,"#FFF1B8"));
+    o.push(star(cx+18*s,cy+16*s,2*s,"#FFE7A0"));
   }
   // 周回番号：2周目以降、卵や鳥の胸（不死鳥は黄金の胸当て）に番号を刻む。
   // 卵に戻ってもリセット感を出さない＝何羽目の不死鳥かが一目で分かる。
   if(gen>=2){
-    // [chx, chy, r] フォーム別の胸（卵は本体中央）の位置と紋章サイズ
-    const CH={0:[0,4,6.4],1:[0,3,5.4],2:[0,5,6.0],3:[0,6,6.4],4:[0,7,6.8],5:[0,9,5.8]};
+    // [chx, chy, r] フォーム別の胴（卵は本体中央／龍は中心）の位置と紋章サイズ
+    const CH={0:[0,4,6.4],1:[3,1,4.2],2:[2,1,4.8],3:[2,1,5.0],4:[2,2,4.6],5:[-2,0,5.6]};
     const c=CH[form]||[0,5,6.2], chx=c[0],chy=c[1],cr=c[2];
     o.push(`<circle cx="${X(chx)}" cy="${Y(chy)}" r="${R(cr)}" fill="#7A3E00" opacity="0.92"/>`);
     o.push(`<circle cx="${X(chx)}" cy="${Y(chy)}" r="${R(cr)}" fill="none" stroke="#F2C230" stroke-width="${R(1)}"/>`);
