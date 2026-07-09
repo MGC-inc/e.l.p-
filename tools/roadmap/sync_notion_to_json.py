@@ -211,7 +211,15 @@ def build_org_tree(org_pages: list[dict]) -> dict:
 
 
 def attach_members(company: dict, goal_pages: list[dict]) -> None:
-    """🧭目標マップDBの各行を、「所属チーム」で紐づくLevel2チームの子として追加する。"""
+    """🧭目標マップDBの各行を、「所属チーム」で紐づくLevel2チームの子として追加する。
+
+    1メンバーが同じチームに複数の目標行（テーマ）を持っていても、個人の
+    ゴールマップ（goalmap-studio.html）は原則1人1枚なので、チームごとに
+    メンバー名で重複除去し、Level3リーフは1人1枚にする（最初に見つかった
+    行のテーマ・ステータスを採用）。ただし members/ 配下に「〇〇（育成）」
+    のような本人名のバリエーションファイルが複数存在するメンバー（岡野・
+    藤江など）は、実在するファイル名の分だけリーフを分けて割り当てる。
+    """
     team_index: dict[str, dict] = {}
 
     def index_teams(node: dict) -> None:
@@ -222,6 +230,18 @@ def attach_members(company: dict, goal_pages: list[dict]) -> None:
 
     index_teams(company)
 
+    members_dir = REPO_ROOT / "tools/goalmap/members"
+    slug_variants: dict[str, list[str]] = {}
+    for member_file in sorted(members_dir.glob("*.json")):
+        stem = member_file.stem
+        if stem.startswith("_"):
+            continue
+        base = stem.split("（")[0]
+        slug_variants.setdefault(base, []).append(stem)
+
+    # (team_id, member) -> 割り当て済みのバリエーション数（次に使うslugを選ぶため）
+    assigned_count: dict[tuple[str, str], int] = {}
+
     for page in goal_pages:
         member = prop_select(page, "メンバー")
         if not member:
@@ -229,26 +249,36 @@ def attach_members(company: dict, goal_pages: list[dict]) -> None:
         team_ids = prop_relation_ids(page, "所属チーム")
         if not team_ids:
             continue  # 所属チーム未設定はロードマップ側に出さない
+
         status = prop_status(page, "ステータス")
-        leaf = {
-            "id": page["id"],
-            "level": 3,
-            "title": member,
-            "owner": member,
-            "status": STATUS_MAP.get(status, "not_started"),
-            "externalLink": f"/goalmap-studio.html?member={quote(member)}",
-        }
         theme = prop_title(page, "テーマ")
-        if theme:
-            leaf["description"] = theme
         progress = prop_rollup_number(page, "進捗率")
-        if progress is not None:
-            leaf["progress"] = progress
 
         for team_id in team_ids:
             team = team_index.get(team_id)
-            if team is not None:
-                team.setdefault("children", []).append(dict(leaf))
+            if team is None:
+                continue
+            variants = slug_variants.get(member, [member])
+            key = (team_id, member)
+            idx = assigned_count.get(key, 0)
+            if idx >= len(variants):
+                continue  # このメンバーの実ファイル数を超える行はこのチームでは無視
+            assigned_count[key] = idx + 1
+            slug = variants[idx]
+
+            leaf = {
+                "id": f"{page['id']}:{team_id}",
+                "level": 3,
+                "title": slug,
+                "owner": member,
+                "status": STATUS_MAP.get(status, "not_started"),
+                "externalLink": f"/goalmap-studio.html?member={quote(slug)}",
+            }
+            if theme:
+                leaf["description"] = theme
+            if progress is not None:
+                leaf["progress"] = progress
+            team.setdefault("children", []).append(leaf)
 
 
 def rollup_progress(node: dict) -> float | None:
