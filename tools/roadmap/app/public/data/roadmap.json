@@ -2,41 +2,45 @@
   "id": "company",
   "level": 0,
   "title": "E.L.P（株式会社クリーンマン）",
-  "description": "売上10億／代理店100社／全国展開 ── 会社全体の北極星。※このデータはサンプルです。Phase Bで Notion「🏢 組織ロードマップ」DB の実データに差し替えます。",
+  "description": "売上30億円（代理店30社×平均年商1億円）／全国展開 ── 会社全体の北極星",
   "progress": 0,
+  "deadline": "2029-03-31",
   "status": "in_progress",
   "children": [
     {
       "id": "org-sales",
       "level": 1,
       "title": "営業部",
-      "description": "アポ〜クロージングまでの営業組織",
+      "description": "アポ〜クロージングまでの営業組織（代理店：ピタサチ／wanny）",
+      "owner": "今川",
       "status": "in_progress",
       "children": [
         {
-          "id": "team-sales-1",
+          "id": "team-pitasachi",
           "level": 2,
-          "title": "営業1課",
-          "description": "ピタサチ系メンバー",
+          "title": "ピタサチ",
+          "description": "代理店 株式会社ピタサチ",
+          "owner": "門田",
           "status": "in_progress",
           "children": [
             { "id": "p-三浦", "level": 3, "title": "三浦", "owner": "三浦", "status": "in_progress", "externalLink": "/goalmap-studio.html?member=%E4%B8%89%E6%B5%A6" },
             { "id": "p-藤江", "level": 3, "title": "藤江", "owner": "藤江", "status": "in_progress", "externalLink": "/goalmap-studio.html?member=%E8%97%A4%E6%B1%9F" },
-            { "id": "p-藤江育成", "level": 3, "title": "藤江（育成）", "owner": "藤江", "status": "in_progress", "externalLink": "/goalmap-studio.html?member=%E8%97%A4%E6%B1%9F%EF%BC%88%E8%82%B2%E6%88%90%EF%BC%89" },
-            { "id": "p-古賀", "level": 3, "title": "古賀", "owner": "古賀", "status": "in_progress", "externalLink": "/goalmap-studio.html?member=%E5%8F%A4%E8%B3%80" }
+            { "id": "p-藤江育成", "level": 3, "title": "藤江（育成）", "owner": "藤江", "status": "in_progress", "externalLink": "/goalmap-studio.html?member=%E8%97%A4%E6%B1%9F%EF%BC%88%E8%82%B2%E6%88%90%EF%BC%89" }
           ]
         },
         {
-          "id": "team-sales-2",
+          "id": "team-wanny",
           "level": 2,
-          "title": "営業2課",
-          "description": "wanny系メンバー",
+          "title": "wanny",
+          "description": "代理店 株式会社wanny",
+          "owner": "岡野",
           "status": "in_progress",
           "children": [
             { "id": "p-岡野", "level": 3, "title": "岡野", "owner": "岡野", "status": "in_progress", "externalLink": "/goalmap-studio.html?member=%E5%B2%A1%E9%87%8E" },
             { "id": "p-岡野育成", "level": 3, "title": "岡野（育成）", "owner": "岡野", "status": "in_progress", "externalLink": "/goalmap-studio.html?member=%E5%B2%A1%E9%87%8E%EF%BC%88%E8%82%B2%E6%88%90%EF%BC%89" },
             { "id": "p-宮腰", "level": 3, "title": "宮腰", "owner": "宮腰", "status": "in_progress", "externalLink": "/goalmap-studio.html?member=%E5%AE%AE%E8%85%B0" },
-            { "id": "p-戸田", "level": 3, "title": "戸田", "owner": "戸田", "status": "in_progress", "externalLink": "/goalmap-studio.html?member=%E6%88%B8%E7%94%B0" }
+            { "id": "p-戸田", "level": 3, "title": "戸田", "owner": "戸田", "status": "in_progress", "externalLink": "/goalmap-studio.html?member=%E6%88%B8%E7%94%B0" },
+            { "id": "p-古賀", "level": 3, "title": "古賀", "owner": "古賀", "status": "in_progress", "externalLink": "/goalmap-studio.html?member=%E5%8F%A4%E8%B3%80" }
           ]
         }
       ]
@@ -49,30 +53,24 @@
       "status": "in_progress",
       "children": [
         {
-          "id": "team-admin-1",
+          "id": "team-management",
           "level": 2,
           "title": "マネジメント",
+          "description": "各代理店のマネージャー兼プレイヤー（ピタサチ：門田／wanny：岡野）と全体統括（今川）",
           "status": "in_progress",
           "children": [
-            { "id": "p-今川", "level": 3, "title": "今川", "owner": "今川", "status": "in_progress", "externalLink": "/goalmap-studio.html?member=%E4%BB%8A%E5%B7%9D" },
-            { "id": "p-門田", "level": 3, "title": "門田", "owner": "門田", "status": "in_progress", "externalLink": "/goalmap-studio.html?member=%E9%96%80%E7%94%B0" }
+            { "id": "p-今川", "level": 3, "title": "今川", "owner": "今川", "description": "営業部長・全体統括", "status": "in_progress", "externalLink": "/goalmap-studio.html?member=%E4%BB%8A%E5%B7%9D" },
+            { "id": "p-岡野-mgmt", "level": 3, "title": "岡野", "owner": "岡野", "description": "wannyマネージャー", "status": "in_progress", "externalLink": "/goalmap-studio.html?member=%E5%B2%A1%E9%87%8E" },
+            { "id": "p-門田", "level": 3, "title": "門田", "owner": "門田", "description": "ピタサチマネージャー", "status": "in_progress", "externalLink": "/goalmap-studio.html?member=%E9%96%80%E7%94%B0" }
           ]
         }
       ]
     },
     {
-      "id": "org-marketing",
-      "level": 1,
-      "title": "マーケティング",
-      "description": "（サンプル・未着手）",
-      "status": "not_started",
-      "children": []
-    },
-    {
       "id": "org-construction",
       "level": 1,
       "title": "施工部",
-      "description": "（サンプル・未着手：関東／中部／関西）",
+      "description": "施工チーム（関東／中部／関西）※チーム編成・メンバーは今後投入予定",
       "status": "not_started",
       "children": [
         { "id": "team-kanto", "level": 2, "title": "関東", "status": "not_started", "children": [] },
