@@ -328,37 +328,41 @@ function birdMarkup(form,cx,cy,s,phaseDone,gen){
       o.push(`<circle cx="${X(b[0])}" cy="${Y(b[1])}" r="${R(b[2])}" fill="#7FC4F0" opacity="0.55"/>`));
     o.push(star(cx+18*s,cy-17*s,3*s,"#FFF3D6"));
   }else{
-    // 覚醒＝天龍：光背・瑞雲・黄金のたてがみ・長いひげ・王冠のかっこいい龍
+    // 覚醒＝金龍：黄金の蛇体・光背・瑞雲・たてがみ・王冠のかっこいい金の龍
     const RAYS=[[31,0],[22,22],[0,31],[-22,22],[-31,0],[-22,-22],[0,-31],[22,-22]];
-    RAYS.forEach((p,i)=>o.push(`<line x1="${X(0)}" y1="${Y(0)}" x2="${X(p[0])}" y2="${Y(p[1])}" stroke="#F2C230" stroke-width="${R(i%2?1.4:2.6)}" stroke-linecap="round" opacity="0.30"/>`));
-    o.push(`<circle cx="${X(0)}" cy="${Y(0)}" r="${R(30)}" fill="#F2C230" opacity="0.08"/>`);
-    o.push(`<circle cx="${X(0)}" cy="${Y(0)}" r="${R(23)}" fill="none" stroke="#F2C230" stroke-width="${R(1.2)}" opacity="0.42"/>`);
+    RAYS.forEach((p,i)=>o.push(`<line x1="${X(0)}" y1="${Y(0)}" x2="${X(p[0])}" y2="${Y(p[1])}" stroke="#F2C230" stroke-width="${R(i%2?1.5:2.8)}" stroke-linecap="round" opacity="0.34"/>`));
+    o.push(`<circle cx="${X(0)}" cy="${Y(0)}" r="${R(30)}" fill="#F2C230" opacity="0.11"/>`);
+    o.push(`<circle cx="${X(0)}" cy="${Y(0)}" r="${R(23)}" fill="none" stroke="#F2C230" stroke-width="${R(1.2)}" opacity="0.46"/>`);
     // 瑞雲
-    o.push(`<g fill="#FFFFFF" opacity="0.5"><ellipse cx="${X(-16)}" cy="${Y(23)}" rx="${R(11)}" ry="${R(4.5)}"/><ellipse cx="${X(15)}" cy="${Y(25)}" rx="${R(9)}" ry="${R(4)}"/></g>`);
-    // 蛇体（S字・青緑〜紫のイリデッセント）
+    o.push(`<g fill="#FFFFFF" opacity="0.55"><ellipse cx="${X(-16)}" cy="${Y(23)}" rx="${R(11)}" ry="${R(4.5)}"/><ellipse cx="${X(15)}" cy="${Y(25)}" rx="${R(9)}" ry="${R(4)}"/></g>`);
+    // 蛇体（S字・黄金）＋濃金の縁取りで立体感
     const bodyD=`M${X(-20)},${Y(15)} C${X(-28)},${Y(2)} ${X(-8)},${Y(-2)} ${X(0)},${Y(5)} C${X(11)},${Y(13)} ${X(9)},${Y(-13)} ${X(-6)},${Y(-16)} C${X(-18)},${Y(-19)} ${X(-11)},${Y(-31)} ${X(6)},${Y(-28)}`;
-    o.push(`<path d="${bodyD}" fill="none" stroke="url(#drgB)" stroke-width="${R(12)}" stroke-linecap="round" stroke-linejoin="round"/>`);
-    // 背の黄金たてがみ（ギザギザ）
-    [[-14,6],[-6,-4],[-9,-14],[-2,-22]].forEach(m=>o.push(`<path d="${M(m[0],m[1])+L(m[0]-3,m[1]-6)+L(m[0]+2,m[1]-3)}" fill="none" stroke="url(#drgG)" stroke-width="${R(2)}" stroke-linejoin="round"/>`));
-    // 尾の炎
-    path(M(-20,15)+Q(-31,18,-34,10)+Q(-27,12,-25,6)+"Z","url(#drgG)");
-    // 爪
-    o.push(`<path d="${M(-6,-13)+L(-10,-5)} ${M(-6,-13)+L(-6,-3)} ${M(-6,-13)+L(-1,-5)}" fill="none" stroke="url(#drgB)" stroke-width="${R(2)}" stroke-linecap="round"/>`);
-    o.push(`<path d="${M(1,7)+L(-3,15)} ${M(1,7)+L(1,17)} ${M(1,7)+L(6,15)}" fill="none" stroke="url(#drgB)" stroke-width="${R(2)}" stroke-linecap="round"/>`);
-    // 頭（右上）
-    circ(6,-26,10,"url(#drgB)");
-    // 枝角（金）
-    path(M(2,-33)+Q(-1,-42,-7,-44),null,"url(#drgG)",2.6);
-    path(M(10,-33)+Q(13,-42,19,-44),null,"url(#drgG)",2.6);
-    path(M(-3,-40)+Q(-6,-41,-10,-40),null,"url(#drgG)",1.5);
-    path(M(15,-41)+Q(18,-42,22,-41),null,"url(#drgG)",1.5);
-    // 長く流れるひげ
-    path(M(14,-24)+Q(29,-22,33,-13),null,"#F2C230",1.6);
-    path(M(14,-21)+Q(27,-15,29,-5),null,"#F2C230",1.4);
+    o.push(`<path d="${bodyD}" fill="none" stroke="#A9700F" stroke-width="${R(13.6)}" stroke-linecap="round" stroke-linejoin="round"/>`);
+    o.push(`<path d="${bodyD}" fill="none" stroke="url(#drgG)" stroke-width="${R(11.2)}" stroke-linecap="round" stroke-linejoin="round"/>`);
+    // 背のたてがみ（朱橙でコントラスト）
+    [[-14,6],[-6,-4],[-9,-14],[-2,-22]].forEach(m=>o.push(`<path d="${M(m[0],m[1])+L(m[0]-3,m[1]-6)+L(m[0]+2,m[1]-3)}" fill="none" stroke="#E5651A" stroke-width="${R(2.2)}" stroke-linejoin="round"/>`));
+    // 尾の炎（朱橙）
+    path(M(-20,15)+Q(-31,18,-34,10)+Q(-27,12,-25,6)+"Z","#FF7A00");
+    // 爪（濃金）
+    o.push(`<path d="${M(-6,-13)+L(-10,-5)} ${M(-6,-13)+L(-6,-3)} ${M(-6,-13)+L(-1,-5)}" fill="none" stroke="#A9700F" stroke-width="${R(2)}" stroke-linecap="round"/>`);
+    o.push(`<path d="${M(1,7)+L(-3,15)} ${M(1,7)+L(1,17)} ${M(1,7)+L(6,15)}" fill="none" stroke="#A9700F" stroke-width="${R(2)}" stroke-linecap="round"/>`);
+    // 頭（金）＋濃金縁
+    circ(6,-26,10,"url(#drgG)");
+    o.push(`<circle cx="${X(6)}" cy="${Y(-26)}" r="${R(10)}" fill="none" stroke="#A9700F" stroke-width="${R(1.4)}"/>`);
+    // 枝角（濃金）
+    path(M(2,-33)+Q(-1,-42,-7,-44),null,"#A9700F",2.6);
+    path(M(10,-33)+Q(13,-42,19,-44),null,"#A9700F",2.6);
+    path(M(-3,-40)+Q(-6,-41,-10,-40),null,"#A9700F",1.5);
+    path(M(15,-41)+Q(18,-42,22,-41),null,"#A9700F",1.5);
+    // 長く流れるひげ（濃金）
+    path(M(14,-24)+Q(29,-22,33,-13),null,"#A9700F",1.6);
+    path(M(14,-21)+Q(27,-15,29,-5),null,"#A9700F",1.4);
     eye(9,-27);
-    // 王冠
-    path(M(1,-34)+L(2,-40)+L(5,-36)+L(6,-42)+L(7,-36)+L(10,-40)+L(11,-34)+"Z","url(#drgG)");
-    circ(6,-43,1.4,"#E0352B");
+    // 王冠（明るい金＋濃金縁＋赤玉）
+    path(M(1,-34)+L(2,-40)+L(5,-36)+L(6,-42)+L(7,-36)+L(10,-40)+L(11,-34)+"Z","url(#drgG)","#8A5A00",1);
+    circ(6,-43,1.5,"#E0352B");
+    // 胸のうろこの照り
+    o.push(`<ellipse cx="${X(3)}" cy="${Y(-24)}" rx="${R(3)}" ry="${R(4.5)}" fill="#FFF6D8" opacity="0.5"/>`);
     // 輝き
     o.push(star(cx,cy-2*s,2*s,"#FFFFFF"));
     o.push(star(cx-26*s,cy-8*s,2.4*s,"#FFF1B8"));
