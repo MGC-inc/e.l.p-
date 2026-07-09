@@ -39,6 +39,12 @@ export default function RoadmapCanvas({ root }: Props) {
   const [expandedPath, setExpandedPath] = useState<string[]>([]);
   const { fitView } = useReactFlow();
   const [zoomPct, setZoomPct] = useState(100);
+  // ドラッグで動かした位置（見た目の調整のみ・保存はしない。ページ再読込で自動レイアウトに戻る）
+  const [dragOverrides, setDragOverrides] = useState<Record<string, { x: number; y: number }>>({});
+
+  useEffect(() => {
+    setDragOverrides({});
+  }, [root]);
 
   const expandedIds = useMemo(() => new Set(expandedPath), [expandedPath]);
 
@@ -52,11 +58,15 @@ export default function RoadmapCanvas({ root }: Props) {
       laidOut.map((n) => ({
         id: n.node.id,
         type: levelToType(n.node.level),
-        position: { x: n.x, y: n.y },
+        position: dragOverrides[n.node.id] ?? { x: n.x, y: n.y },
         data: { node: n.node, hasChildren: n.hasChildren, isExpanded: n.isExpanded } as RoadmapNodeData,
       })),
-    [laidOut]
+    [laidOut, dragOverrides]
   );
+
+  const handleNodeDragStop = useCallback((_: unknown, node: Node) => {
+    setDragOverrides((prev) => ({ ...prev, [node.id]: node.position }));
+  }, []);
 
   const rfEdges: Edge[] = useMemo(
     () =>
@@ -120,14 +130,16 @@ export default function RoadmapCanvas({ root }: Props) {
           {breadcrumbNodes[breadcrumbNodes.length - 1]?.title ?? root.title}
         </span>
         <span className="rm-hud-pct">{zoomPct}%</span>
-        <span className="rm-hud-hint">クリックで展開・スクロール/ピンチでズーム</span>
+        <span className="rm-hud-hint">クリックで展開・ドラッグで位置調整・スクロール/ピンチでズーム</span>
       </div>
       <ReactFlow
         nodes={rfNodes}
         edges={rfEdges}
         nodeTypes={nodeTypes}
         onNodeClick={handleNodeClick}
+        onNodeDragStop={handleNodeDragStop}
         onMove={(_, viewport) => setZoomPct(Math.round(viewport.zoom * 100))}
+        nodesDraggable={true}
         nodesConnectable={false}
         elementsSelectable={true}
         minZoom={0.15}
