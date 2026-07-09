@@ -33,6 +33,7 @@
 | Notion AIでゴールマップDBを再現するプロンプトが欲しい | [tools/goalmap/notion_setup_prompt.md](./tools/goalmap/notion_setup_prompt.md) |
 | 会社→組織→チーム→個人と地図のようにズームして辿る組織全体のゴールマップを見たい | [tools/roadmap/README.md](./tools/roadmap/README.md) |
 | ゴールマップ開発を新規セッションで引き継ぎたい | [引き継ぎ_組織ゴールマップ.md](./引き継ぎ_組織ゴールマップ.md) |
+| 営業メンバー育成の「鯉→龍」9段階ロードマップ運用を知りたい | [育成ロードマップ_鯉龍.md](./育成ロードマップ_鯉龍.md)（正はNotion「🐉 育成ロードマップ運用（鯉→龍）｜基準書」） |
 | Claude Codeからシステムを操作する手順を知りたい | [Claude操作マニュアル.md](./Claude操作マニュアル.md) |
 
 ## 3. システム構成（ホワイトボード設計の写し）
