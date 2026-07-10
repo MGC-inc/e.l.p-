@@ -12,7 +12,7 @@
   "next": "お客様の話を最後まで聞き、「なぜそう思われたんですか？」等で深掘りする（Week1：質問する）",
   "currentStage": 1,
   "cycle": 1,
-  "startForm": 1,
+  "startForm": 0,
   "logs": [],
   "_source": "Notion🧭目標マップ＋✅GMタスクDBより反映（2026-07-08）。ゴール・タスクとも本番データ。",
   "startDate": "2026-07-06",
