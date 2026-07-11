@@ -11,6 +11,8 @@
 |----------|------|------------------------|-------------------|------|
 | イノベラ（INNOVERA PBX 2.0） | 電話・通話録音・Web API | `pbdxa17.innov-era.com`（API: `/pbx/api/front/index/`、ログイン: `/pbx/open/login/`） | ローカル `.env` の `INNOVERA_API_KEY` | 東さん |
 | Google API | <!-- TODO: 用途を特定（Maps/Calendar等） --> | https://console.cloud.google.com | ローカル `.env` の `GOOGLE_API_KEY` | |
+| Gemini API | 通話の文字起こし（イノベラ）／商談録音の一括分析（商談分析運用.md） | https://aistudio.google.com | ローカル `.env` の `GEMINI_API_KEY`（有料課金プロジェクトのキーを使う） | MGC |
+| PLAUD NOTE | 商談の録音（無料スタータープラン。文字起こしは使わずMP3書き出しのみ） | https://jp.plaud.ai ＋ スマホアプリ | APIなし（アプリログインのみ） | 各クローザー |
 | LINE | 通知・顧客連絡 | | | |
 | GitHub | このリポジトリ | https://github.com/MGC-inc/e.l.p- | | |
 | Supabase（elp） | 組織データDB（タスク/日報/営業成績/議事録/通話ログ） | https://supabase.com/dashboard/project/xhkcptfyjdbilhrpwcau | ローカル `.env` の `ELP_SUPABASE_*` | MGC |
@@ -31,7 +33,7 @@
 ## シークレットの保管ルール
 
 - キー値は**リポジトリ直下の `.env`（.gitignoreで除外済み）**に置く
-- 変数名: `INNOVERA_HOST` / `INNOVERA_API_KEY` / `GOOGLE_API_KEY` / `ELP_SUPABASE_URL` / `ELP_SUPABASE_ANON_KEY` / `ELP_SUPABASE_SERVICE_ROLE_KEY` / `ELP_SUPABASE_DB_PASSWORD`
+- 変数名: `INNOVERA_HOST` / `INNOVERA_API_KEY` / `GOOGLE_API_KEY` / `GEMINI_API_KEY` / `ELP_SUPABASE_URL` / `ELP_SUPABASE_ANON_KEY` / `ELP_SUPABASE_SERVICE_ROLE_KEY` / `ELP_SUPABASE_DB_PASSWORD`
 - サーバー側で自動化を動かす際はMGCのDopplerへ移行する
 
 ## 2. 記載ルール
