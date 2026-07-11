@@ -196,6 +196,13 @@ const SVG_DEFS = `<defs>`+
   `<linearGradient id="koiW" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFFFFF"/><stop offset="1" stop-color="#E9EEF3"/></linearGradient>`+
   `<linearGradient id="drgB" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#5AE6C8"/><stop offset="0.5" stop-color="#2E8FD0"/><stop offset="1" stop-color="#5B4BE0"/></linearGradient>`+
   `<linearGradient id="drgG" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFF3B0"/><stop offset="0.45" stop-color="#F7C531"/><stop offset="1" stop-color="#C8901A"/></linearGradient>`+
+  `<linearGradient id="fishBlu" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#6FA9CC"/><stop offset="0.55" stop-color="#A8CFE3"/><stop offset="1" stop-color="#E4F1F7"/></linearGradient>`+
+  `<linearGradient id="fishWht" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFFFFF"/><stop offset="0.6" stop-color="#F2F4F5"/><stop offset="1" stop-color="#D8DFE4"/></linearGradient>`+
+  `<linearGradient id="fishGld" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#F8D25C"/><stop offset="0.55" stop-color="#EFAF2E"/><stop offset="1" stop-color="#D88A15"/></linearGradient>`+
+  `<linearGradient id="drgBlu" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#55D0CF"/><stop offset="0.5" stop-color="#2E86C8"/><stop offset="1" stop-color="#4353C0"/></linearGradient>`+
+  `<linearGradient id="drgGld" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#F9DC74"/><stop offset="0.45" stop-color="#EEB53A"/><stop offset="1" stop-color="#B87A12"/></linearGradient>`+
+  `<linearGradient id="eggG" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFF9E8"/><stop offset="1" stop-color="#EFD9A8"/></linearGradient>`+
+  `<radialGradient id="glowG"><stop offset="0" stop-color="#FFE9A0" stop-opacity="0.75"/><stop offset="1" stop-color="#FFE9A0" stop-opacity="0"/></radialGradient>`+
   `</defs>`;
 
 function template(name){
@@ -278,177 +285,177 @@ function star(cx,cy,r,fill){
 }
 function birdMarkup(form,cx,cy,s,phaseDone,gen){
   gen=Math.floor(+gen||0);
-  const X=v=>(cx+v*s).toFixed(1),Y=v=>(cy+v*s).toFixed(1),R=v=>(v*s).toFixed(1);
+  const path=(d,f,st,w,op)=>`<path d="${d}" fill="${f||"none"}"${st?` stroke="${st}" stroke-width="${w||1}" stroke-linecap="round" stroke-linejoin="round"`:""}${op?` opacity="${op}"`:""}/>`;
+  const circ=(x,y,r,f,op)=>`<circle cx="${x}" cy="${y}" r="${r}" fill="${f}"${op?` opacity="${op}"`:""}/>`;
+  const ell=(x,y,rx,ry,f,op)=>`<ellipse cx="${x}" cy="${y}" rx="${rx}" ry="${ry}" fill="${f}"${op?` opacity="${op}"`:""}/>`;
+  const lstar=(x,y,r,f)=>{const pts=[[0,-1],[0.24,-0.24],[1,0],[0.24,0.24],[0,1],[-0.24,0.24],[-1,0],[-0.24,-0.24]].map(([a,b])=>`${(x+a*r).toFixed(1)},${(y+b*r).toFixed(1)}`).join(" ");return `<polygon points="${pts}" fill="${f}"/>`;};
+
+  // ── 写実寄りの鯉（横向き・右が頭）。紡錘形の胴＋二叉尾＋背びれ・胸びれ・鱗・えら・ひげ
+  function koi(opt){
+    const g=opt.grad, fin=opt.fin, line=opt.line, sc=opt.scaleCol;
+    const a=[];
+    // 尾びれ（二叉・鰭条つき）
+    a.push(path("M-14.8,-1 C-18.6,-4.8 -22.6,-8.2 -27.4,-9.4 C-24.9,-5.6 -24.3,-2.6 -23.9,0.2 C-24.3,2.9 -25.1,5.8 -27.6,9.6 C-22.7,8.4 -18.6,4.9 -14.8,1.4 Z",fin,line,0.5,0.95));
+    ["M-16,-0.4 C-19.5,-3 -22.4,-5.3 -25.2,-7","M-16.4,0.4 C-19.8,0.3 -22,0.2 -24.4,0.2","M-16,1.1 C-19.5,3.4 -22.3,5.5 -25.4,7.4"].forEach(d=>a.push(path(d,null,line,0.5,0.4)));
+    if(opt.flow){ // 大錦鯉：たなびく飾り尾
+      a.push(path("M-24,-6 C-26.8,-8.4 -29,-9 -30.6,-8.4",null,fin,1.1,0.7));
+      a.push(path("M-24.6,6.4 C-27.4,8.8 -29.6,9.4 -30.9,8.9",null,fin,1.1,0.7));
+    }
+    // 背びれ・尻びれ
+    a.push(path("M-1.4,-7.7 C-4.6,-11.6 -9.6,-12.6 -13.2,-10.5 C-9.9,-9.2 -5.8,-8.2 -2.6,-7.8 Z",fin,line,0.5,0.95));
+    a.push(path("M-4.2,7.9 C-5.8,10.5 -7.9,11.7 -9.7,11.8 C-8.1,9.8 -6.6,8.6 -5,7.8 Z",fin,line,0.5,0.9));
+    // 胴体（紡錘形）
+    a.push(path("M17.2,0.3 C16.6,-3.6 9.5,-7.8 1,-7.9 C-6.8,-8 -12.6,-4.6 -15.8,-1.4 L-15.8,2 C-12.6,4.9 -6.8,8.4 1,8.4 C9.5,8.3 16.6,4.2 17.2,0.3 Z",g,line,0.6,null));
+    // 模様（錦の斑）
+    (opt.patches||[]).forEach(p=>a.push(path(p[0],p[1],null,null,p[2]||0.95)));
+    // 鱗（網目状のアーチ）
+    const rows=[[-4.6,[-9,-4.8,-0.6,3.6]],[-1.6,[-11.4,-7.2,-3,1.2,5.4]],[1.5,[-11.4,-7.2,-3,1.2,5.4]],[4.4,[-9,-4.8,-0.6,3.6]]];
+    rows.forEach(([y,xs])=>xs.forEach(x=>a.push(path(`M${x},${y} q2.1,2.4 4.2,0`,null,sc,0.55,0.22))));
+    // 背の陰影・腹の照り
+    a.push(ell(0,-5.2,11,2.4,"#1F2933",0.06));
+    a.push(ell(3,4.6,9.2,2.8,"#FFFFFF",0.28));
+    // えら・口・鼻孔
+    a.push(path("M10.8,-4.6 C8.9,-1.4 8.9,1.6 10.6,4.4",null,line,0.6,0.4));
+    a.push(path("M17.2,1.1 C16.4,1.8 15.4,2 14.5,1.9",null,line,0.6,0.6));
+    a.push(circ(15.7,-1.7,0.35,line,0.5));
+    // 胸びれ（体の手前）
+    a.push(path("M8.6,3.6 C6.8,7.7 4.1,10.1 1,10.9 C3.5,7 5.6,4.8 7.4,3.4 Z",fin,line,0.5,0.95));
+    // ひげ（鯉の証・成長で伸びる）
+    if(opt.barbel>=1){a.push(path("M15.6,2 C18.6,2.2 20.5,3.5 21.3,5.6",null,"#8A7A66",0.8));}
+    if(opt.barbel>=2){a.push(path("M14.6,2.8 C16.7,3.4 17.9,4.5 18.3,6.1",null,"#8A7A66",0.7));}
+    // 目
+    a.push(circ(12.3,-2.6,1.8,opt.eyeAmber?"#C89A4A":"#5B6670"));
+    a.push(circ(12.5,-2.5,1.05,"#17110B"));
+    a.push(circ(11.8,-3.1,0.45,"#FFFFFF",0.95));
+    // 龍化の兆し（化龍：枝角・伸びたひげ・背のたてがみ）
+    if(opt.antlers){
+      a.push(path("M11.6,-5.4 C10.6,-9.6 8.2,-11.6 5.2,-12.2",null,"#A9700F",1.3));
+      a.push(path("M8.9,-10.4 C7.6,-11.8 6,-12.4 4.4,-12.4",null,"#A9700F",0.9));
+      a.push(path("M14.4,-4.8 C15,-9.2 17.4,-11.2 20.2,-11.6",null,"#A9700F",1.3));
+      a.push(path("M17,-10.2 C18.4,-11.6 20,-12.2 21.6,-12.2",null,"#A9700F",0.9));
+      a.push(path("M15.6,2 C20,2.4 22.8,4.4 23.8,7.4",null,"#A9700F",0.9));
+      ["M-3,-8.2 C-4.6,-10.6 -6.8,-11.8 -9,-12","M-7,-7.4 C-8.6,-9.6 -10.6,-10.6 -12.6,-10.8"].forEach(d=>a.push(path(d,null,"#E5651A",1.2,0.85)));
+    }
+    return a.join("");
+  }
+
+  // ── 龍（蛇体・長い口吻・枝角・たてがみ・三本爪。gold=金龍/false=青龍）
+  function dragon(gold){
+    const g=gold?"url(#drgGld)":"url(#drgBlu)";
+    const line=gold?"#8A5A00":"#1E4E86";
+    const mane=gold?"#E5651A":"#E8B23A";
+    const belly=gold?"#F6E7BE":"#CFE6F2";
+    const a=[];
+    if(gold){ // 光背・瑞雲（金龍のみ）
+      a.push(circ(0,-2,27,"url(#glowG)"));
+      for(let i=0;i<8;i++){const th=i*Math.PI/4,x2=Math.cos(th)*26,y2=-2+Math.sin(th)*26;
+        a.push(`<line x1="0" y1="-2" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" stroke="#F2C230" stroke-width="${i%2?1:1.8}" stroke-linecap="round" opacity="0.3"/>`);}
+      a.push(`<circle cx="0" cy="-2" r="21" fill="none" stroke="#F2C230" stroke-width="0.9" opacity="0.4"/>`);
+      a.push(ell(-14,20,9,3.4,"#FFFFFF",0.55));a.push(ell(13,21.5,7.5,3,"#FFFFFF",0.55));
+    }
+    const s1="M8,-17 C-3,-13.5 -8.5,-5.5 1,0", s2="M1,0 C9.5,5 4,12 -4.5,13.8", s3="M-4.5,13.8 C-11,15.2 -16.5,16.4 -22,19.5";
+    // 縁取り→胴→腹板（細く薄いダッシュ）で先細りの蛇体を表現
+    [[s1,10.6],[s2,8.4],[s3,5.2]].forEach(([d,w])=>a.push(path(d,null,line,w+1.5)));
+    [[s1,9.4],[s2,7.2],[s3,4.2]].forEach(([d,w])=>a.push(path(d,null,g,w)));
+    [[s1,2.6],[s2,2.2],[s3,1.3]].forEach(([d,w])=>a.push(`<path d="${d}" fill="none" stroke="${belly}" stroke-width="${w}" stroke-dasharray="1.5 1.9" stroke-linecap="butt" opacity="0.55" transform="translate(1.3,2.1)"/>`));
+    // 背びれのトゲ（外側の背に沿って）
+    [[6.5,-19.2,-64],[1,-17,-35],[-4.4,-14.2,-32],[-8.6,-9.4,-10],[7,5.4,64],[3.6,11.4,110],[-9.4,11.8,-18],[-15.4,13.4,-22]].forEach(([x,y,r])=>
+      a.push(`<g transform="translate(${x},${y}) rotate(${r})"><path d="M-1.9,0 L0,-4 L1.9,0 Z" fill="${mane}" stroke="${line}" stroke-width="0.4"/></g>`));
+    // 前脚・後脚（三本爪）
+    a.push(path("M4.6,-5.4 C3.2,-3 2.6,-1 3,1",null,line,2.2));
+    ["M3,1 C1.4,2 0.2,2.4 -1,2.3","M3,1 C2.5,2.6 2.2,3.8 2.4,4.9","M3,1 C4.2,2.2 5,3 5.9,3.4"].forEach(d=>a.push(path(d,null,belly,1)));
+    a.push(path("M-5.5,12.5 C-6.6,14 -7,15.4 -6.7,16.9",null,line,1.9));
+    ["M-6.7,16.9 C-8,17.6 -9,17.8 -10,17.6","M-6.7,16.9 C-7,18.2 -7.1,19.2 -6.9,20.1","M-6.7,16.9 C-5.7,17.8 -5,18.4 -4.2,18.7"].forEach(d=>a.push(path(d,null,belly,0.9)));
+    // 尾の房
+    a.push(path("M-22,19.5 C-25.4,18 -27.6,18.4 -29.4,20.2 C-27.2,20.4 -25.9,21 -24.9,22.1 C-26.7,22.5 -28,23.5 -28.7,24.9 C-26.2,24.3 -23.8,23.6 -21.6,21.6 Z",mane,line,0.5));
+    // 頭（長い口吻・上顎の切れ込み）
+    a.push(path("M4.5,-18.5 C3.8,-23 6.6,-26.6 11.4,-27.4 C14.6,-27.9 17.8,-27.4 20.8,-26 L25.6,-23.6 C24,-22.5 22.2,-22.2 20.6,-22.4 L24.4,-19.8 C21.6,-17.6 17.6,-16.9 13.8,-17.8 C10,-18.7 7,-18.4 4.5,-18.5 Z",g,line,0.7));
+    a.push(path("M19,-21.8 C17,-20 14.4,-19.2 11.8,-19.4",null,line,0.7,0.7));
+    a.push(circ(22.8,-24.6,0.55,line));
+    // 目（吊り目＋眉）
+    a.push(ell(12.4,-23.4,1.5,1.1,"#FFFFFF"));
+    a.push(circ(12.8,-23.3,0.75,"#17110B"));
+    a.push(path("M10.2,-25.3 L15,-25.9",null,line,0.9));
+    // 枝角（鹿角状・金茶）
+    const horn=gold?"#8A5A00":"#C9A227";
+    a.push(path("M10.2,-27 C8.8,-31.6 5.6,-34 1.8,-34.6",null,horn,1.8));
+    a.push(path("M6.4,-32.6 C4.8,-34 3,-34.6 1.2,-34.6",null,horn,1.1));
+    a.push(path("M15.2,-27.3 C16,-32 19,-34.4 23.2,-34.9",null,horn,1.8));
+    a.push(path("M19,-33.2 C20.6,-34.6 22.4,-35.2 24.2,-35.2",null,horn,1.1));
+    // たてがみ（後頭部から流れる）＋あご髭
+    ["M5.8,-22 C0.4,-22 -3.6,-19.4 -6.4,-15.6","M6.2,-20 C1.6,-19.4 -1.8,-17 -4,-13.6","M7,-25.6 C3,-27 -0.6,-26.6 -3.6,-24.6"].forEach(d=>a.push(path(d,null,mane,1.6,0.9)));
+    a.push(path("M12,-19.2 C11,-17 9.6,-15.6 7.8,-14.8",null,mane,1.2,0.85));
+    // 長いひげ
+    a.push(path("M23.4,-22.6 C28.2,-21.6 31,-18 31.8,-13.2",null,mane,0.9));
+    a.push(path("M22.6,-21 C26.4,-19.2 28.4,-16 28.8,-12",null,mane,0.8));
+    if(gold){a.push(path("M8.2,-27.8 L9,-31.4 L10.8,-28.6 L12,-31.9 L13.2,-28.6 L15,-31.5 L15.6,-27.9 Z","url(#drgGld)","#8A5A00",0.7));a.push(circ(11.9,-32.6,1.1,"#E0352B"));}
+    a.push(lstar(gold?-22:-20,-8,1.9,"#FFF1B8"));
+    a.push(lstar(24,6,1.7,gold?"#FFE7A0":"#DCEFFA"));
+    if(gold)a.push(lstar(0,-1,1.6,"#FFFFFF"));
+    return a.join("");
+  }
+
   const o=[];
-  const line=(x1,y1,x2,y2,c,w)=>o.push(`<line x1="${X(x1)}" y1="${Y(y1)}" x2="${X(x2)}" y2="${Y(y2)}" stroke="${c}" stroke-width="${R(w)}" stroke-linecap="round"/>`);
-  const circ=(x,y,r,f)=>o.push(`<circle cx="${X(x)}" cy="${Y(y)}" r="${R(r)}" fill="${f}"/>`);
-  const ell=(x,y,rx,ry,f)=>o.push(`<ellipse cx="${X(x)}" cy="${Y(y)}" rx="${R(rx)}" ry="${R(ry)}" fill="${f}"/>`);
-  const beak=(x,y,w,c)=>o.push(`<polygon points="${X(x)},${Y(y-2.2)} ${X(x+w)},${Y(y)} ${X(x)},${Y(y+2.2)}" fill="${c||'#F2870D'}"/>`);
-  const eye=(x,y)=>{circ(x,y,2.1,"#FFFFFF");circ(x+0.3,y,1.2,"#33270D");};
-  const comb=(x,y,n,r)=>{for(let i=0;i<n;i++)circ(x+i*r*1.3-((n-1)*r*1.3)/2,y-(i%2?1.6:0),r,"#E0352B");};
-  const M=(x,y)=>`M${X(x)},${Y(y)}`,Q=(a,b,x,y)=>`Q${X(a)},${Y(b)} ${X(x)},${Y(y)}`,L=(x,y)=>`L${X(x)},${Y(y)}`;
-  const path=(d,f,st,w)=>o.push(`<path d="${d}" fill="${f||'none'}"${st?` stroke="${st}" stroke-width="${R(w||2)}" stroke-linecap="round" stroke-linejoin="round"`:''}/>`);
   if(form===0){
-    // たまご：まだ孵っていない。phaseDoneでヒビが入る
-    ell(0,0,15,19,"#FFF3D6");
-    o.push(`<ellipse cx="${X(0)}" cy="${Y(0)}" rx="${R(15)}" ry="${R(19)}" fill="none" stroke="#E2D2A0" stroke-width="${R(1.4)}"/>`);
-    circ(-5,-3,1.5,"#E6D3A0");circ(5,5,1.3,"#E6D3A0");circ(1,11,1.2,"#E6D3A0");
-    if(phaseDone>0)path(M(-6,-7)+L(-2,-3)+L(-6,1)+L(-1,5),null,"#C9B27A",1.6);
+    // たまご：グラデ＋ハイライト＋接地影。餌が入ると殻にヒビ
+    o.push(ell(0,20,11,2.2,"#1F2933",0.08));
+    o.push(ell(0,0,15,19,"url(#eggG)"));
+    o.push(`<ellipse cx="0" cy="0" rx="15" ry="19" fill="none" stroke="#E2D2A0" stroke-width="1.3"/>`);
+    o.push(path("M-7.5,-9 C-9.5,-4 -9.5,3 -7.5,8",null,"#FFFFFF",2.2,0.55));
+    o.push(circ(-4.5,-3,1.4,"#E6D3A0"));o.push(circ(5,5,1.2,"#E6D3A0"));o.push(circ(1,11,1.1,"#E6D3A0"));
+    if(phaseDone>0)o.push(path("M-6,-7 L-2,-3 L-6,1 L-1,5",null,"#C9B27A",1.5));
   }else if(form===1){
-    // 針子：かえったばかりの極小の稚魚（半透明・ごく小さい）
-    path(M(-5,0)+Q(-9,-4,-11,0)+Q(-9,4,-5,0)+"Z","#BFE0F5");
-    ell(1,0,7,4.5,"#BFE0F5");
-    ell(1,-0.5,6,2.4,"#DCF0FB");
-    circ(4,-0.6,1.0,"#33270D");
-  }else if(form===2){
-    // 稚鯉：ひれの付いた小さな鯉
-    path(M(-8,0)+Q(-15,-7,-18,-1)+Q(-16,6,-8,1)+"Z","url(#koiB)");
-    ell(3,0,12,8,"url(#koiB)");
-    path(M(-1,-7)+Q(4,-13,10,-8)+"Z","url(#koiB)");
-    eye(10,-1);
-    path(M(14,1)+Q(19,0,21,3),null,"#67707A",1.1);
-  }else if(form===3){
-    // 若鯉：ひとまわり大きく、ひれ・ひげが伸びる
-    path(M(-11,0)+Q(-20,-9,-23,-1)+Q(-21,8,-11,1)+"Z","url(#koiB)");
-    ell(2,0,16,10,"url(#koiB)");
-    path(M(-2,-9)+Q(4,-17,13,-11)+"Z","url(#koiB)");
-    path(M(2,9)+Q(6,16,13,12)+"Z","url(#koiB)");
-    line(-6,-2,-1,6,"#2E7BC4",1.2);line(0,-3,4,6,"#2E7BC4",1.2);
-    eye(12,-2);
-    path(M(16,0)+Q(23,-1,25,3),null,"#67707A",1.3);
-    path(M(16,3)+Q(22,3,24,7),null,"#67707A",1.1);
-  }else if(form===4){
-    // 錦鯉：紅白模様。数だけでなく「質＝商談を作れる」証
-    path(M(-12,0)+Q(-22,-10,-26,-1)+Q(-23,9,-12,1)+"Z","url(#koiW)");
-    path(M(-12,0)+Q(-20,-3,-26,-1),null,"#E0352B",1.4);
-    ell(2,0,17,11,"url(#koiW)");
-    ell(-3,-3,7,4.5,"#E0352B");ell(9,3,5.5,3.5,"#F2870D");circ(3,4,2.6,"#E0352B");
-    path(M(-2,-10)+Q(5,-18,14,-12)+"Z","#E0352B");
-    path(M(3,10)+Q(7,17,15,13)+"Z","url(#koiW)");
-    eye(13,-2);
-    path(M(17,-1)+Q(25,-2,27,2),null,"#67707A",1.3);
-    path(M(17,3)+Q(24,3,26,8),null,"#67707A",1.1);
-    o.push(star(cx+16*s,cy-13*s,2.4*s,"#FFF3D6"));
-  }else if(form===5){
-    // 大錦鯉：一回り大きく緋・金の彩り。長い尾びれと金縁のひれ
-    path(M(-14,0)+Q(-26,-12,-30,-1)+Q(-27,11,-14,1)+"Z","url(#koiW)");
-    path(M(-14,0)+Q(-23,-4,-30,-1),null,"#E0352B",1.6);
-    path(M(-14,0)+Q(-22,3,-28,7),null,"#F2870D",1.4);
-    ell(2,0,20,13,"url(#koiW)");
-    ell(-4,-4,8,5,"#E0352B");ell(10,3,7,4.5,"#F2870D");circ(3,5,3,"#E0352B");circ(13,-3,3,"#E0352B");
-    path(M(-2,-12)+Q(6,-22,17,-14)+"Z","#E0352B");
-    path(M(-2,-12)+Q(6,-22,17,-14),null,"#C8901A",1.2);
-    path(M(3,12)+Q(8,21,18,15)+"Z","url(#koiW)");
-    path(M(3,12)+Q(8,21,18,15),null,"#C8901A",1.1);
-    eye(15,-3);
-    path(M(19,-2)+Q(28,-3,31,2),null,"#67707A",1.4);
-    path(M(19,3)+Q(27,4,29,9),null,"#67707A",1.2);
-    o.push(star(cx+18*s,cy-15*s,2.6*s,"#FFF3D6"));
-  }else if(form===6){
-    // 滝登り：斜めに跳ねる。角・長いひげが生え始め、龍の兆し
-    o.push(`<g transform="rotate(-30 ${X(0)} ${Y(0)})">`);
-    path(M(-12,0)+Q(-23,-10,-27,-1)+Q(-24,10,-12,1)+"Z","url(#drgG)");
-    ell(2,0,17,11,"url(#drgG)");
-    ell(-3,-2,7,4.5,"#E0352B");circ(8,3,3,"#B34700");
-    path(M(-2,-10)+Q(6,-19,15,-12)+"Z","url(#drgG)");
-    path(M(12,-8)+Q(14,-16,9,-19),null,"#C8901A",1.9);
-    path(M(16,-7)+Q(19,-15,15,-18),null,"#C8901A",1.9);
-    eye(14,-2);
-    path(M(18,-1)+Q(27,-2,30,3),null,"#67707A",1.4);
-    path(M(18,3)+Q(26,4,28,9),null,"#67707A",1.2);
+    // 針子：孵化直後の稚魚（半透明・卵黄が残る）
+    o.push(`<g transform="scale(1.15)">`);
+    o.push(path("M6.5,0 C5.5,-2 2.2,-3 -1,-2.6 C-4.2,-2.2 -6.8,-1 -8.6,0 C-6.8,1 -4.2,2.2 -1,2.6 C2.2,3 5.5,2 6.5,0 Z","#CFE8F4","#9FC4D8",0.5,0.9));
+    o.push(path("M-8.4,0 C-10.2,-1.6 -11.6,-2.2 -12.8,-2.2 C-11.9,-0.9 -11.6,0 -11.5,0 C-11.6,0 -11.9,0.9 -12.8,2.2 C-11.6,2.2 -10.2,1.6 -8.4,0 Z","#B9DCEE",null,null,0.85));
+    o.push(path("M-7.5,0 L4,0",null,"#9FC4D8",0.5,0.8));
+    o.push(circ(0.4,1,1.5,"#F5D9A8",0.9));
+    o.push(circ(3.9,-0.5,1.15,"#17110B"));o.push(circ(3.6,-0.8,0.4,"#FFFFFF"));
     o.push(`</g>`);
-    [[-12,20,4],[0,25,5],[12,22,3.5],[-4,28,3],[7,29,3]].forEach(b=>
-      o.push(`<circle cx="${X(b[0])}" cy="${Y(b[1])}" r="${R(b[2])}" fill="#7FC4F0" opacity="0.55"/>`));
-    o.push(star(cx+18*s,cy-17*s,3*s,"#FFF3D6"));
+  }else if(form===2){
+    o.push(`<g transform="scale(0.62)">${koi({grad:"url(#fishBlu)",fin:"#6E9EBB",line:"#4E6E86",scaleCol:"#3E6E8E",barbel:1})}</g>`);
+  }else if(form===3){
+    o.push(`<g transform="scale(0.8)">${koi({grad:"url(#fishBlu)",fin:"#6E9EBB",line:"#4E6E86",scaleCol:"#3E6E8E",barbel:2,patches:[["M9.6,0.6 C10.8,1.4 11.4,2.6 11.2,3.8 C10,4.2 8.8,3.8 8,2.8 C8.2,1.8 8.8,1 9.6,0.6 Z","#D8503A",0.7]]})}</g>`);
+  }else if(form===4){
+    o.push(`<g transform="scale(0.94)">${koi({grad:"url(#fishWht)",fin:"#D9DEE3",line:"#9AA3AD",scaleCol:"#B9C1C8",barbel:2,patches:[
+      ["M4,-7.6 C8.6,-7.2 12,-5 13.4,-2.4 C10.6,-0.8 6.8,-0.6 3.4,-2 C2,-4 2.4,-6.2 4,-7.6 Z","#D8402C"],
+      ["M-6,1.8 C-2.6,0.6 0.8,1.4 2.2,3.6 C0.6,6.2 -3,7.4 -6.4,6.6 C-7.6,5 -7.4,3.2 -6,1.8 Z","#D8402C"],
+      ["M-12.8,-3.4 C-10.4,-4.4 -8.2,-4 -7.2,-2.4 C-8.2,-0.8 -10.6,-0.4 -12.6,-1.2 C-13.2,-2 -13.2,-2.8 -12.8,-3.4 Z","#D8402C"]]})}</g>`);
+    o.push(lstar(18,-13,2.2,"#F7E9B0"));
+  }else if(form===5){
+    o.push(`<g transform="scale(1.02)">${koi({grad:"url(#fishWht)",fin:"#E8C05A",line:"#A98A3F",scaleCol:"#B9C1C8",barbel:2,flow:true,patches:[
+      ["M4,-7.6 C8.6,-7.2 12,-5 13.4,-2.4 C10.6,-0.8 6.8,-0.6 3.4,-2 C2,-4 2.4,-6.2 4,-7.6 Z","#D8402C"],
+      ["M-6,1.8 C-2.6,0.6 0.8,1.4 2.2,3.6 C0.6,6.2 -3,7.4 -6.4,6.6 C-7.6,5 -7.4,3.2 -6,1.8 Z","#E8862B"],
+      ["M-12.8,-3.4 C-10.4,-4.4 -8.2,-4 -7.2,-2.4 C-8.2,-0.8 -10.6,-0.4 -12.6,-1.2 C-13.2,-2 -13.2,-2.8 -12.8,-3.4 Z","#D8402C"],
+      ["M-2,-6.8 C0.4,-6.4 1.8,-5.2 1.6,-3.8 C0,-3.2 -2.4,-3.6 -3.6,-4.8 C-3.2,-5.8 -2.8,-6.4 -2,-6.8 Z","#2E2A26",0.85]]})}</g>`);
+    o.push(lstar(19,-14,2.4,"#F7E9B0"));
+  }else if(form===6){
+    // 滝登り：滝すじ＋水しぶき＋斜めに跳ねる黄金鯉
+    o.push(path("M-19,-26 C-16,-10 -19,6 -15,22",null,"#BFE0F2",6,0.5));
+    o.push(path("M-12,-28 C-10,-12 -12.6,4 -9.6,20",null,"#CFE8F6",4.4,0.45));
+    [[-15,20,3.2],[-8,22.5,2.5],[-19.5,23,2.1],[-3,21,1.7]].forEach(b=>o.push(circ(b[0],b[1],b[2],"#DDF0FA",0.85)));
+    o.push(`<g transform="rotate(-42) scale(0.9)">${koi({grad:"url(#fishGld)",fin:"#D89020",line:"#A9700F",scaleCol:"#B87A12",barbel:2,eyeAmber:true,patches:[["M2,-7 C5.8,-6.6 8.6,-4.8 9.8,-2.6 C7.4,-1.2 4.2,-1 1.4,-2.2 C0.2,-3.9 0.6,-5.8 2,-7 Z","#D8402C",0.9]]})}</g>`);
+    o.push(lstar(17,-18,2.6,"#FFF3D6"));
   }else if(form===7){
-    // 化龍：頭は龍・胴はまだ鯉。半蛇体でせり上がる龍化の途中
-    const bd=`M${X(-16)},${Y(14)} C${X(-20)},${Y(2)} ${X(-4)},${Y(2)} ${X(2)},${Y(-4)} C${X(8)},${Y(-10)} ${X(4)},${Y(-20)} ${X(8)},${Y(-24)}`;
-    o.push(`<path d="${bd}" fill="none" stroke="url(#drgG)" stroke-width="${R(11)}" stroke-linecap="round" stroke-linejoin="round"/>`);
-    o.push(`<ellipse cx="${X(-6)}" cy="${Y(6)}" rx="${R(5)}" ry="${R(3.5)}" fill="#E0352B" opacity="0.85"/>`);
-    path(M(-16,14)+Q(-26,17,-29,10)+Q(-23,12,-21,6)+"Z","url(#drgG)");
-    [[-8,2],[0,-6]].forEach(m=>o.push(`<path d="${M(m[0],m[1])+L(m[0]-3,m[1]-5)+L(m[0]+2,m[1]-2)}" fill="none" stroke="#E5651A" stroke-width="${R(1.8)}" stroke-linejoin="round"/>`));
-    circ(9,-25,8.5,"url(#drgG)");
-    o.push(`<circle cx="${X(9)}" cy="${Y(-25)}" r="${R(8.5)}" fill="none" stroke="#A9700F" stroke-width="${R(1.2)}"/>`);
-    path(M(5,-31)+Q(2,-39,-3,-41),null,"#A9700F",2.2);
-    path(M(13,-31)+Q(16,-39,21,-41),null,"#A9700F",2.2);
-    path(M(16,-23)+Q(28,-21,31,-13),null,"#A9700F",1.5);
-    path(M(16,-20)+Q(26,-15,28,-7),null,"#A9700F",1.3);
-    eye(12,-26);
-    o.push(`<path d="${M(2,-4)+L(-2,3)} ${M(2,-4)+L(2,5)} ${M(2,-4)+L(6,3)}" fill="none" stroke="#A9700F" stroke-width="${R(1.8)}" stroke-linecap="round"/>`);
-    o.push(star(cx+16*s,cy-18*s,2.4*s,"#FFF3D6"));
+    // 化龍：角とたてがみが生えた黄金鯉が雲を抜けて昇る
+    o.push(`<g transform="rotate(-50) scale(0.9)">${koi({grad:"url(#fishGld)",fin:"#D89020",line:"#A9700F",scaleCol:"#B87A12",barbel:2,eyeAmber:true,antlers:true,patches:[["M2,-7 C5.8,-6.6 8.6,-4.8 9.8,-2.6 C7.4,-1.2 4.2,-1 1.4,-2.2 C0.2,-3.9 0.6,-5.8 2,-7 Z","#D8402C",0.9]]})}</g>`);
+    o.push(ell(-9,21,8,2.8,"#FFFFFF",0.5));
+    o.push(lstar(15,-19,2.4,"#FFF3D6"));o.push(lstar(-19,-6,1.8,"#FFE7A0"));
   }else if(form===8){
-    // 青龍：青緑〜紫のイリデッセントな本格の龍（王冠・光背はまだ無い）
-    const bodyD=`M${X(-20)},${Y(15)} C${X(-28)},${Y(2)} ${X(-8)},${Y(-2)} ${X(0)},${Y(5)} C${X(11)},${Y(13)} ${X(9)},${Y(-13)} ${X(-6)},${Y(-16)} C${X(-18)},${Y(-19)} ${X(-11)},${Y(-31)} ${X(6)},${Y(-28)}`;
-    o.push(`<path d="${bodyD}" fill="none" stroke="#1F6FB0" stroke-width="${R(13.4)}" stroke-linecap="round" stroke-linejoin="round"/>`);
-    o.push(`<path d="${bodyD}" fill="none" stroke="url(#drgB)" stroke-width="${R(11.2)}" stroke-linecap="round" stroke-linejoin="round"/>`);
-    [[-14,6],[-6,-4],[-9,-14],[-2,-22]].forEach(m=>o.push(`<path d="${M(m[0],m[1])+L(m[0]-3,m[1]-6)+L(m[0]+2,m[1]-3)}" fill="none" stroke="url(#drgG)" stroke-width="${R(2)}" stroke-linejoin="round"/>`));
-    path(M(-20,15)+Q(-31,18,-34,10)+Q(-27,12,-25,6)+"Z","url(#drgG)");
-    o.push(`<path d="${M(-6,-13)+L(-10,-5)} ${M(-6,-13)+L(-6,-3)} ${M(-6,-13)+L(-1,-5)}" fill="none" stroke="url(#drgB)" stroke-width="${R(2)}" stroke-linecap="round"/>`);
-    o.push(`<path d="${M(1,7)+L(-3,15)} ${M(1,7)+L(1,17)} ${M(1,7)+L(6,15)}" fill="none" stroke="url(#drgB)" stroke-width="${R(2)}" stroke-linecap="round"/>`);
-    circ(6,-26,10,"url(#drgB)");
-    o.push(`<circle cx="${X(6)}" cy="${Y(-26)}" r="${R(10)}" fill="none" stroke="#1F6FB0" stroke-width="${R(1.2)}"/>`);
-    path(M(2,-33)+Q(-1,-42,-7,-44),null,"url(#drgG)",2.6);
-    path(M(10,-33)+Q(13,-42,19,-44),null,"url(#drgG)",2.6);
-    path(M(-3,-40)+Q(-6,-41,-10,-40),null,"url(#drgG)",1.5);
-    path(M(15,-41)+Q(18,-42,22,-41),null,"url(#drgG)",1.5);
-    path(M(14,-24)+Q(29,-22,33,-13),null,"#67707A",1.5);
-    path(M(14,-21)+Q(27,-15,29,-5),null,"#67707A",1.3);
-    eye(9,-27);
-    o.push(star(cx-24*s,cy-6*s,2*s,"#FFF1B8"));
-    o.push(star(cx+26*s,cy+2*s,2*s,"#FFF1B8"));
+    o.push(`<g transform="scale(0.86)">${dragon(false)}</g>`);
   }else{
-    // 覚醒＝金龍：黄金の蛇体・光背・瑞雲・たてがみ・王冠のかっこいい金の龍
-    const RAYS=[[31,0],[22,22],[0,31],[-22,22],[-31,0],[-22,-22],[0,-31],[22,-22]];
-    RAYS.forEach((p,i)=>o.push(`<line x1="${X(0)}" y1="${Y(0)}" x2="${X(p[0])}" y2="${Y(p[1])}" stroke="#F2C230" stroke-width="${R(i%2?1.5:2.8)}" stroke-linecap="round" opacity="0.34"/>`));
-    o.push(`<circle cx="${X(0)}" cy="${Y(0)}" r="${R(30)}" fill="#F2C230" opacity="0.11"/>`);
-    o.push(`<circle cx="${X(0)}" cy="${Y(0)}" r="${R(23)}" fill="none" stroke="#F2C230" stroke-width="${R(1.2)}" opacity="0.46"/>`);
-    // 瑞雲
-    o.push(`<g fill="#FFFFFF" opacity="0.55"><ellipse cx="${X(-16)}" cy="${Y(23)}" rx="${R(11)}" ry="${R(4.5)}"/><ellipse cx="${X(15)}" cy="${Y(25)}" rx="${R(9)}" ry="${R(4)}"/></g>`);
-    // 蛇体（S字・黄金）＋濃金の縁取りで立体感
-    const bodyD=`M${X(-20)},${Y(15)} C${X(-28)},${Y(2)} ${X(-8)},${Y(-2)} ${X(0)},${Y(5)} C${X(11)},${Y(13)} ${X(9)},${Y(-13)} ${X(-6)},${Y(-16)} C${X(-18)},${Y(-19)} ${X(-11)},${Y(-31)} ${X(6)},${Y(-28)}`;
-    o.push(`<path d="${bodyD}" fill="none" stroke="#A9700F" stroke-width="${R(13.6)}" stroke-linecap="round" stroke-linejoin="round"/>`);
-    o.push(`<path d="${bodyD}" fill="none" stroke="url(#drgG)" stroke-width="${R(11.2)}" stroke-linecap="round" stroke-linejoin="round"/>`);
-    // 背のたてがみ（朱橙でコントラスト）
-    [[-14,6],[-6,-4],[-9,-14],[-2,-22]].forEach(m=>o.push(`<path d="${M(m[0],m[1])+L(m[0]-3,m[1]-6)+L(m[0]+2,m[1]-3)}" fill="none" stroke="#E5651A" stroke-width="${R(2.2)}" stroke-linejoin="round"/>`));
-    // 尾の炎（朱橙）
-    path(M(-20,15)+Q(-31,18,-34,10)+Q(-27,12,-25,6)+"Z","#FF7A00");
-    // 爪（濃金）
-    o.push(`<path d="${M(-6,-13)+L(-10,-5)} ${M(-6,-13)+L(-6,-3)} ${M(-6,-13)+L(-1,-5)}" fill="none" stroke="#A9700F" stroke-width="${R(2)}" stroke-linecap="round"/>`);
-    o.push(`<path d="${M(1,7)+L(-3,15)} ${M(1,7)+L(1,17)} ${M(1,7)+L(6,15)}" fill="none" stroke="#A9700F" stroke-width="${R(2)}" stroke-linecap="round"/>`);
-    // 頭（金）＋濃金縁
-    circ(6,-26,10,"url(#drgG)");
-    o.push(`<circle cx="${X(6)}" cy="${Y(-26)}" r="${R(10)}" fill="none" stroke="#A9700F" stroke-width="${R(1.4)}"/>`);
-    // 枝角（濃金）
-    path(M(2,-33)+Q(-1,-42,-7,-44),null,"#A9700F",2.6);
-    path(M(10,-33)+Q(13,-42,19,-44),null,"#A9700F",2.6);
-    path(M(-3,-40)+Q(-6,-41,-10,-40),null,"#A9700F",1.5);
-    path(M(15,-41)+Q(18,-42,22,-41),null,"#A9700F",1.5);
-    // 長く流れるひげ（濃金）
-    path(M(14,-24)+Q(29,-22,33,-13),null,"#A9700F",1.6);
-    path(M(14,-21)+Q(27,-15,29,-5),null,"#A9700F",1.4);
-    eye(9,-27);
-    // 王冠（明るい金＋濃金縁＋赤玉）
-    path(M(1,-34)+L(2,-40)+L(5,-36)+L(6,-42)+L(7,-36)+L(10,-40)+L(11,-34)+"Z","url(#drgG)","#8A5A00",1);
-    circ(6,-43,1.5,"#E0352B");
-    // 胸のうろこの照り
-    o.push(`<ellipse cx="${X(3)}" cy="${Y(-24)}" rx="${R(3)}" ry="${R(4.5)}" fill="#FFF6D8" opacity="0.5"/>`);
-    // 輝き
-    o.push(star(cx,cy-2*s,2*s,"#FFFFFF"));
-    o.push(star(cx-26*s,cy-8*s,2.4*s,"#FFF1B8"));
-    o.push(star(cx+28*s,cy+2*s,2*s,"#FFF1B8"));
-    o.push(star(cx+18*s,cy+16*s,2*s,"#FFE7A0"));
+    o.push(`<g transform="scale(0.86)">${dragon(true)}</g>`);
   }
-  // 周回番号：2周目以降、卵や鳥の胸（不死鳥は黄金の胸当て）に番号を刻む。
-  // 卵に戻ってもリセット感を出さない＝何羽目の不死鳥かが一目で分かる。
+  // 周回番号：2周目以降、胴に番号を刻む（何度目の金龍かが一目で分かる）
   if(gen>=2){
-    // [chx, chy, r] フォーム別の胴（卵は本体中央／龍は中心）の位置と紋章サイズ（0-9）
-    const CH={0:[0,4,6.4],1:[1,0,3.4],2:[3,1,4.2],3:[2,1,4.8],4:[2,1,5.0],5:[2,1,5.4],6:[2,2,4.6],7:[0,0,5.0],8:[-2,0,5.6],9:[-2,0,5.6]};
-    const c=CH[form]||[0,5,6.2], chx=c[0],chy=c[1],cr=c[2];
-    o.push(`<circle cx="${X(chx)}" cy="${Y(chy)}" r="${R(cr)}" fill="#7A3E00" opacity="0.92"/>`);
-    o.push(`<circle cx="${X(chx)}" cy="${Y(chy)}" r="${R(cr)}" fill="none" stroke="#F2C230" stroke-width="${R(1)}"/>`);
-    o.push(`<text x="${X(chx)}" y="${(cy+chy*s+cr*0.52*s).toFixed(1)}" text-anchor="middle" font-size="${R(cr*1.5)}" font-weight="800" fill="#FFF3D6">${gen}</text>`);
+    const CH={0:[0,3,6.2],1:[0,-6.5,3],2:[-1,0,4],3:[-1,0,4.6],4:[-1,0,5],5:[-1,0,5.2],6:[3,3,4.6],7:[4,4,4.6],8:[-2,6,4.8],9:[-2,6,4.8]};
+    const c=CH[form]||[0,0,5],chx=c[0],chy=c[1],cr=c[2];
+    o.push(circ(chx,chy,cr,"#7A3E00",0.92));
+    o.push(`<circle cx="${chx}" cy="${chy}" r="${cr}" fill="none" stroke="#F2C230" stroke-width="0.9"/>`);
+    o.push(`<text x="${chx}" y="${(chy+cr*0.55).toFixed(1)}" text-anchor="middle" font-size="${(cr*1.5).toFixed(1)}" font-weight="800" fill="#FFF3D6">${gen}</text>`);
   }
-  return o.join("");
+  return `<g transform="translate(${cx},${cy}) scale(${s})">${o.join("")}</g>`;
 }
 
 // 現在のアバターだけを切り出した単体カード（朝礼/Slack/Notionに貼る用）
