@@ -259,6 +259,13 @@ function save(d){localStorage.setItem(KEY(d.name),JSON.stringify(d));flash("保�
 function load(n){const v=localStorage.getItem(KEY(n));return v?JSON.parse(v):null;}
 let saveTimer;function flash(msg){document.getElementById("saved").textContent=msg;clearTimeout(saveTimer);saveTimer=setTimeout(()=>document.getElementById("saved").textContent="",1500);}
 
+// このブラウザ（＝この端末を使う本人）が最後に見ていたメンバーを覚えておき、
+// ?member= 無しでリンクを開いた時にそこへ自動で戻す（毎回一覧からの選び直しを防ぐ）。
+// "goalmap:" prefixだとlistMembers()に紛れ込むため、別プレフィックスを使う。
+const LAST_KEY = "goalmap-last-member";
+function saveLastMember(n){ try{ localStorage.setItem(LAST_KEY, n); }catch(e){} }
+function loadLastMember(){ try{ return localStorage.getItem(LAST_KEY); }catch(e){ return null; } }
+
 let data;
 
 // ───────── SVG描画（Python版と同一仕様）─────────
@@ -1107,12 +1114,12 @@ document.getElementById("editor").addEventListener("click",ev=>{
     if(t.id==="dailySave"){saveDaily();return;}
     if(t.dataset.ddel!=null){const i=+t.dataset.ddel;if(confirm("この日報を削除しますか？")){data.daily.splice(i,1);persist();renderDaily();}return;}});
 })();
-document.getElementById("member").addEventListener("change",ev=>{leaveViewing();const n=ev.target.value;const d=load(n)||findEmbedded(n);if(d){data=d;save(data);renderAll();}});
+document.getElementById("member").addEventListener("change",ev=>{leaveViewing();const n=ev.target.value;const d=load(n)||findEmbedded(n);if(d){data=d;save(data);saveLastMember(n);renderAll();}});
 document.getElementById("roster").addEventListener("click",ev=>{
   const t=ev.target.closest("[data-rmember]"); if(!t)return;
   leaveViewing();
   const n=t.dataset.rmember; const d=load(n)||findEmbedded(n);
-  if(d){data=d;save(data);renderAll();}});
+  if(d){data=d;save(data);saveLastMember(n);renderAll();}});
 // 履歴を見る（読み取り専用・上書きしない）
 document.getElementById("history").addEventListener("click",()=>document.getElementById("historyFile").click());
 document.getElementById("historyFile").addEventListener("change",ev=>{
@@ -1126,7 +1133,7 @@ document.getElementById("reset").addEventListener("click",()=>{
   if(!base){alert("このメンバーは内蔵の初期値がありません（手元のJSONから読み込んでください）");return;}
   if(!confirm(`「${data.name}」を内蔵の初期値に戻します。今の編集内容は消えます。よろしいですか？`))return;
   data=base;save(data);renderAll();});
-document.getElementById("new").addEventListener("click",()=>{leaveViewing();const n=prompt("メンバー名は？");if(!n)return;data=template(n);save(data);renderAll();});
+document.getElementById("new").addEventListener("click",()=>{leaveViewing();const n=prompt("メンバー名は？");if(!n)return;data=template(n);save(data);saveLastMember(n);renderAll();});
 document.getElementById("import").addEventListener("change",ev=>{
   const f=ev.target.files[0];if(!f)return;leaveViewing();const r=new FileReader();
   r.onload=()=>{try{data=JSON.parse(r.result);save(data);renderAll();}catch(e){alert("JSONの読み込みに失敗: "+e);}};r.readAsText(f);});
@@ -1177,10 +1184,16 @@ document.getElementById("exportPng").addEventListener("click",()=>{
   // 内蔵メンバーで、まだlocalStorageに無いものを初期投入（既存の編集は上書きしない）
   EMBEDDED.forEach(m=>{ if(!load(m.name)) localStorage.setItem(KEY(m.name),JSON.stringify(m)); });
   const members=listMembers();
-  // ?member=名前 が付いていれば、そのメンバーを自動選択（組織ゴールマップからの遷移用）
+  // ?member=名前 が付いていれば最優先（組織ゴールマップからの遷移用）。
+  // 無ければ、この端末で最後に見ていたメンバーを復元する（毎回一覧の先頭に戻ってストレスにならないように）。
+  // それも無ければ従来どおり先頭メンバー。
   const qMember=new URLSearchParams(location.search).get("member");
-  const initial=(qMember&&(load(qMember)||findEmbedded(qMember)))||load(members[0])||clone(EMBEDDED[0]);
+  const lastMember=loadLastMember();
+  const initial=(qMember&&(load(qMember)||findEmbedded(qMember)))
+    ||(lastMember&&(load(lastMember)||findEmbedded(lastMember)))
+    ||load(members[0])||clone(EMBEDDED[0]);
   data=initial;
+  saveLastMember(data.name);
   renderAll();
 })();
 </script>

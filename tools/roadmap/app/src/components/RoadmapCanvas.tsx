@@ -34,9 +34,23 @@ interface Props {
   root: RoadmapNode;
 }
 
+// このブラウザ（＝この端末を使う本人）が最後に見ていたノードを覚えておき、
+// 再訪時に会社ノードまで折りたたまれた状態へ毎回リセットされないようにする。
+const LAST_NODE_KEY = "elp-roadmap:lastNodeId";
+
+function loadInitialPath(root: RoadmapNode): string[] {
+  try {
+    const savedId = localStorage.getItem(LAST_NODE_KEY);
+    if (!savedId) return [];
+    return findAncestorChain(root, savedId) ?? [];
+  } catch {
+    return [];
+  }
+}
+
 export default function RoadmapCanvas({ root }: Props) {
-  // 初期状態は空＝会社ノードのみ表示（部署は折りたたまれている）
-  const [expandedPath, setExpandedPath] = useState<string[]>([]);
+  // 初期状態は前回このブラウザで最後に開いていた場所を復元（無ければ会社ノードのみ）
+  const [expandedPath, setExpandedPath] = useState<string[]>(() => loadInitialPath(root));
   const { fitView } = useReactFlow();
   const [zoomPct, setZoomPct] = useState(100);
   // ドラッグで動かした位置（見た目の調整のみ・保存はしない。ページ再読込で自動レイアウトに戻る）
@@ -45,6 +59,18 @@ export default function RoadmapCanvas({ root }: Props) {
   useEffect(() => {
     setDragOverrides({});
   }, [root]);
+
+  useEffect(() => {
+    try {
+      if (expandedPath.length > 0) {
+        localStorage.setItem(LAST_NODE_KEY, expandedPath[expandedPath.length - 1]);
+      } else {
+        localStorage.removeItem(LAST_NODE_KEY);
+      }
+    } catch {
+      // localStorageが使えない環境（プライベートブラウズ等）では何もしない
+    }
+  }, [expandedPath]);
 
   const expandedIds = useMemo(() => new Set(expandedPath), [expandedPath]);
 
