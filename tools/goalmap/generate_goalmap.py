@@ -26,7 +26,7 @@ from xml.sax.saxutils import escape
 # ── 図仕様の定数（HANDOFF §3）─────────────────────────────
 WIDTH = 680
 # 配布用SVGはMac/Win/Linuxで最適なものを使うフォールバック順（仕様）。
-FONT = "Hiragino Sans, 'Noto Sans CJK JP', 'Yu Gothic', sans-serif"
+FONT = "Hiragino Sans, 'Noto Sans CJK JP', 'Yu Gothic', IPAGothic, sans-serif"
 # PNGラスタライズ用。cairoは先頭が無いとCJKフォールバックに失敗するため、
 # 実際にインストール済みのCJKフォントを先頭に置いた版で描画する。
 FONT_RASTER = "'Noto Sans CJK JP', 'Yu Gothic', sans-serif"
@@ -102,8 +102,22 @@ def wrap_max(text: str, n: int, max_lines: int) -> list[str]:
     return b
 
 
-# ── 成長キャラ（鶏→不死鳥）。1タスク=餌1つ、1フェーズ食べ切る=進化 ──
-FORM_NAMES = ["たまご", "ひよこ", "小鶏", "とさか鶏", "極彩鶏", "不死鳥"]
+# ── 成長キャラ（鯉→龍・10段階のレベル制）──────────────────────
+# アバターの姿＝本人の実力レベル（level 0-9・メンター評価）。タスク消化は
+# 「進化ゲージ（餌）」を貯めるだけで姿は変えない。ゲージ満タン＝レベルアップ
+# 判定待ち（ready＝光る）。studio（goalmap-studio.html）の birdMarkup と同一デザイン。
+FORM_NAMES = ["たまご", "針子", "稚鯉", "若鯉", "錦鯉",
+              "大錦鯉", "滝登り", "化龍", "青龍", "金龍"]
+
+
+def member_level(d: dict) -> int:
+    """本人の現在レベル（0-9）。level 未設定なら旧 startForm を見る。"""
+    v = d.get("level", d.get("startForm", 0))
+    try:
+        v = int(float(v))
+    except (TypeError, ValueError):
+        v = 0
+    return max(0, min(9, v))
 
 
 def growth(d: dict) -> dict:
@@ -113,14 +127,10 @@ def growth(d: dict) -> dict:
         per.append((sum(1 for x in t if x.get("done")), len(t)))
     all_ = sum(tot for _, tot in per)
     done = sum(dn for dn, _ in per)
-    rate = round(done / all_ * 100) if all_ else 0
-    cleared = 0
-    for dn, tot in per:
-        if tot > 0 and dn == tot:
-            cleared += 1
-        else:
-            break
-    form = 5 if rate >= 100 else min(cleared, 4)
+    rate = round(done / all_ * 100) if all_ else 0     # 今期ゴールの進化ゲージ（餌の割合）
+    level = member_level(d)                            # 本人の現在レベル（メンター評価）
+    form = level                                       # アバターは常にレベルそのもの
+    ready = rate >= 100 and level < 9                  # ゲージ満タン＝レベルアップ判定待ち（光る）
     nxt = None
     for dn, tot in per:
         if not (tot > 0 and dn == tot):
@@ -129,11 +139,10 @@ def growth(d: dict) -> dict:
     if nxt is None:
         nxt = per[-1] if per else (0, 0)
     cycle = max(1, int(d.get("cycle", 1) or 1))
-    # earned＝これまでに孵した不死鳥の数（過去の周回＋今回100%なら今回も）
-    earned = (cycle - 1) + (1 if rate >= 100 else 0)
-    return {"rate": rate, "form": form, "allDone": done, "all": all_,
-            "need": max(0, nxt[1] - nxt[0]), "phaseDone": nxt[0], "phaseTotal": nxt[1],
-            "cycle": cycle, "earned": earned}
+    earned = cycle - 1                                 # これまでに達成した今期ゴールの数
+    return {"rate": rate, "form": form, "level": level, "ready": ready,
+            "allDone": done, "all": all_, "need": max(0, nxt[1] - nxt[0]),
+            "phaseDone": nxt[0], "phaseTotal": nxt[1], "cycle": cycle, "earned": earned}
 
 
 def star(cx: float, cy: float, r: float, fill: str) -> str:
@@ -143,135 +152,197 @@ def star(cx: float, cy: float, r: float, fill: str) -> str:
     return f'<polygon points="{s}" fill="{fill}"/>'
 
 
-def bird_markup(form: int, cx: float, cy: float, s: float, phase_done: int, gen: int = 0) -> str:
-    X = lambda v: f"{cx+v*s:.1f}"  # noqa: E731
-    Y = lambda v: f"{cy+v*s:.1f}"  # noqa: E731
-    R = lambda v: f"{v*s:.1f}"     # noqa: E731
-    o: list[str] = []
+def bird_markup(form: int, cx: float, cy: float, s: float,
+                phase_done: int, gen: int = 0, ready: bool = False) -> str:
+    """studio の birdMarkup と同一：原点で形を組み、最後に translate+scale で配置。"""
+    gen = int(gen or 0)
+    form = max(0, min(9, int(form)))
 
-    def line(x1, y1, x2, y2, c, w):
-        o.append(f'<line x1="{X(x1)}" y1="{Y(y1)}" x2="{X(x2)}" y2="{Y(y2)}" '
-                 f'stroke="{c}" stroke-width="{R(w)}" stroke-linecap="round"/>')
-
-    def circ(x, y, r, f):
-        o.append(f'<circle cx="{X(x)}" cy="{Y(y)}" r="{R(r)}" fill="{f}"/>')
-
-    def ell(x, y, rx, ry, f):
-        o.append(f'<ellipse cx="{X(x)}" cy="{Y(y)}" rx="{R(rx)}" ry="{R(ry)}" fill="{f}"/>')
-
-    def beak(x, y, w, c="#F2870D"):
-        o.append(f'<polygon points="{X(x)},{Y(y-2.2)} {X(x+w)},{Y(y)} '
-                 f'{X(x)},{Y(y+2.2)}" fill="{c}"/>')
-
-    def eye(x, y):
-        circ(x, y, 2.1, "#FFFFFF")
-        circ(x + 0.3, y, 1.2, "#33270D")
-
-    def comb(x, y, n, r):
-        for i in range(n):
-            circ(x + i * r * 1.3 - ((n - 1) * r * 1.3) / 2, y - (1.6 if i % 2 else 0), r, "#E0352B")
-
-    def M(x, y):
-        return f"M{X(x)},{Y(y)}"
-
-    def Q(a, b, x, y):
-        return f"Q{X(a)},{Y(b)} {X(x)},{Y(y)}"
-
-    def L(x, y):
-        return f"L{X(x)},{Y(y)}"
-
-    def path(d_, f=None, st=None, w=2):
-        stroke = (f' stroke="{st}" stroke-width="{R(w)}" stroke-linecap="round" '
+    def path(d, f=None, st=None, w=None, op=None):
+        stroke = (f' stroke="{st}" stroke-width="{w or 1}" stroke-linecap="round" '
                   f'stroke-linejoin="round"') if st else ""
-        o.append(f'<path d="{d_}" fill="{f or "none"}"{stroke}/>')
+        opa = f' opacity="{op}"' if op else ""
+        return f'<path d="{d}" fill="{f or "none"}"{stroke}{opa}/>'
 
+    def circ(x, y, r, f, op=None):
+        opa = f' opacity="{op}"' if op else ""
+        return f'<circle cx="{x}" cy="{y}" r="{r}" fill="{f}"{opa}/>'
+
+    def ell(x, y, rx, ry, f, op=None):
+        opa = f' opacity="{op}"' if op else ""
+        return f'<ellipse cx="{x}" cy="{y}" rx="{rx}" ry="{ry}" fill="{f}"{opa}/>'
+
+    def lstar(x, y, r, f):
+        pts = [(0, -1), (0.24, -0.24), (1, 0), (0.24, 0.24),
+               (0, 1), (-0.24, 0.24), (-1, 0), (-0.24, -0.24)]
+        p = " ".join(f"{x+a*r:.1f},{y+b*r:.1f}" for a, b in pts)
+        return f'<polygon points="{p}" fill="{f}"/>'
+
+    # ── 写実寄りの鯉（横向き・右が頭）。紡錘形の胴＋二叉尾＋背びれ・胸びれ・鱗・えら・ひげ
+    def koi(opt):
+        g = opt["grad"]; fin = opt["fin"]; line = opt["line"]; sc = opt["scaleCol"]
+        a = []
+        a.append(path("M-14.8,-1 C-18.6,-4.8 -22.6,-8.2 -27.4,-9.4 C-24.9,-5.6 -24.3,-2.6 -23.9,0.2 C-24.3,2.9 -25.1,5.8 -27.6,9.6 C-22.7,8.4 -18.6,4.9 -14.8,1.4 Z", fin, line, 0.5, 0.95))
+        for d in ["M-16,-0.4 C-19.5,-3 -22.4,-5.3 -25.2,-7", "M-16.4,0.4 C-19.8,0.3 -22,0.2 -24.4,0.2", "M-16,1.1 C-19.5,3.4 -22.3,5.5 -25.4,7.4"]:
+            a.append(path(d, None, line, 0.5, 0.4))
+        if opt.get("flow"):
+            a.append(path("M-24,-6 C-26.8,-8.4 -29,-9 -30.6,-8.4", None, fin, 1.1, 0.7))
+            a.append(path("M-24.6,6.4 C-27.4,8.8 -29.6,9.4 -30.9,8.9", None, fin, 1.1, 0.7))
+        a.append(path("M-1.4,-7.7 C-4.6,-11.6 -9.6,-12.6 -13.2,-10.5 C-9.9,-9.2 -5.8,-8.2 -2.6,-7.8 Z", fin, line, 0.5, 0.95))
+        a.append(path("M-4.2,7.9 C-5.8,10.5 -7.9,11.7 -9.7,11.8 C-8.1,9.8 -6.6,8.6 -5,7.8 Z", fin, line, 0.5, 0.9))
+        a.append(path("M17.2,0.3 C16.6,-3.6 9.5,-7.8 1,-7.9 C-6.8,-8 -12.6,-4.6 -15.8,-1.4 L-15.8,2 C-12.6,4.9 -6.8,8.4 1,8.4 C9.5,8.3 16.6,4.2 17.2,0.3 Z", g, line, 0.6, None))
+        for p in opt.get("patches", []):
+            a.append(path(p[0], p[1], None, None, p[2] if len(p) > 2 else 0.95))
+        rows = [(-4.6, [-9, -4.8, -0.6, 3.6]), (-1.6, [-11.4, -7.2, -3, 1.2, 5.4]),
+                (1.5, [-11.4, -7.2, -3, 1.2, 5.4]), (4.4, [-9, -4.8, -0.6, 3.6])]
+        for y, xs in rows:
+            for x in xs:
+                a.append(path(f"M{x},{y} q2.1,2.4 4.2,0", None, sc, 0.55, 0.22))
+        a.append(ell(0, -5.2, 11, 2.4, "#1F2933", 0.06))
+        a.append(ell(3, 4.6, 9.2, 2.8, "#FFFFFF", 0.28))
+        a.append(path("M10.8,-4.6 C8.9,-1.4 8.9,1.6 10.6,4.4", None, line, 0.6, 0.4))
+        a.append(path("M17.2,1.1 C16.4,1.8 15.4,2 14.5,1.9", None, line, 0.6, 0.6))
+        a.append(circ(15.7, -1.7, 0.35, line, 0.5))
+        a.append(path("M8.6,3.6 C6.8,7.7 4.1,10.1 1,10.9 C3.5,7 5.6,4.8 7.4,3.4 Z", fin, line, 0.5, 0.95))
+        if opt.get("barbel", 0) >= 1:
+            a.append(path("M15.6,2 C18.6,2.2 20.5,3.5 21.3,5.6", None, "#8A7A66", 0.8))
+        if opt.get("barbel", 0) >= 2:
+            a.append(path("M14.6,2.8 C16.7,3.4 17.9,4.5 18.3,6.1", None, "#8A7A66", 0.7))
+        a.append(circ(12.3, -2.6, 1.8, "#C89A4A" if opt.get("eyeAmber") else "#5B6670"))
+        a.append(circ(12.5, -2.5, 1.05, "#17110B"))
+        a.append(circ(11.8, -3.1, 0.45, "#FFFFFF", 0.95))
+        if opt.get("antlers"):
+            a.append(path("M11.6,-5.4 C10.6,-9.6 8.2,-11.6 5.2,-12.2", None, "#A9700F", 1.3))
+            a.append(path("M8.9,-10.4 C7.6,-11.8 6,-12.4 4.4,-12.4", None, "#A9700F", 0.9))
+            a.append(path("M14.4,-4.8 C15,-9.2 17.4,-11.2 20.2,-11.6", None, "#A9700F", 1.3))
+            a.append(path("M17,-10.2 C18.4,-11.6 20,-12.2 21.6,-12.2", None, "#A9700F", 0.9))
+            a.append(path("M15.6,2 C20,2.4 22.8,4.4 23.8,7.4", None, "#A9700F", 0.9))
+            for d in ["M-3,-8.2 C-4.6,-10.6 -6.8,-11.8 -9,-12", "M-7,-7.4 C-8.6,-9.6 -10.6,-10.6 -12.6,-10.8"]:
+                a.append(path(d, None, "#E5651A", 1.2, 0.85))
+        return "".join(a)
+
+    # ── 龍（蛇体・長い口吻・枝角・たてがみ・三本爪。gold=金龍/False=青龍）
+    def dragon(gold):
+        g = "url(#drgGld)" if gold else "url(#drgBlu)"
+        line = "#8A5A00" if gold else "#1E4E86"
+        mane = "#E5651A" if gold else "#E8B23A"
+        belly = "#F6E7BE" if gold else "#CFE6F2"
+        a = []
+        if gold:
+            a.append(circ(0, -2, 27, "url(#glowG)"))
+            for i in range(8):
+                th = i * math.pi / 4; x2 = math.cos(th) * 26; y2 = -2 + math.sin(th) * 26
+                a.append(f'<line x1="0" y1="-2" x2="{x2:.1f}" y2="{y2:.1f}" stroke="#F2C230" '
+                         f'stroke-width="{1 if i % 2 else 1.8}" stroke-linecap="round" opacity="0.3"/>')
+            a.append('<circle cx="0" cy="-2" r="21" fill="none" stroke="#F2C230" stroke-width="0.9" opacity="0.4"/>')
+            a.append(ell(-14, 20, 9, 3.4, "#FFFFFF", 0.55)); a.append(ell(13, 21.5, 7.5, 3, "#FFFFFF", 0.55))
+        s1 = "M8,-17 C-3,-13.5 -8.5,-5.5 1,0"; s2 = "M1,0 C9.5,5 4,12 -4.5,13.8"; s3 = "M-4.5,13.8 C-11,15.2 -16.5,16.4 -22,19.5"
+        for d, w in [(s1, 10.6), (s2, 8.4), (s3, 5.2)]:
+            a.append(path(d, None, line, w + 1.5))
+        for d, w in [(s1, 9.4), (s2, 7.2), (s3, 4.2)]:
+            a.append(path(d, None, g, w))
+        for d, w in [(s1, 4), (s2, 3.4), (s3, 2)]:
+            a.append(f'<path d="{d}" fill="none" stroke="{belly}" stroke-width="{w}" '
+                     f'stroke-dasharray="1.6 2" stroke-linecap="butt" opacity="0.85" transform="translate(0.9,1.5)"/>')
+        for d, w in [(s1, 2), (s2, 1.8), (s3, 1.2)]:
+            a.append(f'<path d="{d}" fill="none" stroke="{mane}" stroke-width="{w}" '
+                     f'stroke-dasharray="1.2 2.6" stroke-linecap="butt" opacity="0.9" transform="translate(-0.9,-1.6)"/>')
+        a.append(path("M4.6,-5.4 C3.2,-3 2.6,-1 3,1", None, line, 2.2))
+        for d in ["M3,1 C1.4,2 0.2,2.4 -1,2.3", "M3,1 C2.5,2.6 2.2,3.8 2.4,4.9", "M3,1 C4.2,2.2 5,3 5.9,3.4"]:
+            a.append(path(d, None, belly, 1))
+        a.append(path("M-5.5,12.5 C-6.6,14 -7,15.4 -6.7,16.9", None, line, 1.9))
+        for d in ["M-6.7,16.9 C-8,17.6 -9,17.8 -10,17.6", "M-6.7,16.9 C-7,18.2 -7.1,19.2 -6.9,20.1", "M-6.7,16.9 C-5.7,17.8 -5,18.4 -4.2,18.7"]:
+            a.append(path(d, None, belly, 0.9))
+        a.append(path("M-22,19.5 C-25.4,18 -27.6,18.4 -29.4,20.2 C-27.2,20.4 -25.9,21 -24.9,22.1 C-26.7,22.5 -28,23.5 -28.7,24.9 C-26.2,24.3 -23.8,23.6 -21.6,21.6 Z", mane, line, 0.5))
+        a.append(path("M4.5,-18.5 C3.8,-23 6.6,-26.6 11.4,-27.4 C14.6,-27.9 17.8,-27.4 20.8,-26 L25.6,-23.6 C24,-22.5 22.2,-22.2 20.6,-22.4 L24.4,-19.8 C21.6,-17.6 17.6,-16.9 13.8,-17.8 C10,-18.7 7,-18.4 4.5,-18.5 Z", g, line, 0.7))
+        a.append(path("M19,-21.8 C17,-20 14.4,-19.2 11.8,-19.4", None, line, 0.7, 0.7))
+        a.append(circ(22.8, -24.6, 0.55, line))
+        a.append(ell(12.4, -23.4, 1.5, 1.1, "#FFFFFF"))
+        a.append(circ(12.8, -23.3, 0.75, "#17110B"))
+        a.append(path("M10.2,-25.3 L15,-25.9", None, line, 0.9))
+        a.append(path("M10.2,-27 C8.8,-31.6 5.6,-34 1.8,-34.6", None, line, 1.8))
+        a.append(path("M6.4,-32.6 C4.8,-34 3,-34.6 1.2,-34.6", None, line, 1.1))
+        a.append(path("M15.2,-27.3 C16,-32 19,-34.4 23.2,-34.9", None, line, 1.8))
+        a.append(path("M19,-33.2 C20.6,-34.6 22.4,-35.2 24.2,-35.2", None, line, 1.1))
+        for d in ["M5.8,-22 C0.4,-22 -3.6,-19.4 -6.4,-15.6", "M6.2,-20 C1.6,-19.4 -1.8,-17 -4,-13.6", "M7,-25.6 C3,-27 -0.6,-26.6 -3.6,-24.6"]:
+            a.append(path(d, None, mane, 1.6, 0.9))
+        a.append(path("M12,-19.2 C11,-17 9.6,-15.6 7.8,-14.8", None, mane, 1.2, 0.85))
+        a.append(path("M23.4,-22.6 C28.2,-21.6 31,-18 31.8,-13.2", None, mane, 0.9))
+        a.append(path("M22.6,-21 C26.4,-19.2 28.4,-16 28.8,-12", None, mane, 0.8))
+        if gold:
+            a.append(path("M8.2,-27.8 L9,-31.4 L10.8,-28.6 L12,-31.9 L13.2,-28.6 L15,-31.5 L15.6,-27.9 Z", "url(#drgGld)", "#8A5A00", 0.7))
+            a.append(circ(11.9, -32.6, 1.1, "#E0352B"))
+        a.append(lstar(-22 if gold else -20, -8, 1.9, "#FFF1B8"))
+        a.append(lstar(24, 6, 1.7, "#FFE7A0" if gold else "#DCEFFA"))
+        if gold:
+            a.append(lstar(0, -1, 1.6, "#FFFFFF"))
+        return "".join(a)
+
+    o = []
     if form == 0:
-        ell(0, 0, 15, 19, "#FFF3D6")
-        o.append(f'<ellipse cx="{X(0)}" cy="{Y(0)}" rx="{R(15)}" ry="{R(19)}" '
-                 f'fill="none" stroke="#E2D2A0" stroke-width="{R(1.4)}"/>')
-        circ(-5, -3, 1.5, "#E6D3A0"); circ(5, 5, 1.3, "#E6D3A0"); circ(1, 11, 1.2, "#E6D3A0")
+        o.append(ell(0, 20, 11, 2.2, "#1F2933", 0.08))
+        o.append(ell(0, 0, 15, 19, "url(#eggG)"))
+        o.append('<ellipse cx="0" cy="0" rx="15" ry="19" fill="none" stroke="#E2D2A0" stroke-width="1.3"/>')
+        o.append(path("M-7.5,-9 C-9.5,-4 -9.5,3 -7.5,8", None, "#FFFFFF", 2.2, 0.55))
+        o.append(circ(-4.5, -3, 1.4, "#E6D3A0")); o.append(circ(5, 5, 1.2, "#E6D3A0")); o.append(circ(1, 11, 1.1, "#E6D3A0"))
         if phase_done > 0:
-            path(M(-6, -7) + L(-2, -3) + L(-6, 1) + L(-1, 5), None, "#C9B27A", 1.6)
+            o.append(path("M-6,-7 L-2,-3 L-6,1 L-1,5", None, "#C9B27A", 1.5))
     elif form == 1:
-        line(-4, 13, -4, 19, "#F2A30D", 2); line(4, 13, 4, 19, "#F2A30D", 2)
-        circ(0, 2, 13, "#FFD23F"); ell(-8, 3, 4.5, 7, "#F4C12B")
-        circ(0, -9, 8, "#FFD23F"); beak(7, -9, 6); eye(3, -11)
-        path(M(-1, -16) + Q(-3, -21, 1, -21), None, "#F4C12B", 1.6)
+        o.append('<g transform="scale(1.15)">')
+        o.append(path("M6.5,0 C5.5,-2 2.2,-3 -1,-2.6 C-4.2,-2.2 -6.8,-1 -8.6,0 C-6.8,1 -4.2,2.2 -1,2.6 C2.2,3 5.5,2 6.5,0 Z", "#CFE8F4", "#9FC4D8", 0.5, 0.9))
+        o.append(path("M-8.4,0 C-10.2,-1.6 -11.6,-2.2 -12.8,-2.2 C-11.9,-0.9 -11.6,0 -11.5,0 C-11.6,0 -11.9,0.9 -12.8,2.2 C-11.6,2.2 -10.2,1.6 -8.4,0 Z", "#B9DCEE", None, None, 0.85))
+        o.append(path("M-7.5,0 L4,0", None, "#9FC4D8", 0.5, 0.8))
+        o.append(circ(0.4, 1, 1.5, "#F5D9A8", 0.9))
+        o.append(circ(3.9, -0.5, 1.15, "#17110B")); o.append(circ(3.6, -0.8, 0.4, "#FFFFFF"))
+        o.append('</g>')
     elif form == 2:
-        line(-5, 15, -5, 21, "#F2A30D", 2); line(5, 15, 5, 21, "#F2A30D", 2)
-        path(M(-13, 2) + Q(-21, 0, -22, -8), None, "#F4C12B", 3)
-        ell(0, 3, 15, 14, "#FFE066"); ell(-7, 4, 5.5, 9, "#F4C12B"); line(-9, 0, -5, 7, "#E8B23A", 1.4)
-        circ(2, -9, 9, "#FFE066"); comb(2, -18, 2, 2.4); beak(11, -9, 6); eye(6, -11)
+        o.append('<g transform="scale(0.62)">' + koi({"grad": "url(#fishBlu)", "fin": "#6E9EBB", "line": "#4E6E86", "scaleCol": "#3E6E8E", "barbel": 1}) + '</g>')
     elif form == 3:
-        line(-5, 17, -5, 24, "#E8901F", 2.2); line(5, 17, 5, 24, "#E8901F", 2.2)
-        path(M(-14, 2) + Q(-26, -2, -24, -14), None, "#E8B04B", 4)
-        path(M(-13, 5) + Q(-24, 4, -26, -6), None, "#C98A2E", 3)
-        ell(0, 4, 17, 15, "#FBEFD0"); ell(-6, 5, 7, 10, "#E8B04B"); line(-8, 1, -3, 9, "#CC9A3D", 1.5)
-        circ(4, -9, 9, "#FBEFD0"); comb(4, -19, 3, 2.6)
-        o.append(f'<ellipse cx="{X(11)}" cy="{Y(-4)}" rx="{R(1.8)}" ry="{R(3.4)}" fill="#E0352B"/>')
-        beak(12, -8, 6); eye(7, -11)
+        o.append('<g transform="scale(0.8)">' + koi({"grad": "url(#fishBlu)", "fin": "#6E9EBB", "line": "#4E6E86", "scaleCol": "#3E6E8E", "barbel": 2, "patches": [["M9.6,0.6 C10.8,1.4 11.4,2.6 11.2,3.8 C10,4.2 8.8,3.8 8,2.8 C8.2,1.8 8.8,1 9.6,0.6 Z", "#D8503A", 0.7]]}) + '</g>')
     elif form == 4:
-        line(-5, 18, -5, 25, "#E8901F", 2.4); line(5, 18, 5, 25, "#E8901F", 2.4)
-        path(M(-14, 3) + Q(-30, -3, -27, -18), None, "#37C9B0", 4.5)
-        path(M(-15, 6) + Q(-30, 4, -30, -9), None, "#FF8A3D", 4)
-        path(M(-13, 9) + Q(-26, 11, -29, 1), None, "#FFD23F", 3.5)
-        ell(0, 5, 18, 16, "url(#hen)"); ell(-5, 6, 7.5, 11, "#FF8A3D"); line(-7, 2, -2, 11, "#E0702A", 1.6)
-        circ(5, -9, 10, "url(#hen)"); comb(5, -21, 3, 3)
-        o.append(f'<ellipse cx="{X(13)}" cy="{Y(-4)}" rx="{R(2)}" ry="{R(3.8)}" fill="#E0352B"/>')
-        beak(13, -8, 7); eye(8, -11)
-        o.append(star(cx + 15 * s, cy - 16 * s, 3.4 * s, "#FFFFFF"))
+        o.append('<g transform="scale(0.94)">' + koi({"grad": "url(#fishWht)", "fin": "#D9DEE3", "line": "#9AA3AD", "scaleCol": "#B9C1C8", "barbel": 2, "patches": [
+            ["M4,-7.6 C8.6,-7.2 12,-5 13.4,-2.4 C10.6,-0.8 6.8,-0.6 3.4,-2 C2,-4 2.4,-6.2 4,-7.6 Z", "#D8402C"],
+            ["M-6,1.8 C-2.6,0.6 0.8,1.4 2.2,3.6 C0.6,6.2 -3,7.4 -6.4,6.6 C-7.6,5 -7.4,3.2 -6,1.8 Z", "#D8402C"],
+            ["M-12.8,-3.4 C-10.4,-4.4 -8.2,-4 -7.2,-2.4 C-8.2,-0.8 -10.6,-0.4 -12.6,-1.2 C-13.2,-2 -13.2,-2.8 -12.8,-3.4 Z", "#D8402C"]]}) + '</g>')
+        o.append(lstar(18, -13, 2.2, "#F7E9B0"))
+    elif form == 5:
+        o.append('<g transform="scale(1.02)">' + koi({"grad": "url(#fishWht)", "fin": "#E8C05A", "line": "#A98A3F", "scaleCol": "#B9C1C8", "barbel": 2, "flow": True, "patches": [
+            ["M4,-7.6 C8.6,-7.2 12,-5 13.4,-2.4 C10.6,-0.8 6.8,-0.6 3.4,-2 C2,-4 2.4,-6.2 4,-7.6 Z", "#D8402C"],
+            ["M-6,1.8 C-2.6,0.6 0.8,1.4 2.2,3.6 C0.6,6.2 -3,7.4 -6.4,6.6 C-7.6,5 -7.4,3.2 -6,1.8 Z", "#E8862B"],
+            ["M-12.8,-3.4 C-10.4,-4.4 -8.2,-4 -7.2,-2.4 C-8.2,-0.8 -10.6,-0.4 -12.6,-1.2 C-13.2,-2 -13.2,-2.8 -12.8,-3.4 Z", "#D8402C"],
+            ["M-2,-6.8 C0.4,-6.4 1.8,-5.2 1.6,-3.8 C0,-3.2 -2.4,-3.6 -3.6,-4.8 C-3.2,-5.8 -2.8,-6.4 -2,-6.8 Z", "#2E2A26", 0.85]]}) + '</g>')
+        o.append(lstar(19, -14, 2.4, "#F7E9B0"))
+    elif form == 6:
+        o.append(path("M-19,-26 C-16,-10 -19,6 -15,22", None, "#BFE0F2", 6, 0.5))
+        o.append(path("M-12,-28 C-10,-12 -12.6,4 -9.6,20", None, "#CFE8F6", 4.4, 0.45))
+        for b in [(-15, 20, 3.2), (-8, 22.5, 2.5), (-19.5, 23, 2.1), (-3, 21, 1.7)]:
+            o.append(circ(b[0], b[1], b[2], "#DDF0FA", 0.85))
+        o.append('<g transform="rotate(-42) scale(0.9)">' + koi({"grad": "url(#fishGld)", "fin": "#D89020", "line": "#A9700F", "scaleCol": "#B87A12", "barbel": 2, "eyeAmber": True, "patches": [["M2,-7 C5.8,-6.6 8.6,-4.8 9.8,-2.6 C7.4,-1.2 4.2,-1 1.4,-2.2 C0.2,-3.9 0.6,-5.8 2,-7 Z", "#D8402C", 0.9]]}) + '</g>')
+        o.append(lstar(17, -18, 2.6, "#FFF3D6"))
+    elif form == 7:
+        o.append('<g transform="rotate(-50) scale(0.9)">' + koi({"grad": "url(#fishGld)", "fin": "#D89020", "line": "#A9700F", "scaleCol": "#B87A12", "barbel": 2, "eyeAmber": True, "antlers": True, "patches": [["M2,-7 C5.8,-6.6 8.6,-4.8 9.8,-2.6 C7.4,-1.2 4.2,-1 1.4,-2.2 C0.2,-3.9 0.6,-5.8 2,-7 Z", "#D8402C", 0.9]]}) + '</g>')
+        o.append(ell(-9, 21, 8, 2.8, "#FFFFFF", 0.5))
+        o.append(lstar(15, -19, 2.4, "#FFF3D6")); o.append(lstar(-19, -6, 1.8, "#FFE7A0"))
+    elif form == 8:
+        o.append('<g transform="scale(0.86)">' + dragon(False) + '</g>')
     else:
-        # 最終進化：クジャク×黄金のゴージャス版（青緑〜金イリデッセント・特大の羽・目玉の大扇・黄金の装飾）
-        rays = [(31, 0), (22, 22), (0, 31), (-22, 22), (-31, 0), (-22, -22), (0, -31), (22, -22)]
-        for i, (rx, ry) in enumerate(rays):
-            o.append(f'<line x1="{X(0)}" y1="{Y(0)}" x2="{X(rx)}" y2="{Y(ry)}" '
-                     f'stroke="#F2C230" stroke-width="{R(1.4 if i % 2 else 2.4)}" '
-                     f'stroke-linecap="round" opacity="0.28"/>')
-        o.append(f'<circle cx="{X(0)}" cy="{Y(0)}" r="{R(30)}" fill="#2BD0C0" opacity="0.10"/>')
-        o.append(f'<circle cx="{X(0)}" cy="{Y(0)}" r="{R(24)}" fill="none" '
-                 f'stroke="#F2C230" stroke-width="{R(1.4)}" opacity="0.45"/>')
-        o.append(f'<circle cx="{X(0)}" cy="{Y(0)}" r="{R(20)}" fill="#FFF6D8" opacity="0.14"/>')
-        uf = [(-0.914, -0.407), (-0.695, -0.719), (-0.375, -0.927), (0, -1),
-              (0.375, -0.927), (0.695, -0.719), (0.914, -0.407)]
-        rf, bx, by = 32, 0, 6
-        for dx, dy in uf:
-            tx, ty = bx + dx * rf, by + dy * rf
-            mx, my = bx + dx * rf * 0.55, by + dy * rf * 0.55
-            path(M(bx, by) + Q(mx, my, tx, ty), None, "#C9A227", 2.4)
-            circ(tx, ty, 6, "#E6B422"); circ(tx, ty, 4.4, "#C9A227")
-            circ(tx, ty, 3.2, "#1FA6A0"); circ(tx, ty, 1.9, "#173A8C")
-            o.append(f'<circle cx="{X(tx-0.6)}" cy="{Y(ty-0.6)}" r="{R(0.7)}" fill="#FFFFFF"/>')
-        path(M(-3, 0) + Q(-22, -6, -35, -16) + Q(-20, -12, -5, -5) + "Z", "url(#pcock)")
-        path(M(-3, 3) + Q(-24, 2, -35, -3) + Q(-18, -2, -5, -1) + "Z", "#1746A0")
-        path(M(-3, 0) + Q(-22, -6, -35, -16), None, "#F2C230", 1.6)
-        path(M(3, 0) + Q(22, -6, 35, -16) + Q(20, -12, 5, -5) + "Z", "url(#pcock)")
-        path(M(3, 3) + Q(24, 2, 35, -3) + Q(18, -2, 5, -1) + "Z", "#1746A0")
-        path(M(3, 0) + Q(22, -6, 35, -16), None, "#F2C230", 1.6)
-        ell(0, 6, 12, 15, "url(#pcock)")
-        o.append(f'<ellipse cx="{X(0)}" cy="{Y(9)}" rx="{R(6)}" ry="{R(9.5)}" fill="url(#gold)" opacity="0.95"/>')
-        o.append(f'<ellipse cx="{X(-2)}" cy="{Y(5)}" rx="{R(2.4)}" ry="{R(4.5)}" fill="#FFF6D8" opacity="0.55"/>')
-        circ(0, -9, 7.5, "#1C4FB0")
-        path(M(-5, -15) + L(-4, -21) + L(-2, -16) + L(0, -22)
-             + L(2, -16) + L(4, -21) + L(5, -15) + "Z", "url(#gold)")
-        circ(0, -22.5, 1.5, "#FFF0A8")
-        beak(7, -9, 7, "#E8E0C8"); eye(3, -11)
-        o.append(star(cx, cy - 13 * s, 2 * s, "#FFFFFF"))
-        o.append(star(cx - 27 * s, cy - 9 * s, 2.6 * s, "#FFF1B8"))
-        o.append(star(cx + 28 * s, cy - 3 * s, 2.2 * s, "#FFF1B8"))
-        o.append(star(cx + 20 * s, cy + 15 * s, 2 * s, "#FFE7A0"))
-    # 周回番号：2周目以降、卵や鳥の胸（不死鳥は黄金の胸当て）に番号を刻む。
-    # 卵に戻ってもリセット感を出さない＝何羽目の不死鳥かが一目で分かる。
+        o.append('<g transform="scale(0.86)">' + dragon(True) + '</g>')
+
     if gen >= 2:
-        # フォーム別の胸（卵は本体中央）の位置と紋章サイズ [chx, chy, r]
-        ch = {0: (0, 4, 6.4), 1: (0, 3, 5.4), 2: (0, 5, 6.0),
-              3: (0, 6, 6.4), 4: (0, 7, 6.8), 5: (0, 9, 5.8)}.get(form, (0, 5, 6.2))
+        ch = {0: (0, 3, 6.2), 1: (0, -6.5, 3), 2: (-1, 0, 4), 3: (-1, 0, 4.6), 4: (-1, 0, 5),
+              5: (-1, 0, 5.2), 6: (3, 3, 4.6), 7: (4, 4, 4.6), 8: (-2, 6, 4.8), 9: (-2, 6, 4.8)}.get(form, (0, 0, 5))
         chx, chy, cr = ch
-        o.append(f'<circle cx="{X(chx)}" cy="{Y(chy)}" r="{R(cr)}" fill="#7A3E00" opacity="0.92"/>')
-        o.append(f'<circle cx="{X(chx)}" cy="{Y(chy)}" r="{R(cr)}" fill="none" '
-                 f'stroke="#F2C230" stroke-width="{R(1)}"/>')
-        o.append(f'<text x="{X(chx)}" y="{cy+chy*s+cr*0.52*s:.1f}" text-anchor="middle" '
-                 f'font-size="{R(cr*1.5)}" font-weight="800" fill="#FFF3D6">{gen}</text>')
-    return "".join(o)
+        o.append(circ(chx, chy, cr, "#7A3E00", 0.92))
+        o.append(f'<circle cx="{chx}" cy="{chy}" r="{cr}" fill="none" stroke="#F2C230" stroke-width="0.9"/>')
+        o.append(f'<text x="{chx}" y="{chy+cr*0.55:.1f}" text-anchor="middle" '
+                 f'font-size="{cr*1.5:.1f}" font-weight="800" fill="#FFF3D6">{gen}</text>')
+    if ready:
+        o.insert(0, circ(0, 0, 25, "url(#glowG)", 0.9))
+        o.append('<circle cx="0" cy="0" r="24" fill="none" stroke="#F7C531" stroke-width="1.4" stroke-dasharray="3 3" opacity="0.9"/>')
+        o.append(lstar(0, -25, 3, "#FFD23F"))
+        # ⬆（フォント非依存のため三角形で描画）
+        o.append('<polygon points="0,-26.6 1.7,-24.6 0.6,-24.6 0.6,-23.2 -0.6,-23.2 -0.6,-24.6 -1.7,-24.6" fill="#B7791F"/>')
+    return f'<g transform="translate({cx},{cy}) scale({s})">{"".join(o)}</g>'
 
 
 def build_svg(d: dict, font: str = FONT) -> str:
@@ -343,6 +414,27 @@ def build_svg(d: dict, font: str = FONT) -> str:
         '<stop offset="0" stop-color="#FFF0A8"/>'
         '<stop offset="0.5" stop-color="#F2C230"/>'
         '<stop offset="1" stop-color="#C8901A"/></linearGradient>'
+        # ── 鯉→龍アバター用（studio SVG_DEFS と同一）
+        '<linearGradient id="fishBlu" x1="0" y1="0" x2="0" y2="1">'
+        '<stop offset="0" stop-color="#6FA9CC"/><stop offset="0.55" stop-color="#A8CFE3"/>'
+        '<stop offset="1" stop-color="#E4F1F7"/></linearGradient>'
+        '<linearGradient id="fishWht" x1="0" y1="0" x2="0" y2="1">'
+        '<stop offset="0" stop-color="#FFFFFF"/><stop offset="0.6" stop-color="#F2F4F5"/>'
+        '<stop offset="1" stop-color="#D8DFE4"/></linearGradient>'
+        '<linearGradient id="fishGld" x1="0" y1="0" x2="0" y2="1">'
+        '<stop offset="0" stop-color="#F8D25C"/><stop offset="0.55" stop-color="#EFAF2E"/>'
+        '<stop offset="1" stop-color="#D88A15"/></linearGradient>'
+        '<linearGradient id="drgBlu" x1="0" y1="0" x2="1" y2="1">'
+        '<stop offset="0" stop-color="#55D0CF"/><stop offset="0.5" stop-color="#2E86C8"/>'
+        '<stop offset="1" stop-color="#4353C0"/></linearGradient>'
+        '<linearGradient id="drgGld" x1="0" y1="0" x2="0" y2="1">'
+        '<stop offset="0" stop-color="#F9DC74"/><stop offset="0.45" stop-color="#EEB53A"/>'
+        '<stop offset="1" stop-color="#B87A12"/></linearGradient>'
+        '<linearGradient id="eggG" x1="0" y1="0" x2="0" y2="1">'
+        '<stop offset="0" stop-color="#FFF9E8"/><stop offset="1" stop-color="#EFD9A8"/></linearGradient>'
+        '<radialGradient id="glowG">'
+        '<stop offset="0" stop-color="#FFE9A0" stop-opacity="0.75"/>'
+        '<stop offset="1" stop-color="#FFE9A0" stop-opacity="0"/></radialGradient>'
         '</defs>'
     )
     out.append(f'<rect x="0" y="0" width="{WIDTH}" height="{H}" fill="#FFFFFF"/>')
@@ -460,27 +552,30 @@ def build_svg(d: dict, font: str = FONT) -> str:
     g = growth(d)
     ccx, ccy, cs, tx = 402, gy + round(GOAL_H / 2) + 6, 1.7, 448
     out.append(bird_markup(g["form"], ccx, ccy, cs, g["phaseDone"],
-                           g["cycle"] if g["cycle"] >= 2 else 0))
-    if g["form"] < 5:
-        out.append(
-            f'<text x="{tx}" y="{ccy-3}" font-size="13" font-weight="700" '
-            f'fill="{C_INK}">あと{g["need"]}コで進化</text>'
-        )
-        out.append(
-            f'<text x="{tx}" y="{ccy+15}" font-size="11" fill="{C_SUB}">'
-            f'餌 {g["phaseDone"]}/{g["phaseTotal"]}　累計 {g["allDone"]}/{g["all"]}</text>'
-        )
+                           g["cycle"] if g["cycle"] >= 2 else 0, g["ready"]))
+    # アバターの姿＝本人のレベル。タスク消化は進化ゲージ（餌）＝満タンで判定待ち
+    out.append(
+        f'<text x="{tx}" y="{ccy-14}" font-size="13" font-weight="700" '
+        f'fill="#B7791F">Lv.{g["level"]} {FORM_NAMES[g["form"]]}</text>'
+    )
+    out.append(
+        f'<text x="{tx}" y="{ccy+3}" font-size="12" font-weight="700" '
+        f'fill="{"#C2410C" if g["ready"] else C_INK}">進化ゲージ {g["rate"]}%</text>'
+    )
+    if g["ready"]:
+        sub = "🔥 レベルアップ判定待ち！"
+    elif g["level"] >= 9:
+        sub = "最高到達 金龍"
     else:
+        sub = f'あと{g["need"]}コで満タン（餌 {g["phaseDone"]}/{g["phaseTotal"]}）'
+    out.append(
+        f'<text x="{tx}" y="{ccy+20}" font-size="11" fill="{C_SUB}">{esc(sub)}</text>'
+    )
+    # 周回（今期ゴールを何度達成したか）— 2周目以降で表示
+    if g["cycle"] >= 2:
         out.append(
-            f'<text x="{tx}" y="{ccy+2}" font-size="13" font-weight="700" '
-            f'fill="#C2410C">覚醒！全タスク完了</text>'
-        )
-    # 周回（何羽目の不死鳥まで来たか）— 2周目以降 or 不死鳥で表示
-    if g["cycle"] >= 2 or g["earned"] > 0:
-        suffix = f'・達成 {g["earned"]}羽' if g["earned"] > 0 else ""
-        out.append(
-            f'<text x="{tx}" y="{ccy+33}" font-size="11" font-weight="700" '
-            f'fill="#B7791F">{g["cycle"]}周目{suffix}</text>'
+            f'<text x="{tx}" y="{ccy+37}" font-size="11" font-weight="700" '
+            f'fill="#B7791F">{g["cycle"]}周目・達成 {g["earned"]}回</text>'
         )
 
     # 目標時期ピルの列見出し
@@ -615,6 +710,27 @@ GRAD_DEFS = (
     '<linearGradient id="gold" x1="0" y1="0" x2="0" y2="1">'
     '<stop offset="0" stop-color="#FFF0A8"/><stop offset="0.5" stop-color="#F2C230"/>'
     '<stop offset="1" stop-color="#C8901A"/></linearGradient>'
+    # ── 鯉→龍アバター用（studio SVG_DEFS と同一）
+    '<linearGradient id="fishBlu" x1="0" y1="0" x2="0" y2="1">'
+    '<stop offset="0" stop-color="#6FA9CC"/><stop offset="0.55" stop-color="#A8CFE3"/>'
+    '<stop offset="1" stop-color="#E4F1F7"/></linearGradient>'
+    '<linearGradient id="fishWht" x1="0" y1="0" x2="0" y2="1">'
+    '<stop offset="0" stop-color="#FFFFFF"/><stop offset="0.6" stop-color="#F2F4F5"/>'
+    '<stop offset="1" stop-color="#D8DFE4"/></linearGradient>'
+    '<linearGradient id="fishGld" x1="0" y1="0" x2="0" y2="1">'
+    '<stop offset="0" stop-color="#F8D25C"/><stop offset="0.55" stop-color="#EFAF2E"/>'
+    '<stop offset="1" stop-color="#D88A15"/></linearGradient>'
+    '<linearGradient id="drgBlu" x1="0" y1="0" x2="1" y2="1">'
+    '<stop offset="0" stop-color="#55D0CF"/><stop offset="0.5" stop-color="#2E86C8"/>'
+    '<stop offset="1" stop-color="#4353C0"/></linearGradient>'
+    '<linearGradient id="drgGld" x1="0" y1="0" x2="0" y2="1">'
+    '<stop offset="0" stop-color="#F9DC74"/><stop offset="0.45" stop-color="#EEB53A"/>'
+    '<stop offset="1" stop-color="#B87A12"/></linearGradient>'
+    '<linearGradient id="eggG" x1="0" y1="0" x2="0" y2="1">'
+    '<stop offset="0" stop-color="#FFF9E8"/><stop offset="1" stop-color="#EFD9A8"/></linearGradient>'
+    '<radialGradient id="glowG">'
+    '<stop offset="0" stop-color="#FFE9A0" stop-opacity="0.75"/>'
+    '<stop offset="1" stop-color="#FFE9A0" stop-opacity="0"/></radialGradient>'
     '</defs>'
 )
 
@@ -682,8 +798,9 @@ def build_summary_svg(d: dict, font: str = FONT) -> str:
                  f'fill="#fff">{esc(line)}</text>')
     # アバター（小）＋キャプション
     acx, acy = round((PAD + gw + (W - PAD)) / 2), gy + 32
-    o.append(bird_markup(g["form"], acx, acy, 1.3, g["phaseDone"], g["cycle"] if g["cycle"] >= 2 else 0))
-    cap = (f'あと{g["need"]}コ' if g["form"] < 5 else "覚醒") + (f'・{g["cycle"]}周目' if g["cycle"] >= 2 else "")
+    o.append(bird_markup(g["form"], acx, acy, 1.3, g["phaseDone"],
+                         g["cycle"] if g["cycle"] >= 2 else 0, g["ready"]))
+    cap = f'Lv.{g["level"]} {FORM_NAMES[g["form"]]}' + ("・判定待ち" if g["ready"] else "")
     o.append(f'<text x="{acx}" y="{gy+gh+2}" text-anchor="middle" font-size="11" '
              f'font-weight="700" fill="#B7791F">{esc(cap)}</text>')
     # 今週の最優先ストリップ（🎯は絵文字非対応のため的マークを描画）
