@@ -1,12 +1,12 @@
 {
   "id": "398da094-9999-81c9-9256-c759a97c4ee2",
   "level": 0,
-  "title": "E.L.P（株式会社クリーンマン）",
+  "title": "株式会社E.L.P",
   "children": [
     {
       "id": "398da094-9999-8138-8528-e7986c1e767e",
       "level": 1,
-      "title": "営業部",
+      "title": "営業部（浄水事業部）",
       "children": [
         {
           "id": "398da094-9999-8171-a6a7-f4bcb843ef2b",
@@ -48,18 +48,6 @@
               "progress": 0,
               "growthLevel": 5,
               "growthForm": "大錦鯉"
-            },
-            {
-              "id": "38bda094-9999-81a8-a220-cb71b80d176a:398da094-9999-8171-a6a7-f4bcb843ef2b",
-              "level": 3,
-              "title": "藤江（育成）",
-              "owner": "藤江",
-              "status": "in_progress",
-              "externalLink": "/goalmap-studio.html?member=%E8%97%A4%E6%B1%9F%EF%BC%88%E8%82%B2%E6%88%90%EF%BC%89",
-              "description": "「会いたい」と思われる自然な対話で、キャンセルされないアポをつくる（アポインター育成）",
-              "progress": 0,
-              "growthLevel": 1,
-              "growthForm": "針子"
             }
           ],
           "description": "代理店 株式会社ピタサチ",
@@ -119,18 +107,6 @@
               "progress": 0,
               "growthLevel": 4,
               "growthForm": "錦鯉"
-            },
-            {
-              "id": "37cda094-9999-81dc-9f51-d7df5f3f9a30:398da094-9999-81c8-bca0-c716938f7adf",
-              "level": 3,
-              "title": "岡野（育成）",
-              "owner": "岡野",
-              "status": "in_progress",
-              "externalLink": "/goalmap-studio.html?member=%E5%B2%A1%E9%87%8E%EF%BC%88%E8%82%B2%E6%88%90%EF%BC%89",
-              "description": "誰にでも伝わる話し方で信頼される営業になる（アポ→クロ育成）",
-              "progress": 0,
-              "growthLevel": 1,
-              "growthForm": "針子"
             }
           ],
           "description": "代理店 株式会社wanny",
@@ -139,19 +115,30 @@
           "progress": 0.0
         },
         {
-          "id": "38bda094-9999-8111-90a7-f7ced01f09fe:398da094-9999-8138-8528-e7986c1e767e",
-          "level": 3,
-          "title": "今川",
+          "id": "5798c3a2-fe16-4530-86f9-9cc46b9a0fdc",
+          "level": 2,
+          "title": "E.L.P",
+          "children": [
+            {
+              "id": "38bda094-9999-8111-90a7-f7ced01f09fe:5798c3a2-fe16-4530-86f9-9cc46b9a0fdc",
+              "level": 3,
+              "title": "今川",
+              "owner": "今川",
+              "status": "in_progress",
+              "externalLink": "/goalmap-studio.html?member=%E4%BB%8A%E5%B7%9D",
+              "description": "チーム・代理店の「売れる仕組み」を構築し、事業部売上を過去最高へ（マネジメント）",
+              "progress": 0,
+              "growthLevel": 8,
+              "growthForm": "青龍"
+            }
+          ],
+          "description": "E.L.P直轄チーム（マネジメント）",
           "owner": "今川",
           "status": "in_progress",
-          "externalLink": "/goalmap-studio.html?member=%E4%BB%8A%E5%B7%9D",
-          "description": "チーム・代理店の「売れる仕組み」を構築し、事業部売上を過去最高へ（マネジメント）",
-          "progress": 0,
-          "growthLevel": 8,
-          "growthForm": "青龍"
+          "progress": 0.0
         }
       ],
-      "description": "アポ〜クロージングまでの営業組織（代理店：ピタサチ／wanny）",
+      "description": "アポ〜クロージングまでの営業組織（代理店：ピタサチ／wanny／直轄：E.L.P）",
       "owner": "今川",
       "status": "in_progress",
       "progress": 0.0
@@ -159,31 +146,17 @@
     {
       "id": "398da094-9999-81ed-bf3f-f39779aaaaa0",
       "level": 1,
-      "title": "施工部",
-      "children": [
-        {
-          "id": "398da094-9999-8162-a760-c98dc48b5a0b",
-          "level": 2,
-          "title": "中部",
-          "children": [],
-          "status": "not_started"
-        },
-        {
-          "id": "398da094-9999-816d-8631-d2aaeb4c4a9f",
-          "level": 2,
-          "title": "関東",
-          "children": [],
-          "status": "not_started"
-        },
-        {
-          "id": "398da094-9999-81b1-918d-e557cda41ecd",
-          "level": 2,
-          "title": "関西",
-          "children": [],
-          "status": "not_started"
-        }
-      ],
-      "description": "施工チーム（関東／中部／関西）※チーム編成・メンバーは今後投入予定",
+      "title": "施工部（株式会社G.L）",
+      "children": [],
+      "description": "施工チーム（担当：株式会社G.L）※チーム編成・メンバーは今後投入予定",
+      "status": "not_started"
+    },
+    {
+      "id": "1f2ddb71-fed9-4d8d-8b7d-de271569b45e",
+      "level": 1,
+      "title": "クリーニング事業部（株式会社クリーンマン）",
+      "children": [],
+      "description": "クリーニング事業（担当：株式会社クリーンマン）※チーム編成・メンバーは今後投入予定",
       "status": "not_started"
     }
   ],
