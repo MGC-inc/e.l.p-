@@ -1,5 +1,5 @@
 import { Handle, Position, type NodeProps } from "@xyflow/react";
-import { LEVEL_ICON, LEVEL_LABEL, type RoadmapNode } from "../../types/roadmap";
+import { GROWTH_EMOJI, LEVEL_ICON, LEVEL_LABEL, type RoadmapNode } from "../../types/roadmap";
 
 export interface RoadmapNodeData {
   node: RoadmapNode;
@@ -18,6 +18,11 @@ const STATUS_LABEL: Record<string, string> = {
 export default function RoadmapNodeCard({ data }: NodeProps & { data: RoadmapNodeData }) {
   const { node, hasChildren, isExpanded } = data;
   const isLeafPerson = node.level === 3 && !hasChildren && node.externalLink;
+  const hasGrowth =
+    node.level === 3 && typeof node.growthLevel === "number";
+  const growthEmoji = hasGrowth
+    ? GROWTH_EMOJI[Math.max(0, Math.min(9, node.growthLevel as number))]
+    : "";
 
   return (
     <div className={`rm-card rm-lvl-${node.level}${isExpanded ? " rm-expanded" : ""}`}>
@@ -25,6 +30,15 @@ export default function RoadmapNodeCard({ data }: NodeProps & { data: RoadmapNod
       <div className="rm-card-head">
         <span className="rm-card-icon">{LEVEL_ICON[node.level]}</span>
         <span className="rm-card-level">{LEVEL_LABEL[node.level]}</span>
+        {hasGrowth && (
+          <span
+            className="rm-card-growth"
+            title={`成長レベル Lv.${node.growthLevel} ${node.growthForm ?? ""}`}
+          >
+            {growthEmoji} Lv.{node.growthLevel}
+            {node.growthForm ? ` ${node.growthForm}` : ""}
+          </span>
+        )}
         {hasChildren && <span className="rm-card-toggle">{isExpanded ? "－" : "＋"}</span>}
         {isLeafPerson && <span className="rm-card-toggle">↗</span>}
       </div>

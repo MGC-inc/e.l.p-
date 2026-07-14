@@ -21,7 +21,9 @@
               "status": "in_progress",
               "externalLink": "/goalmap-studio.html?member=%E8%97%A4%E6%B1%9F",
               "description": "基礎トークを固め、お願い営業を脱して対等・堂々と踏み込んで取り切る（新人）",
-              "progress": 0
+              "progress": 0,
+              "growthLevel": 3,
+              "growthForm": "若鯉"
             },
             {
               "id": "5bcd676b-1247-4e66-a3de-d548ae1c1045:398da094-9999-8171-a6a7-f4bcb843ef2b",
@@ -31,7 +33,9 @@
               "status": "in_progress",
               "externalLink": "/goalmap-studio.html?member=%E9%96%80%E7%94%B0",
               "description": "焼らず雑談で距離を縮め、当たり前ベースで主導権を握り温度感を保って取り切る",
-              "progress": 0
+              "progress": 0,
+              "growthLevel": 6,
+              "growthForm": "滝登り"
             },
             {
               "id": "f329c075-1457-4f25-a618-7057f8d43ed6:398da094-9999-8171-a6a7-f4bcb843ef2b",
@@ -41,7 +45,9 @@
               "status": "in_progress",
               "externalLink": "/goalmap-studio.html?member=%E4%B8%89%E6%B5%A6",
               "description": "決裁者ネックを先回りし、当たり前感で言い切って取り切る",
-              "progress": 0
+              "progress": 0,
+              "growthLevel": 5,
+              "growthForm": "大錦鯉"
             },
             {
               "id": "38bda094-9999-81a8-a220-cb71b80d176a:398da094-9999-8171-a6a7-f4bcb843ef2b",
@@ -51,7 +57,9 @@
               "status": "in_progress",
               "externalLink": "/goalmap-studio.html?member=%E8%97%A4%E6%B1%9F%EF%BC%88%E8%82%B2%E6%88%90%EF%BC%89",
               "description": "「会いたい」と思われる自然な対話で、キャンセルされないアポをつくる（アポインター育成）",
-              "progress": 0
+              "progress": 0,
+              "growthLevel": 1,
+              "growthForm": "針子"
             }
           ],
           "description": "代理店 株式会社ピタサチ",
@@ -72,7 +80,9 @@
               "status": "in_progress",
               "externalLink": "/goalmap-studio.html?member=%E5%8F%A4%E8%B3%80",
               "description": "営業の基礎を固める（新人クローザー）",
-              "progress": 0
+              "progress": 0,
+              "growthLevel": 0,
+              "growthForm": "たまご"
             },
             {
               "id": "21d75a9a-8fe9-4b52-b15d-f8f158a256cf:398da094-9999-81c8-bca0-c716938f7adf",
@@ -82,7 +92,9 @@
               "status": "in_progress",
               "externalLink": "/goalmap-studio.html?member=%E6%88%B8%E7%94%B0",
               "description": "一方的なセリフ伝達をやめ、間と聞く力でお客様主導に話させて取り切る",
-              "progress": 0
+              "progress": 0,
+              "growthLevel": 3,
+              "growthForm": "若鯉"
             },
             {
               "id": "2e5ee6a4-2fb7-4c86-886d-98742a9cd5c5:398da094-9999-81c8-bca0-c716938f7adf",
@@ -92,7 +104,9 @@
               "status": "in_progress",
               "externalLink": "/goalmap-studio.html?member=%E5%AE%AE%E8%85%B0",
               "description": "温度感を自在に切り替え、間を作って当たり前スタンスで主導権を保つ",
-              "progress": 0
+              "progress": 0,
+              "growthLevel": 4,
+              "growthForm": "錦鯉"
             },
             {
               "id": "2dd26939-14ca-4180-b899-fc4de5ed3707:398da094-9999-81c8-bca0-c716938f7adf",
@@ -102,7 +116,9 @@
               "status": "in_progress",
               "externalLink": "/goalmap-studio.html?member=%E5%B2%A1%E9%87%8E",
               "description": "保証の価値を具体イメージで伝え、『高い』を越えて契約を取り切る（クローザー）",
-              "progress": 0
+              "progress": 0,
+              "growthLevel": 4,
+              "growthForm": "錦鯉"
             },
             {
               "id": "37cda094-9999-81dc-9f51-d7df5f3f9a30:398da094-9999-81c8-bca0-c716938f7adf",
@@ -112,7 +128,9 @@
               "status": "in_progress",
               "externalLink": "/goalmap-studio.html?member=%E5%B2%A1%E9%87%8E%EF%BC%88%E8%82%B2%E6%88%90%EF%BC%89",
               "description": "誰にでも伝わる話し方で信頼される営業になる（アポ→クロ育成）",
-              "progress": 0
+              "progress": 0,
+              "growthLevel": 1,
+              "growthForm": "針子"
             }
           ],
           "description": "代理店 株式会社wanny",
@@ -128,7 +146,9 @@
           "status": "in_progress",
           "externalLink": "/goalmap-studio.html?member=%E4%BB%8A%E5%B7%9D",
           "description": "チーム・代理店の「売れる仕組み」を構築し、事業部売上を過去最高へ（マネジメント）",
-          "progress": 0
+          "progress": 0,
+          "growthLevel": 8,
+          "growthForm": "青龍"
         }
       ],
       "description": "アポ〜クロージングまでの営業組織（代理店：ピタサチ／wanny）",

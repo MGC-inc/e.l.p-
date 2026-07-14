@@ -156,6 +156,16 @@ body {
   font-weight: 700;
   color: var(--sub);
 }
+.rm-card-growth {
+  font-size: 10px;
+  font-weight: 800;
+  color: #8a5a00;
+  background: linear-gradient(90deg, #fff3d6, #ffe7a0);
+  border: 1px solid #f2c230;
+  border-radius: 999px;
+  padding: 1px 7px;
+  white-space: nowrap;
+}
 .rm-card-toggle {
   margin-left: auto;
   font-size: 12px;

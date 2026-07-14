@@ -55,6 +55,32 @@ STATUS_MAP = {
     "リスクあり": "at_risk",
 }
 
+# 成長ステージ（鯉→龍・Lv0-9）。studio/generate_goalmap.py の FORM_NAMES と同一。
+GROWTH_FORMS = ["たまご", "針子", "稚鯉", "若鯉", "錦鯉",
+                "大錦鯉", "滝登り", "化龍", "青龍", "金龍"]
+
+
+def member_growth_level(members_dir: Path, slug: str) -> int | None:
+    """members/<slug>.json の level（＝studioが正）を読む。無ければNone。
+
+    組織マップに出す個人の成長レベルは、Notionの成長ステージ列ではなく
+    studioの正データ（members/*.json）を単一情報源にして、PNGアバターと必ず一致させる。
+    """
+    f = members_dir / f"{slug}.json"
+    if not f.exists():
+        return None
+    try:
+        d = json.loads(f.read_text(encoding="utf-8"))
+    except (ValueError, OSError):
+        return None
+    v = d.get("level", d.get("startForm"))
+    if v is None:
+        return None
+    try:
+        return max(0, min(9, int(float(v))))
+    except (TypeError, ValueError):
+        return None
+
 
 def notion_query(database_id: str, token: str) -> list[dict]:
     """データベースの全ページを取得（ページネーション対応）。"""
@@ -282,6 +308,10 @@ def attach_members(company: dict, goal_pages: list[dict]) -> None:
                 leaf["description"] = theme
             if progress is not None:
                 leaf["progress"] = progress
+            lv = member_growth_level(members_dir, slug)
+            if lv is not None:
+                leaf["growthLevel"] = lv
+                leaf["growthForm"] = GROWTH_FORMS[lv]
             team.setdefault("children", []).append(leaf)
 
 

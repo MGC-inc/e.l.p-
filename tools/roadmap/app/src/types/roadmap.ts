@@ -21,8 +21,17 @@ export interface RoadmapNode {
    * 例 "/goalmap-studio.html?member=岡野"
    */
   externalLink?: string;
+  /** Level3（個人）のみ：成長レベル（鯉→龍・0-9）。studio/members/*.json の level が正。 */
+  growthLevel?: number;
+  /** Level3（個人）のみ：成長ステージ名（例 "青龍"）。growthLevel と対応。 */
+  growthForm?: string;
   children?: RoadmapNode[];
 }
+
+/** 成長ステージ（Lv0-9）の絵文字。育成ロードマップ基準書と同一。 */
+export const GROWTH_EMOJI = [
+  "🥚", "🐟", "🐠", "🐡", "🎏", "🎨", "🌊", "🐲", "🐉", "👑",
+] as const;
 
 export const LEVEL_LABEL: Record<RoadmapLevel, string> = {
   0: "会社",
