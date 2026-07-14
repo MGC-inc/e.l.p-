@@ -17,6 +17,12 @@
 - **`summary_cards.py`（週次1枚カードを全員分）** — `members/*.json` 全員の1枚カード（ゴール・小アバター・現在地・今週の最優先・全タスク✓）を `out/summary/<名前>.png` に出力。LINE等で一括共有用。studioの「📱 1枚表示」と同仕様。
 - **`team_chart.py`（チーム達成率の棒グラフ）** — 全員の達成率を横棒グラフ1枚（`out/チーム達成率.png`）に。達成率の高い順・棒の中に現在ステージ。MT投影・LINE・Notion貼付用。※Notionの自動計算列(rollup)はAPIから棒グラフ化できないため画像で代替。
 - **`build_weekly_deck.py`（週次スライド）** — `members/*.json` 全員から、表紙＋全員ダッシュボード＋各個人スライドの `.pptx` を生成。`pip install python-pptx`。
+- **`weekly_update.py`（週次ワンコマンド／おすすめ）** — MT後に `members/*.json` を保存したら、これ1本で上の成果物（成長アイコン一覧・全員のゴールマップ・1枚カード・チーム達成率バー・週次スライド・組織ロードマップ同期）をまとめて再生成する。各ステップは独立で、失敗しても止まらず最後にサマリー表示。`--commit`（＋`--push`）で生成物のコミットまで、`--no-notion`/`--no-deck` で任意ステップを省略。組織マップ同期は `NOTION_TOKEN` がある時だけ実行（無ければ自動スキップ）。
+
+  ```bash
+  python3 tools/goalmap/weekly_update.py           # 全部再生成（TOKEN無ければ組織同期はスキップ）
+  python3 tools/goalmap/weekly_update.py --commit  # 生成物をコミットまで
+  ```
 
 いずれも同じ `members/*.json` と同じ図解仕様を共有する。
 
