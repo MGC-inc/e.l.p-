@@ -12,6 +12,7 @@
   "cycle": 1,
   "level": 0,
   "logs": [],
+  "daily": [],
   "phases": [
     {
       "name": "型を知る",

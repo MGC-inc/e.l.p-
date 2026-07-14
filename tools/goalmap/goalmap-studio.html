@@ -138,8 +138,23 @@
     .mtlog .mt-grid{grid-template-columns:1fr}
     .mtlog input[type=date],.mtlog textarea{font-size:16px}
   }
-  body.summary #mtlog{display:none}
-  @media print{header,.editor,.roster,.ro-banner,#mtlog,#zoomhud{display:none}.wrap{grid-template-columns:1fr}.canvas{height:auto;overflow:visible;border:none}#zoomstage{transform:none!important}#zoomstage svg{max-width:100%}svg{border:none}}
+  body.summary #mtlog,body.summary #daily{display:none}
+  /* 📅 日報（毎日の共有）固定パネル */
+  .daily{background:#fff;border-bottom:1px solid var(--line);padding:10px 16px}
+  .daily .dhead{font-size:13px;font-weight:700;color:var(--ink);margin-bottom:6px;display:flex;align-items:center;flex-wrap:wrap;gap:6px}
+  .daily .dcount{font-size:11px;font-weight:700;color:#B7791F;background:#FFF3D6;border:1px solid #E0B43A;border-radius:999px;padding:1px 8px}
+  .daily .dnote{font-size:11px;font-weight:400;color:var(--sub)}
+  .daily .dform{display:flex;gap:8px;align-items:flex-start;flex-wrap:wrap}
+  .daily .dform textarea{flex:1;min-width:220px;padding:6px 8px;border:1px solid var(--line);border-radius:6px;font-size:13px;font-family:inherit;resize:vertical}
+  .daily .dform input[type=date]{padding:6px 8px;border:1px solid var(--line);border-radius:6px}
+  .daily .dlist{margin-top:8px;max-height:120px;overflow:auto;display:flex;flex-direction:column;gap:4px}
+  .daily .drow{display:flex;align-items:flex-start;gap:8px;font-size:12px;border:1px solid var(--line);border-radius:8px;padding:5px 8px;background:#FBFCFD}
+  .daily .ddate{color:var(--sub);white-space:nowrap;font-weight:700}
+  .daily .dtext{flex:1;color:var(--ink);white-space:pre-wrap}
+  .daily .ddel{border:none;background:none;color:var(--sub);cursor:pointer;font-size:14px}
+  .daily .dempty{font-size:12px;color:var(--sub)}
+  @media (max-width:760px){.daily .dform input[type=date],.daily .dform textarea{font-size:16px}}
+  @media print{header,.editor,.roster,.ro-banner,#mtlog,#daily,#zoomhud{display:none}.wrap{grid-template-columns:1fr}.canvas{height:auto;overflow:visible;border:none}#zoomstage{transform:none!important}#zoomstage svg{max-width:100%}svg{border:none}}
 </style>
 </head>
 <body>
@@ -166,6 +181,7 @@
 </header>
 <div class="roster" id="roster" title="クリックでメンバー切替（今のアバターが見えます）"></div>
 <div id="roBanner" class="ro-banner" style="display:none"></div>
+<section id="daily" class="daily"></section>
 <div class="wrap">
   <div class="editor" id="editor"></div>
   <div class="canvas" id="canvas">
@@ -209,7 +225,7 @@ const SVG_DEFS = `<defs>`+
 
 function template(name){
   return {name:name||"新規メンバー",note:"",theme:"テーマ",goal:"観察できる状態でゴールを書く",
-    vision:"",visionDue:"",midGoal:"",midDue:"",why:"",currentStage:1,cycle:1,level:0,logs:[],
+    vision:"",visionDue:"",midGoal:"",midDue:"",why:"",currentStage:1,cycle:1,level:0,logs:[],daily:[],
     phases:[
       {name:"型を知る",doneDef:"観察できる完了の状態",tasks:[]},
       {name:"練習",doneDef:"観察できる完了の状態",tasks:[]},
@@ -941,7 +957,40 @@ async function toggleRec(){
   }catch(e){alert("録音を開始できませんでした（マイク許可が必要）: "+e);}
 }
 
-function renderAll(){renderEditor();renderCanvas();refreshMemberSelect();renderRoster();renderMtlog();}
+// ───────── 📅 日報（毎日の共有）─────────
+// 毎日の商談内容・共有事項をその日に記録して蓄積する固定パネル。週次MTの評価根拠
+// （基準書§5：実績DB＋商談記録＋日報）になる。data.daily=[{date,text}] に貯まる。
+let dailyDraft={date:"",text:""}, dailyDraftFor=null;
+function dailyEnsureDraft(){ if(dailyDraftFor!==data.name){dailyDraftFor=data.name;dailyDraft={date:todayISO(),text:""};} }
+function renderDaily(){
+  const el=document.getElementById("daily"); if(!el)return;
+  if(viewing){el.style.display="none";return;} el.style.display="";
+  dailyEnsureDraft();
+  const items=(data.daily||[]);
+  const recent=items.map((it,i)=>({it,i})).slice(-7).reverse();   // 直近7件・新しい順（iは実インデックス）
+  const listHtml=recent.length?recent.map(({it,i})=>
+    `<div class="drow"><span class="ddate">🗓 ${esc(it.date||"")}</span><span class="dtext">${esc(it.text||"")}</span><button class="ddel" data-ddel="${i}" title="この日報を削除">×</button></div>`
+  ).join(""):`<div class="dempty">まだ日報がありません。今日の商談内容・共有事項を記録しましょう。</div>`;
+  el.innerHTML=`
+    <div class="dhead">📅 日報（毎日の共有）<span class="dcount">計${items.length}件</span><span class="dnote">商談内容・気づき・共有事項をその日に記録。週次評価の根拠になります（基準書§5）。</span></div>
+    <div class="dform">
+      <input type="date" id="dailyDate" value="${esc(dailyDraft.date||todayISO())}">
+      <textarea id="dailyText" rows="2" placeholder="例）〇〇様商談：決裁者ネックを先出しで潰せた。明日は前日リマインドを全件徹底。">${esc(dailyDraft.text)}</textarea>
+      <button id="dailySave" class="primary">＋ 記録</button>
+    </div>
+    <div class="dlist">${listHtml}</div>`;
+}
+function saveDaily(){
+  const dt=document.getElementById("dailyDate"), tx=document.getElementById("dailyText");
+  const date=(dt&&dt.value)||todayISO(), text=((tx&&tx.value)||"").trim();
+  if(!text){alert("今日の共有内容を入力してください");return;}
+  if(!data.daily)data.daily=[];
+  data.daily.push({date,text});
+  dailyDraft={date:todayISO(),text:""};
+  persist();renderDaily();flash("日報を記録しました ✓");
+}
+
+function renderAll(){renderEditor();renderCanvas();refreshMemberSelect();renderRoster();renderDaily();renderMtlog();}
 // 履歴の読み取り専用プレビュー中は保存・編集を一切しない
 let viewing=false;
 function persist(){if(viewing)return;save(data);renderCanvas();renderRoster();}
@@ -1049,6 +1098,16 @@ document.getElementById("editor").addEventListener("click",ev=>{
     if(t.dataset.logmd!=null){const e=data.logs[+t.dataset.logmd];if(e)downloadMd(logToMd(e),mdFilename(e.date||todayISO()));return;}
     if(t.dataset.dellog!=null){const i=+t.dataset.dellog;if(confirm("この議事録を削除しますか？")){data.logs.splice(i,1);persist();renderMtlog();}return;}
     if(t.dataset.logtask!=null){const[i,j]=t.dataset.logtask.split(":").map(Number);const idx=(+document.getElementById("taskPhase").value||1)-1;const name=(data.logs[i].next||[])[j];if(name&&addTasksToPhase([name],idx))flash(`「${name}」を ${STAGE_NAMES[idx]} に追加 ✓`);return;}});
+})();
+// 📅 日報（#daily は再描画で中身だけ入れ替わる。コンテナに一度だけ委譲）
+(function(){
+  const dl=document.getElementById("daily"); if(!dl)return;
+  dl.addEventListener("input",ev=>{const t=ev.target;
+    if(t.id==="dailyDate")dailyDraft.date=t.value;
+    else if(t.id==="dailyText")dailyDraft.text=t.value;});
+  dl.addEventListener("click",ev=>{const t=ev.target;
+    if(t.id==="dailySave"){saveDaily();return;}
+    if(t.dataset.ddel!=null){const i=+t.dataset.ddel;if(confirm("この日報を削除しますか？")){data.daily.splice(i,1);persist();renderDaily();}return;}});
 })();
 document.getElementById("member").addEventListener("change",ev=>{leaveViewing();const n=ev.target.value;const d=load(n)||findEmbedded(n);if(d){data=d;save(data);renderAll();}});
 document.getElementById("roster").addEventListener("click",ev=>{
