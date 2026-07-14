@@ -13,9 +13,10 @@
 | Google API | <!-- TODO: 用途を特定（Maps/Calendar等） --> | https://console.cloud.google.com | ローカル `.env` の `GOOGLE_API_KEY` | |
 | Gemini API | 通話の文字起こし（イノベラ）／商談録音の一括分析（商談分析運用.md） | https://aistudio.google.com | ローカル `.env` の `GEMINI_API_KEY`（有料課金プロジェクトのキーを使う） | MGC |
 | PLAUD NOTE | 商談の録音（無料スタータープラン。文字起こしは使わずMP3書き出しのみ） | https://jp.plaud.ai ＋ スマホアプリ | APIなし（アプリログインのみ） | 各クローザー |
-| LINE | 通知・顧客連絡 | | | |
+| Notion（DB 商談分析＆アポ分析） | 商談分析の蓄積・ダッシュボード（商談分析運用.md） | Notionワークスペース内 | Claude Code の Notion connector（MCP）経由でアクセス。このリポジトリ・elp-goalsにトークンは置かない | 今川 |
+| LINE | 通知・顧客連絡（Bot @124rnagj。商談録音の受付もここ経由） | Webhook/push実装は `MGC-inc/elp-goals`（`/api/line/webhook`, `lib/line.ts`） | ローカル `.env` の `ELP_LINE_CHANNEL_SECRET` / `ELP_LINE_CHANNEL_ACCESS_TOKEN`（Vercel環境変数にも同値） | MGC |
 | GitHub | このリポジトリ | https://github.com/MGC-inc/e.l.p- | | |
-| Supabase（elp） | 組織データDB（タスク/日報/営業成績/議事録/通話ログ） | https://supabase.com/dashboard/project/xhkcptfyjdbilhrpwcau | ローカル `.env` の `ELP_SUPABASE_*` | MGC |
+| Supabase（elp） | 組織データDB（タスク/日報/営業成績/議事録/通話ログ／商談録音の受付台帳 `deal_recordings`・Storageバケット `deal-recordings`） | https://supabase.com/dashboard/project/xhkcptfyjdbilhrpwcau | ローカル `.env` の `ELP_SUPABASE_*` | MGC |
 | <!-- TODO --> | | | | |
 
 ## イノベラ Web API 技術仕様（仕様書 2024-10-23版より）

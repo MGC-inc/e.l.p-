@@ -1,23 +1,31 @@
 #!/usr/bin/env python3
-"""商談録音（PLAUD NOTE等のMP3） → Gemini一括分析 → 商談分析/YYYY/ にMarkdown保存。
+"""商談録音（PLAUD NOTE等のMP3） → Gemini一括分析 → Notion登録用JSONを出力。
 
 方針:
   - 録音は分割しない。商談全体（2〜3時間以上）を1リクエストで分析する
     （Gemini は1プロンプトあたり最大約9.5時間の音声を扱える）
   - 文字の内容に加えて声のトーン・声量・話速・間も分析対象（プロンプト参照）
-  - 評価軸・出力形式は scripts/deal_analysis_prompt.txt（商談分析運用.md 準拠）
+  - 分析の型・出力フォーマットは Notion「商談分析AI」ページに準拠
+    （scripts/deal_analysis_prompt.txt はその内容を音声入力向けに拡張したもの）
+  - 保存先はこのリポジトリではなく Notion「DB 商談分析＆アポ分析」データベース。
+    このスクリプトは分析結果を作るところまでで、Notionへの書き込みは
+    呼び出し側（スキル 商談録音分析）が mcp Notion connector で行う
 
 使い方:
-  python3 scripts/deal_analysis.py 録音.mp3 --closer 今川 --customer 山田様
-  python3 scripts/deal_analysis.py 録音.mp3 --closer 今川 --customer 山田様 \
-      --date 2026-07-11 --appointer 佐藤 --model gemini-2.5-pro \
-      --plan "前回アクション: 金額提示後に3秒の間を置く" --audio-url "https://drive.google.com/..."
-  --dry-run で Gemini 呼び出しをスキップ（アップロード確認のみ）
+  python3 scripts/deal_analysis.py 録音.mp3 --closer 今川 --customer 山田様 --result 保留
+  python3 scripts/deal_analysis.py 録音.mp3 --closer 今川 --customer 山田様 --result 契約 \
+      --date 2026-07-11 --appointer 佐藤 --model gemini-2.5-pro
+  --dry-run でアップロード確認のみ（Gemini生成はスキップ）
+
+出力:
+  標準出力に {"content_markdown": "...", "properties": {...}} のJSONを1行で出力する
+  （--out でファイルパスを指定すればそこに書き出す）
 """
 import argparse
 import datetime as dt
 import json
 import os
+import re
 import sys
 import time
 import urllib.request
@@ -28,6 +36,9 @@ ENV_PATH = os.path.join(REPO, ".env")
 PROMPT_PATH = os.path.join(HERE, "deal_analysis_prompt.txt")
 GEMINI_BASE = "https://generativelanguage.googleapis.com"
 DEFAULT_MODEL = "gemini-2.5-flash"
+
+# Notion「結果」ステータスの選択肢（LINEクイックリプライの文言と一致させる）
+VALID_RESULTS = {"契約", "保留", "クーリングオフ", "失注", "審査落ち", "キャンセル", "商談予定", "AC"}
 
 MIME_BY_EXT = {
     ".mp3": "audio/mp3",
@@ -40,7 +51,7 @@ MIME_BY_EXT = {
 
 
 def log(msg):
-    print(f"[{dt.datetime.now():%H:%M:%S}] {msg}", flush=True)
+    print(f"[{dt.datetime.now():%H:%M:%S}] {msg}", file=sys.stderr, flush=True)
 
 
 def load_env(path):
@@ -123,30 +134,34 @@ def generate(key, model, prompt, file_uri, file_mime):
     return text.strip()
 
 
-def out_path(date, closer, customer):
-    """商談分析/YYYY/YYYY-MM-DD_担当_顧客.md（既存なら _2, _3 と連番）"""
-    d = os.path.join(REPO, "商談分析", date[:4])
-    os.makedirs(d, exist_ok=True)
-    base = f"{date}_{closer}_{customer}"
-    path = os.path.join(d, f"{base}.md")
-    n = 2
-    while os.path.exists(path):
-        path = os.path.join(d, f"{base}_{n}.md")
-        n += 1
-    return path
+def split_content_and_properties(text):
+    """応答末尾の```json ...```ブロックを構造化プロパティとして取り出し、
+    残りを本文Markdownとして返す。"""
+    matches = list(re.finditer(r"```json\s*(\{.*?\})\s*```", text, re.DOTALL))
+    if not matches:
+        return text.strip(), {}
+    last = matches[-1]
+    try:
+        properties = json.loads(last.group(1))
+    except json.JSONDecodeError as e:
+        log(f"警告: 構造化JSONのパースに失敗しました（{e}）。properties は空にします。")
+        properties = {}
+    content = (text[: last.start()] + text[last.end():]).strip()
+    return content, properties
 
 
 def main():
-    ap = argparse.ArgumentParser(description="商談録音MP3をGeminiで一括分析して商談分析/に保存")
+    ap = argparse.ArgumentParser(description="商談録音MP3をGeminiで一括分析しNotion登録用JSONを出力")
     ap.add_argument("audio", help="録音ファイル（mp3/wav/m4a等）")
-    ap.add_argument("--closer", required=True, help="担当クローザー名")
-    ap.add_argument("--customer", required=True, help="顧客名（例: 山田様）")
-    ap.add_argument("--date", help="商談日 YYYY-MM-DD（省略時はファイル更新日）")
-    ap.add_argument("--appointer", default="", help="アポインター名")
-    ap.add_argument("--plan", default="", help="前回の次回アクション（Plan欄に反映）")
-    ap.add_argument("--audio-url", default="", help="録音の保存先リンク（Drive等）")
+    ap.add_argument("--closer", required=True, help="担当クローザー名（Notion「クローザー」選択肢と一致させる）")
+    ap.add_argument("--customer", required=True, help="顧客名（例: 山田様。Notionページタイトルになる）")
+    ap.add_argument("--result", required=True, choices=sorted(VALID_RESULTS),
+                     help="商談結果（LINEクイックリプライで取得した値。Notion「結果」にそのまま使う）")
+    ap.add_argument("--date", help="商談日時 YYYY-MM-DD[THH:MM]（省略時はファイル更新日）")
+    ap.add_argument("--appointer", default="", help="アポインター名（分かっていれば）")
     ap.add_argument("--model", default=DEFAULT_MODEL, help=f"Geminiモデル（既定: {DEFAULT_MODEL}）")
-    ap.add_argument("--dry-run", action="store_true", help="アップロードまでで止める")
+    ap.add_argument("--out", help="結果JSONの出力先ファイル（省略時は標準出力）")
+    ap.add_argument("--dry-run", action="store_true", help="アップロードまでで止める（分析はしない）")
     args = ap.parse_args()
 
     if not os.path.exists(args.audio):
@@ -160,12 +175,11 @@ def main():
     prompt = open(PROMPT_PATH, encoding="utf-8").read()
     meta = (
         f"\n\n# この商談の既知メタ情報（出力の該当欄にそのまま使うこと）\n"
-        f"- 商談日: {date}\n"
+        f"- 商談日時: {date}\n"
         f"- 担当クローザー: {args.closer}\n"
-        f"- アポインター: {args.appointer or '未指定'}\n"
+        f"- アポインター: {args.appointer or '未指定（分かれば構造化データのアポインター欄に記入）'}\n"
         f"- 顧客: {args.customer}\n"
-        f"- 前回からの持ち越しアクション: {args.plan or '初回または未指定'}\n"
-        f"- 録音の所在: {args.audio_url or '未指定'}\n"
+        f"- 商談結果: {args.result}\n"
     )
 
     uri, mime = upload_audio(key, args.audio)
@@ -175,13 +189,24 @@ def main():
         return
     log(f"{args.model} で分析中（商談全体を一括処理。数分かかります）...")
     text = generate(key, args.model, prompt + meta, uri, mime)
+    content_markdown, properties = split_content_and_properties(text)
 
-    path = out_path(date, args.closer, args.customer)
-    with open(path, "w", encoding="utf-8") as f:
-        f.write(text + "\n")
-    rel = os.path.relpath(path, REPO)
-    log(f"保存: {rel}")
-    log(f"コミット例: git add '{rel}' && git commit -m 'docs(商談分析): {date} {args.closer}さん {args.customer}商談'")
+    properties["クローザー"] = args.closer
+    properties["お客様名"] = args.customer
+    properties["結果"] = args.result
+    properties["商談日時"] = date
+    if args.appointer:
+        properties["アポインター"] = args.appointer
+    properties["分析済み"] = True
+
+    result = {"content_markdown": content_markdown, "properties": properties}
+    out_text = json.dumps(result, ensure_ascii=False)
+    if args.out:
+        with open(args.out, "w", encoding="utf-8") as f:
+            f.write(out_text)
+        log(f"保存: {args.out}")
+    else:
+        print(out_text)
 
 
 if __name__ == "__main__":
