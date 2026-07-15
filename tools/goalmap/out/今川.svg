@@ -1,102 +1,97 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 680 855" font-family="Hiragino Sans, 'Noto Sans CJK JP', 'Yu Gothic', sans-serif" width="680" height="855">
-<defs><linearGradient id="goalGrad" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#5B4BE0"/><stop offset="0.5" stop-color="#B14BE0"/><stop offset="1" stop-color="#FFC24B"/></linearGradient><linearGradient id="phx" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFE259"/><stop offset="0.5" stop-color="#FF9A00"/><stop offset="1" stop-color="#FF3D00"/></linearGradient><linearGradient id="phx2" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFF0A0"/><stop offset="1" stop-color="#FF7A00"/></linearGradient><linearGradient id="hen" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#37C9B0"/><stop offset="0.6" stop-color="#3DA0E8"/><stop offset="1" stop-color="#7A5BE0"/></linearGradient><linearGradient id="pcock" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2BD0C0"/><stop offset="0.55" stop-color="#2E8FD0"/><stop offset="1" stop-color="#2E4BB0"/></linearGradient><linearGradient id="gold" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFF0A8"/><stop offset="0.5" stop-color="#F2C230"/><stop offset="1" stop-color="#C8901A"/></linearGradient></defs>
-<rect x="0" y="0" width="680" height="855" fill="#FFFFFF"/>
-<text x="20" y="34" font-size="13" font-weight="700" fill="#1F2933">今川（E.L.P・営業部長）｜チームの成約を仕組み化する（マネジメント）</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 680 755" font-family="Hiragino Sans, 'Noto Sans CJK JP', 'Yu Gothic', IPAGothic, sans-serif" width="680" height="755">
+<defs><linearGradient id="goalGrad" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#5B4BE0"/><stop offset="0.5" stop-color="#B14BE0"/><stop offset="1" stop-color="#FFC24B"/></linearGradient><linearGradient id="phx" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFE259"/><stop offset="0.5" stop-color="#FF9A00"/><stop offset="1" stop-color="#FF3D00"/></linearGradient><linearGradient id="phx2" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFF0A0"/><stop offset="1" stop-color="#FF7A00"/></linearGradient><linearGradient id="hen" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#37C9B0"/><stop offset="0.6" stop-color="#3DA0E8"/><stop offset="1" stop-color="#7A5BE0"/></linearGradient><linearGradient id="pcock" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2BD0C0"/><stop offset="0.55" stop-color="#2E8FD0"/><stop offset="1" stop-color="#2E4BB0"/></linearGradient><linearGradient id="gold" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFF0A8"/><stop offset="0.5" stop-color="#F2C230"/><stop offset="1" stop-color="#C8901A"/></linearGradient><linearGradient id="fishBlu" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#6FA9CC"/><stop offset="0.55" stop-color="#A8CFE3"/><stop offset="1" stop-color="#E4F1F7"/></linearGradient><linearGradient id="fishWht" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFFFFF"/><stop offset="0.6" stop-color="#F2F4F5"/><stop offset="1" stop-color="#D8DFE4"/></linearGradient><linearGradient id="fishGld" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#F8D25C"/><stop offset="0.55" stop-color="#EFAF2E"/><stop offset="1" stop-color="#D88A15"/></linearGradient><linearGradient id="drgBlu" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#55D0CF"/><stop offset="0.5" stop-color="#2E86C8"/><stop offset="1" stop-color="#4353C0"/></linearGradient><linearGradient id="drgGld" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#F9DC74"/><stop offset="0.45" stop-color="#EEB53A"/><stop offset="1" stop-color="#B87A12"/></linearGradient><linearGradient id="eggG" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFF9E8"/><stop offset="1" stop-color="#EFD9A8"/></linearGradient><radialGradient id="glowG"><stop offset="0" stop-color="#FFE9A0" stop-opacity="0.75"/><stop offset="1" stop-color="#FFE9A0" stop-opacity="0"/></radialGradient></defs>
+<rect x="0" y="0" width="680" height="755" fill="#FFFFFF"/>
+<text x="20" y="34" font-size="13" font-weight="700" fill="#1F2933">今川（管理）｜チーム・代理店の「売れる仕組み」を構築し、事業部売上を過去最高へ（マネジメント）</text>
 <text x="660" y="26" text-anchor="end" font-size="13" fill="#67707A">達成率</text>
 <text x="462" y="50" text-anchor="end" font-size="20" font-weight="700" fill="#1D9E75">0%</text>
 <rect x="470" y="38" width="150" height="12" rx="6" fill="#F2F4F6"/>
 <rect x="470" y="38" width="0" height="12" rx="6" fill="#1D9E75"/>
-<rect x="130" y="70" width="210" height="54" rx="10" fill="#F3F0FF" stroke="#8A7FD0" stroke-width="1.6" stroke-dasharray="5 4"/>
-<text x="142" y="86" font-size="10.5" font-weight="700" fill="#8A7FD0">大枠ゴール（長期）</text>
-<text x="330" y="86" text-anchor="end" font-size="9.5" fill="#8A7FD0">1年後（2027年）</text>
-<text x="142" y="102" font-size="12" font-weight="600" fill="#4B3FA0">個人の勢い頼みを脱し、育成と型の仕組</text>
-<text x="142" y="117" font-size="12" font-weight="600" fill="#4B3FA0">みでチームが自走して成約し続ける</text>
-<rect x="130" y="146" width="210" height="54" rx="10" fill="#EEF6FF" stroke="#5C90CE" stroke-width="1.6" stroke-dasharray="5 4"/>
-<text x="142" y="162" font-size="10.5" font-weight="700" fill="#5C90CE">中目標（中期）</text>
-<text x="330" y="162" text-anchor="end" font-size="9.5" fill="#5C90CE">2〜3ヶ月後</text>
-<text x="142" y="178" font-size="12" font-weight="600" fill="#2C5A93">各メンバーの現在地を把握し、週次で全</text>
-<text x="142" y="193" font-size="12" font-weight="600" fill="#2C5A93">員のフォーカスを握れている</text>
-<line x1="235.0" y1="220" x2="235.0" y2="205" stroke="#5C90CE" stroke-width="2" stroke-dasharray="4 3"/>
-<path d="M230.0,207 L235.0,201 L240.0,207 Z" fill="#5C90CE"/>
-<text x="244.0" y="216" font-size="9.5" fill="#5C90CE">その先へ</text>
-<line x1="235.0" y1="146" x2="235.0" y2="129" stroke="#8A7FD0" stroke-width="2" stroke-dasharray="4 3"/>
-<path d="M230.0,131 L235.0,125 L240.0,131 Z" fill="#8A7FD0"/>
-<rect x="130" y="220" width="210" height="81" rx="10" fill="url(#goalGrad)" stroke="#FFD36E" stroke-width="2.5"/>
-<rect x="130" y="220" width="210" height="40.5" rx="10" fill="#FFFFFF" opacity="0.16"/>
-<text x="144" y="240" font-size="12" font-weight="700" fill="#FFFFFF">ゴール</text>
-<polygon points="324.0,229.0 325.4,233.6 330.0,235.0 325.4,236.4 324.0,241.0 322.6,236.4 318.0,235.0 322.6,233.6" fill="#FFF1B8"/>
-<text x="144" y="258" font-size="13" font-weight="600" fill="#FFFFFF">各メンバーの型を引き出し、チー</text>
-<text x="144" y="274" font-size="13" font-weight="600" fill="#FFFFFF">ム全体の成約率を底上げできてい</text>
-<text x="144" y="290" font-size="13" font-weight="600" fill="#FFFFFF">る</text>
-<rect x="16" y="249.5" width="80" height="22" rx="11" fill="#FFF3D6" stroke="#B7791F" stroke-width="1"/>
-<text x="56.0" y="264.5" text-anchor="middle" font-size="11" font-weight="700" fill="#B7791F">達成</text>
-<ellipse cx="402.0" cy="266.0" rx="25.5" ry="32.3" fill="#FFF3D6"/><ellipse cx="402.0" cy="266.0" rx="25.5" ry="32.3" fill="none" stroke="#E2D2A0" stroke-width="2.4"/><circle cx="393.5" cy="260.9" r="2.5" fill="#E6D3A0"/><circle cx="410.5" cy="274.5" r="2.2" fill="#E6D3A0"/><circle cx="403.7" cy="284.7" r="2.0" fill="#E6D3A0"/>
-<text x="448" y="263" font-size="13" font-weight="700" fill="#1F2933">あと2コで進化</text>
-<text x="448" y="281" font-size="11" fill="#67707A">餌 0/2　累計 0/10</text>
+<rect x="130" y="70" width="210" height="81" rx="10" fill="url(#goalGrad)" stroke="#FFD36E" stroke-width="2.5"/>
+<rect x="130" y="70" width="210" height="40.5" rx="10" fill="#FFFFFF" opacity="0.16"/>
+<text x="144" y="90" font-size="12" font-weight="700" fill="#FFFFFF">ゴール</text>
+<polygon points="324.0,79.0 325.4,83.6 330.0,85.0 325.4,86.4 324.0,91.0 322.6,86.4 318.0,85.0 322.6,83.6" fill="#FFF1B8"/>
+<text x="144" y="108" font-size="13" font-weight="600" fill="#FFFFFF">自分が営業の基準となる行動を継</text>
+<text x="144" y="124" font-size="13" font-weight="600" fill="#FFFFFF">続でき、メンバーが迷わず実践で</text>
+<text x="144" y="140" font-size="13" font-weight="600" fill="#FFFFFF">きる営業フロー・商材・管理体…</text>
+<rect x="16" y="99.5" width="80" height="22" rx="11" fill="#FFF3D6" stroke="#B7791F" stroke-width="1"/>
+<text x="56.0" y="114.5" text-anchor="middle" font-size="11" font-weight="700" fill="#B7791F">達成</text>
+<g transform="translate(402,116) scale(1.7)"><g transform="scale(0.86)"><path d="M8,-17 C-3,-13.5 -8.5,-5.5 1,0" fill="none" stroke="#1E4E86" stroke-width="12.1" stroke-linecap="round" stroke-linejoin="round"/><path d="M1,0 C9.5,5 4,12 -4.5,13.8" fill="none" stroke="#1E4E86" stroke-width="9.9" stroke-linecap="round" stroke-linejoin="round"/><path d="M-4.5,13.8 C-11,15.2 -16.5,16.4 -22,19.5" fill="none" stroke="#1E4E86" stroke-width="6.7" stroke-linecap="round" stroke-linejoin="round"/><path d="M8,-17 C-3,-13.5 -8.5,-5.5 1,0" fill="none" stroke="url(#drgBlu)" stroke-width="9.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M1,0 C9.5,5 4,12 -4.5,13.8" fill="none" stroke="url(#drgBlu)" stroke-width="7.2" stroke-linecap="round" stroke-linejoin="round"/><path d="M-4.5,13.8 C-11,15.2 -16.5,16.4 -22,19.5" fill="none" stroke="url(#drgBlu)" stroke-width="4.2" stroke-linecap="round" stroke-linejoin="round"/><path d="M8,-17 C-3,-13.5 -8.5,-5.5 1,0" fill="none" stroke="#CFE6F2" stroke-width="4" stroke-dasharray="1.6 2" stroke-linecap="butt" opacity="0.85" transform="translate(0.9,1.5)"/><path d="M1,0 C9.5,5 4,12 -4.5,13.8" fill="none" stroke="#CFE6F2" stroke-width="3.4" stroke-dasharray="1.6 2" stroke-linecap="butt" opacity="0.85" transform="translate(0.9,1.5)"/><path d="M-4.5,13.8 C-11,15.2 -16.5,16.4 -22,19.5" fill="none" stroke="#CFE6F2" stroke-width="2" stroke-dasharray="1.6 2" stroke-linecap="butt" opacity="0.85" transform="translate(0.9,1.5)"/><path d="M8,-17 C-3,-13.5 -8.5,-5.5 1,0" fill="none" stroke="#E8B23A" stroke-width="2" stroke-dasharray="1.2 2.6" stroke-linecap="butt" opacity="0.9" transform="translate(-0.9,-1.6)"/><path d="M1,0 C9.5,5 4,12 -4.5,13.8" fill="none" stroke="#E8B23A" stroke-width="1.8" stroke-dasharray="1.2 2.6" stroke-linecap="butt" opacity="0.9" transform="translate(-0.9,-1.6)"/><path d="M-4.5,13.8 C-11,15.2 -16.5,16.4 -22,19.5" fill="none" stroke="#E8B23A" stroke-width="1.2" stroke-dasharray="1.2 2.6" stroke-linecap="butt" opacity="0.9" transform="translate(-0.9,-1.6)"/><path d="M4.6,-5.4 C3.2,-3 2.6,-1 3,1" fill="none" stroke="#1E4E86" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/><path d="M3,1 C1.4,2 0.2,2.4 -1,2.3" fill="none" stroke="#CFE6F2" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"/><path d="M3,1 C2.5,2.6 2.2,3.8 2.4,4.9" fill="none" stroke="#CFE6F2" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"/><path d="M3,1 C4.2,2.2 5,3 5.9,3.4" fill="none" stroke="#CFE6F2" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"/><path d="M-5.5,12.5 C-6.6,14 -7,15.4 -6.7,16.9" fill="none" stroke="#1E4E86" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/><path d="M-6.7,16.9 C-8,17.6 -9,17.8 -10,17.6" fill="none" stroke="#CFE6F2" stroke-width="0.9" stroke-linecap="round" stroke-linejoin="round"/><path d="M-6.7,16.9 C-7,18.2 -7.1,19.2 -6.9,20.1" fill="none" stroke="#CFE6F2" stroke-width="0.9" stroke-linecap="round" stroke-linejoin="round"/><path d="M-6.7,16.9 C-5.7,17.8 -5,18.4 -4.2,18.7" fill="none" stroke="#CFE6F2" stroke-width="0.9" stroke-linecap="round" stroke-linejoin="round"/><path d="M-22,19.5 C-25.4,18 -27.6,18.4 -29.4,20.2 C-27.2,20.4 -25.9,21 -24.9,22.1 C-26.7,22.5 -28,23.5 -28.7,24.9 C-26.2,24.3 -23.8,23.6 -21.6,21.6 Z" fill="#E8B23A" stroke="#1E4E86" stroke-width="0.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M4.5,-18.5 C3.8,-23 6.6,-26.6 11.4,-27.4 C14.6,-27.9 17.8,-27.4 20.8,-26 L25.6,-23.6 C24,-22.5 22.2,-22.2 20.6,-22.4 L24.4,-19.8 C21.6,-17.6 17.6,-16.9 13.8,-17.8 C10,-18.7 7,-18.4 4.5,-18.5 Z" fill="url(#drgBlu)" stroke="#1E4E86" stroke-width="0.7" stroke-linecap="round" stroke-linejoin="round"/><path d="M19,-21.8 C17,-20 14.4,-19.2 11.8,-19.4" fill="none" stroke="#1E4E86" stroke-width="0.7" stroke-linecap="round" stroke-linejoin="round" opacity="0.7"/><circle cx="22.8" cy="-24.6" r="0.55" fill="#1E4E86"/><ellipse cx="12.4" cy="-23.4" rx="1.5" ry="1.1" fill="#FFFFFF"/><circle cx="12.8" cy="-23.3" r="0.75" fill="#17110B"/><path d="M10.2,-25.3 L15,-25.9" fill="none" stroke="#1E4E86" stroke-width="0.9" stroke-linecap="round" stroke-linejoin="round"/><path d="M10.2,-27 C8.8,-31.6 5.6,-34 1.8,-34.6" fill="none" stroke="#1E4E86" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M6.4,-32.6 C4.8,-34 3,-34.6 1.2,-34.6" fill="none" stroke="#1E4E86" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"/><path d="M15.2,-27.3 C16,-32 19,-34.4 23.2,-34.9" fill="none" stroke="#1E4E86" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M19,-33.2 C20.6,-34.6 22.4,-35.2 24.2,-35.2" fill="none" stroke="#1E4E86" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"/><path d="M5.8,-22 C0.4,-22 -3.6,-19.4 -6.4,-15.6" fill="none" stroke="#E8B23A" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" opacity="0.9"/><path d="M6.2,-20 C1.6,-19.4 -1.8,-17 -4,-13.6" fill="none" stroke="#E8B23A" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" opacity="0.9"/><path d="M7,-25.6 C3,-27 -0.6,-26.6 -3.6,-24.6" fill="none" stroke="#E8B23A" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" opacity="0.9"/><path d="M12,-19.2 C11,-17 9.6,-15.6 7.8,-14.8" fill="none" stroke="#E8B23A" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" opacity="0.85"/><path d="M23.4,-22.6 C28.2,-21.6 31,-18 31.8,-13.2" fill="none" stroke="#E8B23A" stroke-width="0.9" stroke-linecap="round" stroke-linejoin="round"/><path d="M22.6,-21 C26.4,-19.2 28.4,-16 28.8,-12" fill="none" stroke="#E8B23A" stroke-width="0.8" stroke-linecap="round" stroke-linejoin="round"/><polygon points="-20.0,-9.9 -19.5,-8.5 -18.1,-8.0 -19.5,-7.5 -20.0,-6.1 -20.5,-7.5 -21.9,-8.0 -20.5,-8.5" fill="#FFF1B8"/><polygon points="24.0,4.3 24.4,5.6 25.7,6.0 24.4,6.4 24.0,7.7 23.6,6.4 22.3,6.0 23.6,5.6" fill="#DCEFFA"/></g></g>
+<text x="448" y="102" font-size="13" font-weight="700" fill="#B7791F">Lv.8 青龍</text>
+<text x="448" y="119" font-size="12" font-weight="700" fill="#1F2933">進化ゲージ 0%</text>
+<text x="448" y="136" font-size="11" fill="#67707A">あと2コで満タン（餌 0/2）</text>
 <text x="16" y="62" font-size="10" fill="#67707A">目標時期</text>
-<line x1="235.0" y1="327" x2="235.0" y2="307" stroke="#9AA3AD" stroke-width="2"/>
-<path d="M230.0,309 L235.0,303 L240.0,309 Z" fill="#9AA3AD"/>
-<rect x="130" y="327" width="210" height="74" rx="10" fill="#F2F4F6" stroke="#9AA3AD" stroke-width="1"/>
-<circle cx="118" cy="347" r="9" fill="#9AA3AD"/>
-<text x="142" y="349" font-size="14" font-weight="700" fill="#1F2933">⑤自走</text>
-<text x="142" y="367" font-size="11" fill="#67707A">完了：各人が自走し、勝ち型がチ</text>
-<text x="142" y="382" font-size="11" fill="#67707A">ームに展開されている</text>
-<rect x="16" y="353.0" width="80" height="22" rx="11" fill="#F2F4F6" stroke="#9AA3AD" stroke-width="1"/>
-<text x="56.0" y="368.0" text-anchor="middle" font-size="11" font-weight="700" fill="#9AA3AD">8月第4週</text>
-<rect x="360" y="334" width="14" height="14" rx="3" fill="#fff" stroke="#9AA3AD" stroke-width="1.5"/>
-<text x="382" y="345" font-size="12.5" fill="#1F2933">勝ち型をチームの標準トークに展開する</text>
-<rect x="360" y="355" width="14" height="14" rx="3" fill="#fff" stroke="#9AA3AD" stroke-width="1.5"/>
-<text x="382" y="366" font-size="12.5" fill="#1F2933">各人が自走できる仕組みにする</text>
-<line x1="235.0" y1="427" x2="235.0" y2="407" stroke="#9AA3AD" stroke-width="2"/>
-<path d="M230.0,409 L235.0,403 L240.0,409 Z" fill="#9AA3AD"/>
-<rect x="130" y="427" width="210" height="74" rx="10" fill="#F2F4F6" stroke="#9AA3AD" stroke-width="1"/>
-<circle cx="118" cy="447" r="9" fill="#9AA3AD"/>
-<text x="142" y="449" font-size="14" font-weight="700" fill="#1F2933">④振り返り</text>
-<text x="142" y="467" font-size="11" fill="#67707A">完了：チームの成約率と詰まりの</text>
-<text x="142" y="482" font-size="11" fill="#67707A">要因を抽出できる</text>
-<rect x="16" y="453.0" width="80" height="22" rx="11" fill="#F2F4F6" stroke="#9AA3AD" stroke-width="1"/>
-<text x="56.0" y="468.0" text-anchor="middle" font-size="11" font-weight="700" fill="#9AA3AD">8月第3週</text>
-<rect x="360" y="434" width="14" height="14" rx="3" fill="#fff" stroke="#9AA3AD" stroke-width="1.5"/>
-<text x="382" y="445" font-size="12.5" fill="#1F2933">チームの成約率推移をレビューする</text>
-<rect x="360" y="455" width="14" height="14" rx="3" fill="#fff" stroke="#9AA3AD" stroke-width="1.5"/>
-<text x="382" y="466" font-size="12.5" fill="#1F2933">詰まりの共通要因を抽出する</text>
-<line x1="235.0" y1="527" x2="235.0" y2="507" stroke="#9AA3AD" stroke-width="2"/>
-<path d="M230.0,509 L235.0,503 L240.0,509 Z" fill="#9AA3AD"/>
-<rect x="130" y="527" width="210" height="74" rx="10" fill="#F2F4F6" stroke="#9AA3AD" stroke-width="1"/>
-<circle cx="118" cy="547" r="9" fill="#9AA3AD"/>
-<text x="142" y="549" font-size="14" font-weight="700" fill="#1F2933">③実践</text>
-<text x="142" y="567" font-size="11" fill="#67707A">完了：週次で各人のフォーカスを</text>
-<text x="142" y="582" font-size="11" fill="#67707A">握れている</text>
-<rect x="16" y="553.0" width="80" height="22" rx="11" fill="#F2F4F6" stroke="#9AA3AD" stroke-width="1"/>
-<text x="56.0" y="568.0" text-anchor="middle" font-size="11" font-weight="700" fill="#9AA3AD">8月第1週</text>
-<rect x="360" y="534" width="14" height="14" rx="3" fill="#fff" stroke="#9AA3AD" stroke-width="1.5"/>
-<text x="382" y="545" font-size="12.5" fill="#1F2933">週次で各人の今週フォーカスを握る</text>
-<rect x="360" y="555" width="14" height="14" rx="3" fill="#fff" stroke="#9AA3AD" stroke-width="1.5"/>
-<text x="382" y="566" font-size="12.5" fill="#1F2933">商談同席でフィードバックする</text>
-<line x1="235.0" y1="627" x2="235.0" y2="607" stroke="#9AA3AD" stroke-width="2"/>
-<path d="M230.0,609 L235.0,603 L240.0,609 Z" fill="#9AA3AD"/>
-<rect x="130" y="627" width="210" height="74" rx="10" fill="#F2F4F6" stroke="#9AA3AD" stroke-width="1"/>
-<circle cx="118" cy="647" r="9" fill="#9AA3AD"/>
-<text x="142" y="649" font-size="14" font-weight="700" fill="#1F2933">②練習</text>
-<text x="142" y="667" font-size="11" fill="#67707A">完了：引き出すための問いかけ・</text>
-<text x="142" y="682" font-size="11" fill="#67707A">観点が用意できている</text>
-<rect x="16" y="653.0" width="80" height="22" rx="11" fill="#F2F4F6" stroke="#9AA3AD" stroke-width="1"/>
-<text x="56.0" y="668.0" text-anchor="middle" font-size="11" font-weight="700" fill="#9AA3AD">7月第4週</text>
-<rect x="360" y="634" width="14" height="14" rx="3" fill="#fff" stroke="#9AA3AD" stroke-width="1.5"/>
-<text x="382" y="645" font-size="12.5" fill="#1F2933">1on1の問いかけ設計を用意する</text>
-<rect x="360" y="655" width="14" height="14" rx="3" fill="#fff" stroke="#9AA3AD" stroke-width="1.5"/>
-<text x="382" y="666" font-size="12.5" fill="#1F2933">ロープレの観点表を作る</text>
-<line x1="235.0" y1="727" x2="235.0" y2="707" stroke="#9AA3AD" stroke-width="2"/>
-<path d="M230.0,709 L235.0,703 L240.0,709 Z" fill="#9AA3AD"/>
-<rect x="130" y="727" width="210" height="74" rx="10" fill="#FDF3E2" stroke="#EF9F27" stroke-width="2"/>
-<circle cx="118" cy="747" r="9" fill="#EF9F27"/>
-<text x="142" y="749" font-size="14" font-weight="700" fill="#1F2933">①型を知る</text>
-<text x="142" y="767" font-size="11" fill="#67707A">完了：各メンバーの勝ち負けと現</text>
-<text x="142" y="782" font-size="11" fill="#67707A">在ステージを把握できている</text>
-<rect x="16" y="753.0" width="80" height="22" rx="11" fill="#FDF3E2" stroke="#EF9F27" stroke-width="1"/>
-<text x="56.0" y="768.0" text-anchor="middle" font-size="11" font-weight="700" fill="#EF9F27">7月第3週</text>
-<rect x="360" y="734" width="14" height="14" rx="3" fill="#fff" stroke="#9AA3AD" stroke-width="1.5"/>
-<text x="382" y="745" font-size="12.5" fill="#1F2933">メンバー各人の勝ち／負けパターンを把握する</text>
-<rect x="360" y="755" width="14" height="14" rx="3" fill="#fff" stroke="#9AA3AD" stroke-width="1.5"/>
-<text x="382" y="766" font-size="12.5" fill="#1F2933">各人の現在ステージを見立てる</text>
+<line x1="235.0" y1="177" x2="235.0" y2="157" stroke="#9AA3AD" stroke-width="2"/>
+<path d="M230.0,159 L235.0,153 L240.0,159 Z" fill="#9AA3AD"/>
+<rect x="130" y="177" width="210" height="84" rx="10" fill="#F2F4F6" stroke="#9AA3AD" stroke-width="1"/>
+<circle cx="118" cy="197" r="9" fill="#9AA3AD"/>
+<text x="142" y="199" font-size="14" font-weight="700" fill="#1F2933">⑤自走</text>
+<text x="142" y="217" font-size="11" fill="#67707A">完了：指導なしで型を回せる</text>
+<rect x="16" y="208.0" width="80" height="22" rx="11" fill="#F2F4F6" stroke="#9AA3AD" stroke-width="1"/>
+<text x="56.0" y="223.0" text-anchor="middle" font-size="11" font-weight="700" fill="#9AA3AD">—</text>
+<rect x="360" y="184" width="14" height="14" rx="3" fill="#fff" stroke="#9AA3AD" stroke-width="1.5"/>
+<text x="382" y="195" font-size="12.5" fill="#1F2933">チームが自走できるよう、週次レビュー・KPI</text>
+<text x="382" y="210" font-size="12.5" fill="#1F2933">管理・教育の運用ルールを定着させる</text>
+<rect x="360" y="220" width="14" height="14" rx="3" fill="#fff" stroke="#9AA3AD" stroke-width="1.5"/>
+<text x="382" y="231" font-size="12.5" fill="#1F2933">代理店がそのまま使える営業マニュアル・資料・</text>
+<text x="382" y="246" font-size="12.5" fill="#1F2933">教育フローを完成させる</text>
+<line x1="235.0" y1="287" x2="235.0" y2="267" stroke="#9AA3AD" stroke-width="2"/>
+<path d="M230.0,269 L235.0,263 L240.0,269 Z" fill="#9AA3AD"/>
+<rect x="130" y="287" width="210" height="84" rx="10" fill="#F2F4F6" stroke="#9AA3AD" stroke-width="1"/>
+<circle cx="118" cy="307" r="9" fill="#9AA3AD"/>
+<text x="142" y="309" font-size="14" font-weight="700" fill="#1F2933">④振り返り</text>
+<text x="142" y="327" font-size="11" fill="#67707A">完了：うまくいった／詰まった点</text>
+<text x="142" y="342" font-size="11" fill="#67707A">を言語化できる</text>
+<rect x="16" y="318.0" width="80" height="22" rx="11" fill="#F2F4F6" stroke="#9AA3AD" stroke-width="1"/>
+<text x="56.0" y="333.0" text-anchor="middle" font-size="11" font-weight="700" fill="#9AA3AD">—</text>
+<rect x="360" y="294" width="14" height="14" rx="3" fill="#fff" stroke="#9AA3AD" stroke-width="1.5"/>
+<text x="382" y="305" font-size="12.5" fill="#1F2933">商材改善・営業改善によって起きた変化を振り返</text>
+<text x="382" y="320" font-size="12.5" fill="#1F2933">り、残る課題を整理する</text>
+<rect x="360" y="330" width="14" height="14" rx="3" fill="#fff" stroke="#9AA3AD" stroke-width="1.5"/>
+<text x="382" y="341" font-size="12.5" fill="#1F2933">クーリングオフ・審査落ちについて再度分析し、</text>
+<text x="382" y="356" font-size="12.5" fill="#1F2933">営業プロセスへ改善策を反映する</text>
+<line x1="235.0" y1="397" x2="235.0" y2="377" stroke="#9AA3AD" stroke-width="2"/>
+<path d="M230.0,379 L235.0,373 L240.0,379 Z" fill="#9AA3AD"/>
+<rect x="130" y="397" width="210" height="84" rx="10" fill="#F2F4F6" stroke="#9AA3AD" stroke-width="1"/>
+<circle cx="118" cy="417" r="9" fill="#9AA3AD"/>
+<text x="142" y="419" font-size="14" font-weight="700" fill="#1F2933">③実践</text>
+<text x="142" y="437" font-size="11" fill="#67707A">完了：商談で意図的に型を使えて</text>
+<text x="142" y="452" font-size="11" fill="#67707A">いる</text>
+<rect x="16" y="428.0" width="80" height="22" rx="11" fill="#F2F4F6" stroke="#9AA3AD" stroke-width="1"/>
+<text x="56.0" y="443.0" text-anchor="middle" font-size="11" font-weight="700" fill="#9AA3AD">—</text>
+<rect x="360" y="404" width="14" height="14" rx="3" fill="#fff" stroke="#9AA3AD" stroke-width="1.5"/>
+<text x="382" y="415" font-size="12.5" fill="#1F2933">自ら現場で改善した営業を実践し、成功・失敗事</text>
+<text x="382" y="430" font-size="12.5" fill="#1F2933">例をチームへ共有する</text>
+<rect x="360" y="440" width="14" height="14" rx="3" fill="#fff" stroke="#9AA3AD" stroke-width="1.5"/>
+<text x="382" y="451" font-size="12.5" fill="#1F2933">メンバーの商談同行・レビューを行い、改善点を</text>
+<text x="382" y="466" font-size="12.5" fill="#1F2933">その場でフィードバックする</text>
+<line x1="235.0" y1="507" x2="235.0" y2="487" stroke="#9AA3AD" stroke-width="2"/>
+<path d="M230.0,489 L235.0,483 L240.0,489 Z" fill="#9AA3AD"/>
+<rect x="130" y="507" width="210" height="84" rx="10" fill="#F2F4F6" stroke="#9AA3AD" stroke-width="1"/>
+<circle cx="118" cy="527" r="9" fill="#9AA3AD"/>
+<text x="142" y="529" font-size="14" font-weight="700" fill="#1F2933">②練習</text>
+<text x="142" y="547" font-size="11" fill="#67707A">完了：苦手ケースでも型どおり実</text>
+<text x="142" y="562" font-size="11" fill="#67707A">行できる</text>
+<rect x="16" y="538.0" width="80" height="22" rx="11" fill="#F2F4F6" stroke="#9AA3AD" stroke-width="1"/>
+<text x="56.0" y="553.0" text-anchor="middle" font-size="11" font-weight="700" fill="#9AA3AD">—</text>
+<rect x="360" y="514" width="14" height="14" rx="3" fill="#fff" stroke="#9AA3AD" stroke-width="1.5"/>
+<text x="382" y="525" font-size="12.5" fill="#1F2933">商材・提案資料・営業トークを改善し、実際の営</text>
+<text x="382" y="540" font-size="12.5" fill="#1F2933">業で使える形まで完成させる</text>
+<rect x="360" y="550" width="14" height="14" rx="3" fill="#fff" stroke="#9AA3AD" stroke-width="1.5"/>
+<text x="382" y="561" font-size="12.5" fill="#1F2933">メンバーとロープレ・営業レビューを実施し、新</text>
+<text x="382" y="576" font-size="12.5" fill="#1F2933">しい営業フローを全員で試す</text>
+<line x1="235.0" y1="617" x2="235.0" y2="597" stroke="#9AA3AD" stroke-width="2"/>
+<path d="M230.0,599 L235.0,593 L240.0,599 Z" fill="#9AA3AD"/>
+<rect x="130" y="617" width="210" height="84" rx="10" fill="#FDF3E2" stroke="#EF9F27" stroke-width="2"/>
+<circle cx="118" cy="637" r="9" fill="#EF9F27"/>
+<text x="142" y="639" font-size="14" font-weight="700" fill="#1F2933">①型を知る</text>
+<text x="142" y="657" font-size="11" fill="#67707A">完了：自分の勝ち負け・型を言語</text>
+<text x="142" y="672" font-size="11" fill="#67707A">化できる</text>
+<rect x="16" y="648.0" width="80" height="22" rx="11" fill="#FDF3E2" stroke="#EF9F27" stroke-width="1"/>
+<text x="56.0" y="663.0" text-anchor="middle" font-size="11" font-weight="700" fill="#EF9F27">—</text>
+<rect x="360" y="624" width="14" height="14" rx="3" fill="#fff" stroke="#9AA3AD" stroke-width="1.5"/>
+<text x="382" y="635" font-size="12.5" fill="#1F2933">現在の営業フロー（集客～契約～工事）を書き出</text>
+<text x="382" y="650" font-size="12.5" fill="#1F2933">し、「改善すべきポイント」を整理する</text>
+<rect x="360" y="660" width="14" height="14" rx="3" fill="#fff" stroke="#9AA3AD" stroke-width="1.5"/>
+<text x="382" y="671" font-size="12.5" fill="#1F2933">クーリングオフ・審査落ち・失注を案件ごとに振</text>
+<text x="382" y="686" font-size="12.5" fill="#1F2933">り返り、原因をカテゴリ化する</text>
 </svg>

@@ -1,0 +1,5 @@
+node_modules
+dist
+*.tsbuildinfo
+# goalmap-studio.html はビルド時に自動コピーされる派生物（正データは tools/goalmap/）
+public/goalmap-studio.html

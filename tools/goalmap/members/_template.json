@@ -10,12 +10,19 @@
   "why": "なぜ今これに取り組むのか（任意）",
   "currentStage": 2,
   "cycle": 1,
+  "level": 0,
   "logs": [],
+  "daily": [],
   "phases": [
     {
       "name": "型を知る",
       "doneDef": "観察できる完了の状態",
-      "tasks": [{ "name": "タスク名", "done": false }]
+      "tasks": [
+        {
+          "name": "タスク名",
+          "done": false
+        }
+      ]
     },
     {
       "name": "練習",

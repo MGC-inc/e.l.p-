@@ -1,0 +1,167 @@
+{
+  "id": "398da094-9999-81c9-9256-c759a97c4ee2",
+  "level": 0,
+  "title": "株式会社E.L.P",
+  "children": [
+    {
+      "id": "398da094-9999-8138-8528-e7986c1e767e",
+      "level": 1,
+      "title": "営業部（浄水事業部）",
+      "children": [
+        {
+          "id": "398da094-9999-8171-a6a7-f4bcb843ef2b",
+          "level": 2,
+          "title": "ピタサチ",
+          "children": [
+            {
+              "id": "25be2676-b616-4402-a874-2e2c02c1c940:398da094-9999-8171-a6a7-f4bcb843ef2b",
+              "level": 3,
+              "title": "藤江",
+              "owner": "藤江",
+              "status": "in_progress",
+              "externalLink": "/goalmap-studio.html?member=%E8%97%A4%E6%B1%9F",
+              "description": "基礎トークを固め、お願い営業を脱して対等・堂々と踏み込んで取り切る（新人）",
+              "progress": 0,
+              "growthLevel": 3,
+              "growthForm": "若鯉"
+            },
+            {
+              "id": "5bcd676b-1247-4e66-a3de-d548ae1c1045:398da094-9999-8171-a6a7-f4bcb843ef2b",
+              "level": 3,
+              "title": "門田",
+              "owner": "門田",
+              "status": "in_progress",
+              "externalLink": "/goalmap-studio.html?member=%E9%96%80%E7%94%B0",
+              "description": "焼らず雑談で距離を縮め、当たり前ベースで主導権を握り温度感を保って取り切る",
+              "progress": 0,
+              "growthLevel": 6,
+              "growthForm": "滝登り"
+            },
+            {
+              "id": "f329c075-1457-4f25-a618-7057f8d43ed6:398da094-9999-8171-a6a7-f4bcb843ef2b",
+              "level": 3,
+              "title": "三浦",
+              "owner": "三浦",
+              "status": "in_progress",
+              "externalLink": "/goalmap-studio.html?member=%E4%B8%89%E6%B5%A6",
+              "description": "決裁者ネックを先回りし、当たり前感で言い切って取り切る",
+              "progress": 0,
+              "growthLevel": 5,
+              "growthForm": "大錦鯉"
+            }
+          ],
+          "description": "代理店 株式会社ピタサチ",
+          "owner": "門田",
+          "status": "in_progress",
+          "progress": 0.0
+        },
+        {
+          "id": "398da094-9999-81c8-bca0-c716938f7adf",
+          "level": 2,
+          "title": "wanny",
+          "children": [
+            {
+              "id": "38fda094-9999-8107-88f6-cb8b80358be5:398da094-9999-81c8-bca0-c716938f7adf",
+              "level": 3,
+              "title": "古賀",
+              "owner": "古賀",
+              "status": "in_progress",
+              "externalLink": "/goalmap-studio.html?member=%E5%8F%A4%E8%B3%80",
+              "description": "営業の基礎を固める（新人クローザー）",
+              "progress": 0,
+              "growthLevel": 0,
+              "growthForm": "たまご"
+            },
+            {
+              "id": "21d75a9a-8fe9-4b52-b15d-f8f158a256cf:398da094-9999-81c8-bca0-c716938f7adf",
+              "level": 3,
+              "title": "戸田",
+              "owner": "戸田",
+              "status": "in_progress",
+              "externalLink": "/goalmap-studio.html?member=%E6%88%B8%E7%94%B0",
+              "description": "一方的なセリフ伝達をやめ、間と聞く力でお客様主導に話させて取り切る",
+              "progress": 0,
+              "growthLevel": 3,
+              "growthForm": "若鯉"
+            },
+            {
+              "id": "2e5ee6a4-2fb7-4c86-886d-98742a9cd5c5:398da094-9999-81c8-bca0-c716938f7adf",
+              "level": 3,
+              "title": "宮腰",
+              "owner": "宮腰",
+              "status": "in_progress",
+              "externalLink": "/goalmap-studio.html?member=%E5%AE%AE%E8%85%B0",
+              "description": "温度感を自在に切り替え、間を作って当たり前スタンスで主導権を保つ",
+              "progress": 0,
+              "growthLevel": 4,
+              "growthForm": "錦鯉"
+            },
+            {
+              "id": "2dd26939-14ca-4180-b899-fc4de5ed3707:398da094-9999-81c8-bca0-c716938f7adf",
+              "level": 3,
+              "title": "岡野",
+              "owner": "岡野",
+              "status": "in_progress",
+              "externalLink": "/goalmap-studio.html?member=%E5%B2%A1%E9%87%8E",
+              "description": "保証の価値を具体イメージで伝え、『高い』を越えて契約を取り切る（クローザー）",
+              "progress": 0,
+              "growthLevel": 4,
+              "growthForm": "錦鯉"
+            }
+          ],
+          "description": "代理店 株式会社wanny",
+          "owner": "岡野",
+          "status": "in_progress",
+          "progress": 0.0
+        },
+        {
+          "id": "5798c3a2-fe16-4530-86f9-9cc46b9a0fdc",
+          "level": 2,
+          "title": "E.L.P",
+          "children": [
+            {
+              "id": "38bda094-9999-8111-90a7-f7ced01f09fe:5798c3a2-fe16-4530-86f9-9cc46b9a0fdc",
+              "level": 3,
+              "title": "今川",
+              "owner": "今川",
+              "status": "in_progress",
+              "externalLink": "/goalmap-studio.html?member=%E4%BB%8A%E5%B7%9D",
+              "description": "チーム・代理店の「売れる仕組み」を構築し、事業部売上を過去最高へ（マネジメント）",
+              "progress": 0,
+              "growthLevel": 8,
+              "growthForm": "青龍"
+            }
+          ],
+          "description": "E.L.P直轄チーム（マネジメント）",
+          "owner": "今川",
+          "status": "in_progress",
+          "progress": 0.0
+        }
+      ],
+      "description": "アポ〜クロージングまでの営業組織（代理店：ピタサチ／wanny／直轄：E.L.P）",
+      "owner": "今川",
+      "status": "in_progress",
+      "progress": 0.0
+    },
+    {
+      "id": "398da094-9999-81ed-bf3f-f39779aaaaa0",
+      "level": 1,
+      "title": "施工部（株式会社G.L）",
+      "children": [],
+      "description": "施工チーム（担当：株式会社G.L）※チーム編成・メンバーは今後投入予定",
+      "status": "not_started"
+    },
+    {
+      "id": "1f2ddb71-fed9-4d8d-8b7d-de271569b45e",
+      "level": 1,
+      "title": "クリーニング事業部（株式会社クリーンマン）",
+      "children": [],
+      "description": "クリーニング事業（担当：株式会社クリーンマン）※チーム編成・メンバーは今後投入予定",
+      "status": "not_started"
+    }
+  ],
+  "description": "売上30億円（代理店30社×平均年商1億円）／全国展開 ── 会社全体の北極星",
+  "deadline": "2029-03-31",
+  "status": "in_progress",
+  "progress": 0
+}

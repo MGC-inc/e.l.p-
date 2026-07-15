@@ -34,6 +34,7 @@
   .canvas:active{cursor:grabbing}
   #zoomstage{transform-origin:0 0;will-change:transform}
   #zoomstage svg{max-width:none;border:none}
+  #zoomstage svg [id^="z-"]{cursor:zoom-in}
   #zoomhud{position:absolute;left:10px;bottom:10px;display:flex;align-items:center;gap:8px;background:rgba(255,255,255,0.92);border:1px solid var(--line);border-radius:20px;padding:5px 12px;font-size:12px;color:var(--sub);pointer-events:none;box-shadow:0 1px 4px rgba(0,0,0,0.08)}
   #zoomhud #zoomword{font-weight:700;color:var(--ink)}
   #zoomhud #zoompct{font-weight:700;color:var(--goal)}
@@ -63,6 +64,8 @@
   .cycle-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
   .nextgoal{font-size:12px;font-weight:700;padding:5px 10px;border:1px solid #E0B43A;border-radius:8px;background:linear-gradient(#FFF6D8,#F2C230);color:#7A3E00;cursor:pointer;white-space:nowrap}
   .nextgoal:hover{filter:brightness(1.04)}
+  .lvup{font-size:12px;font-weight:700;padding:5px 10px;border:1px solid #37A0C8;border-radius:8px;background:linear-gradient(#E6F5FB,#8FD0EC);color:#124E66;cursor:pointer;white-space:nowrap}
+  .lvup:hover{filter:brightness(1.04)}
   .hint{font-size:11px;color:var(--sub);margin:2px 0 12px}
   svg{max-width:100%;height:auto;border:1px solid var(--line);border-radius:8px}
   .roster{display:flex;gap:8px;overflow-x:auto;padding:8px 14px;background:#fff;border-bottom:1px solid var(--line)}
@@ -135,8 +138,23 @@
     .mtlog .mt-grid{grid-template-columns:1fr}
     .mtlog input[type=date],.mtlog textarea{font-size:16px}
   }
-  body.summary #mtlog{display:none}
-  @media print{header,.editor,.roster,.ro-banner,#mtlog,#zoomhud{display:none}.wrap{grid-template-columns:1fr}.canvas{height:auto;overflow:visible;border:none}#zoomstage{transform:none!important}#zoomstage svg{max-width:100%}svg{border:none}}
+  body.summary #mtlog,body.summary #daily{display:none}
+  /* 📅 日報（毎日の共有）固定パネル */
+  .daily{background:#fff;border-bottom:1px solid var(--line);padding:10px 16px}
+  .daily .dhead{font-size:13px;font-weight:700;color:var(--ink);margin-bottom:6px;display:flex;align-items:center;flex-wrap:wrap;gap:6px}
+  .daily .dcount{font-size:11px;font-weight:700;color:#B7791F;background:#FFF3D6;border:1px solid #E0B43A;border-radius:999px;padding:1px 8px}
+  .daily .dnote{font-size:11px;font-weight:400;color:var(--sub)}
+  .daily .dform{display:flex;gap:8px;align-items:flex-start;flex-wrap:wrap}
+  .daily .dform textarea{flex:1;min-width:220px;padding:6px 8px;border:1px solid var(--line);border-radius:6px;font-size:13px;font-family:inherit;resize:vertical}
+  .daily .dform input[type=date]{padding:6px 8px;border:1px solid var(--line);border-radius:6px}
+  .daily .dlist{margin-top:8px;max-height:120px;overflow:auto;display:flex;flex-direction:column;gap:4px}
+  .daily .drow{display:flex;align-items:flex-start;gap:8px;font-size:12px;border:1px solid var(--line);border-radius:8px;padding:5px 8px;background:#FBFCFD}
+  .daily .ddate{color:var(--sub);white-space:nowrap;font-weight:700}
+  .daily .dtext{flex:1;color:var(--ink);white-space:pre-wrap}
+  .daily .ddel{border:none;background:none;color:var(--sub);cursor:pointer;font-size:14px}
+  .daily .dempty{font-size:12px;color:var(--sub)}
+  @media (max-width:760px){.daily .dform input[type=date],.daily .dform textarea{font-size:16px}}
+  @media print{header,.editor,.roster,.ro-banner,#mtlog,#daily,#zoomhud{display:none}.wrap{grid-template-columns:1fr}.canvas{height:auto;overflow:visible;border:none}#zoomstage{transform:none!important}#zoomstage svg{max-width:100%}svg{border:none}}
 </style>
 </head>
 <body>
@@ -163,11 +181,12 @@
 </header>
 <div class="roster" id="roster" title="クリックでメンバー切替（今のアバターが見えます）"></div>
 <div id="roBanner" class="ro-banner" style="display:none"></div>
+<section id="daily" class="daily"></section>
 <div class="wrap">
   <div class="editor" id="editor"></div>
   <div class="canvas" id="canvas">
     <div id="zoomstage"></div>
-    <div id="zoomhud"><span id="zoomword">🌌 宇宙（全体）</span><span id="zoompct">100%</span><span class="zhint">スクロール／ピンチで拡大・ドラッグで移動・ダブルクリックで全体</span></div>
+    <div id="zoomhud"><span id="zoomword">🌌 宇宙（全体）</span><span id="zoompct">100%</span><span class="zhint">タップで寄る・スクロール／ピンチで拡大・ドラッグで移動・ダブルクリックで全体</span></div>
   </div>
 </div>
 <section id="mtlog" class="mtlog"></section>
@@ -191,11 +210,22 @@ const SVG_DEFS = `<defs>`+
   `<linearGradient id="hen" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#37C9B0"/><stop offset="0.6" stop-color="#3DA0E8"/><stop offset="1" stop-color="#7A5BE0"/></linearGradient>`+
   `<linearGradient id="pcock" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2BD0C0"/><stop offset="0.55" stop-color="#2E8FD0"/><stop offset="1" stop-color="#2E4BB0"/></linearGradient>`+
   `<linearGradient id="gold" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFF0A8"/><stop offset="0.5" stop-color="#F2C230"/><stop offset="1" stop-color="#C8901A"/></linearGradient>`+
+  `<linearGradient id="koiB" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#9FD8F7"/><stop offset="1" stop-color="#2E7BC4"/></linearGradient>`+
+  `<linearGradient id="koiW" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFFFFF"/><stop offset="1" stop-color="#E9EEF3"/></linearGradient>`+
+  `<linearGradient id="drgB" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#5AE6C8"/><stop offset="0.5" stop-color="#2E8FD0"/><stop offset="1" stop-color="#5B4BE0"/></linearGradient>`+
+  `<linearGradient id="drgG" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFF3B0"/><stop offset="0.45" stop-color="#F7C531"/><stop offset="1" stop-color="#C8901A"/></linearGradient>`+
+  `<linearGradient id="fishBlu" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#6FA9CC"/><stop offset="0.55" stop-color="#A8CFE3"/><stop offset="1" stop-color="#E4F1F7"/></linearGradient>`+
+  `<linearGradient id="fishWht" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFFFFF"/><stop offset="0.6" stop-color="#F2F4F5"/><stop offset="1" stop-color="#D8DFE4"/></linearGradient>`+
+  `<linearGradient id="fishGld" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#F8D25C"/><stop offset="0.55" stop-color="#EFAF2E"/><stop offset="1" stop-color="#D88A15"/></linearGradient>`+
+  `<linearGradient id="drgBlu" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#55D0CF"/><stop offset="0.5" stop-color="#2E86C8"/><stop offset="1" stop-color="#4353C0"/></linearGradient>`+
+  `<linearGradient id="drgGld" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#F9DC74"/><stop offset="0.45" stop-color="#EEB53A"/><stop offset="1" stop-color="#B87A12"/></linearGradient>`+
+  `<linearGradient id="eggG" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFF9E8"/><stop offset="1" stop-color="#EFD9A8"/></linearGradient>`+
+  `<radialGradient id="glowG"><stop offset="0" stop-color="#FFE9A0" stop-opacity="0.75"/><stop offset="1" stop-color="#FFE9A0" stop-opacity="0"/></radialGradient>`+
   `</defs>`;
 
 function template(name){
   return {name:name||"新規メンバー",note:"",theme:"テーマ",goal:"観察できる状態でゴールを書く",
-    vision:"",visionDue:"",midGoal:"",midDue:"",why:"",currentStage:1,cycle:1,logs:[],
+    vision:"",visionDue:"",midGoal:"",midDue:"",why:"",currentStage:1,cycle:1,level:0,logs:[],daily:[],
     phases:[
       {name:"型を知る",doneDef:"観察できる完了の状態",tasks:[]},
       {name:"練習",doneDef:"観察できる完了の状態",tasks:[]},
@@ -209,14 +239,14 @@ function template(name){
 // localStorage へ取り込み、ドロップダウンに全員が並ぶ。各人の最新編集は
 // localStorage 側が正（ここは初期値／「↺ 初期化」で戻せる工場出荷値）。
 const EMBEDDED = [
-  {"name": "三浦", "note": "ピタサチ・営業", "theme": "契約を安定させる（クローザー）", "goal": "客層を問わず自分の型で契約まで運び、成約が安定する", "vision": "どんな客層でも自分の型で安定して契約でき、勝ち型を後輩に教えられる", "visionDue": "半年後（2026年内）", "midGoal": "苦手客層でも型どおり切り返せるようになる", "midDue": "2〜3ヶ月後", "why": "型を固めて成約率を安定させたい", "focus": "まずは現状の勝ち負けを言語化する（①型を知る）", "next": "②練習へ：苦手ケースの切り返しをロープレ", "currentStage": 1, "_source": "スターター（テンプレ）。Notion未登録のため、実タスク・実進捗は要見直し（2026-06-26作成）。月初は全タスク未着手＝卵スタート。", "phases": [{"name": "型を知る", "doneDef": "自分の勝ち負けを言語化できる", "tasks": [{"name": "直近の成約・失注を5件ずつ振り返る", "status": "未着手", "done": false}, {"name": "勝ち／負けパターンを言語化する", "status": "未着手", "done": false}], "due": "2026-07-17"}, {"name": "練習", "doneDef": "苦手ケースでも型どおり切り返せる", "tasks": [{"name": "苦手ケースの切り返しをロープレ", "status": "未着手", "done": false}, {"name": "トップ商談の録音を聞く", "status": "未着手", "done": false}], "due": "2026-07-27"}, {"name": "実践", "doneDef": "商談で型を意図的に使えている", "tasks": [{"name": "商談前に型の要点を確認する", "status": "未着手", "done": false}, {"name": "ネック処理を意図的に試す", "status": "未着手", "done": false}], "due": "2026-08-07"}, {"name": "振り返り", "doneDef": "失注の共通要因を抽出できる", "tasks": [{"name": "週次で成約率の推移を確認", "status": "未着手", "done": false}, {"name": "失注の共通要因を抽出する", "status": "未着手", "done": false}], "due": "2026-08-17"}, {"name": "自走", "doneDef": "指導なしで型を回し、人に教えられる", "tasks": [{"name": "自分の型を後輩に共有する", "status": "未着手", "done": false}, {"name": "勝ち型を標準トークに言語化・共有する", "status": "未着手", "done": false}], "due": "2026-08-28"}], "startDate": "2026-07-06", "dueDate": "2026-08-28", "logs": []},
-  {"name": "今川", "note": "E.L.P・営業部長", "theme": "チームの成約を仕組み化する（マネジメント）", "goal": "各メンバーの型を引き出し、チーム全体の成約率を底上げできている", "vision": "個人の勢い頼みを脱し、育成と型の仕組みでチームが自走して成約し続ける", "visionDue": "1年後（2027年）", "midGoal": "各メンバーの現在地を把握し、週次で全員のフォーカスを握れている", "midDue": "2〜3ヶ月後", "why": "個人の勢い頼みから、再現性あるチームの仕組みへ移行する", "focus": "まずは各メンバーの勝ち負けと現在地を把握する（①型を知る）", "next": "②練習へ：1on1の問いかけ設計を用意する", "currentStage": 1, "_source": "スターター（テンプレ・マネジメント版）。Notion未登録のため、実タスク・実進捗は要見直し（2026-06-26作成）。月初は全タスク未着手＝卵スタート。", "phases": [{"name": "型を知る", "doneDef": "各メンバーの勝ち負けと現在ステージを把握できている", "tasks": [{"name": "メンバー各人の勝ち／負けパターンを把握する", "status": "未着手", "done": false}, {"name": "各人の現在ステージを見立てる", "status": "未着手", "done": false}], "due": "2026-07-17"}, {"name": "練習", "doneDef": "引き出すための問いかけ・観点が用意できている", "tasks": [{"name": "1on1の問いかけ設計を用意する", "status": "未着手", "done": false}, {"name": "ロープレの観点表を作る", "status": "未着手", "done": false}], "due": "2026-07-27"}, {"name": "実践", "doneDef": "週次で各人のフォーカスを握れている", "tasks": [{"name": "週次で各人の今週フォーカスを握る", "status": "未着手", "done": false}, {"name": "商談同席でフィードバックする", "status": "未着手", "done": false}], "due": "2026-08-07"}, {"name": "振り返り", "doneDef": "チームの成約率と詰まりの要因を抽出できる", "tasks": [{"name": "チームの成約率推移をレビューする", "status": "未着手", "done": false}, {"name": "詰まりの共通要因を抽出する", "status": "未着手", "done": false}], "due": "2026-08-17"}, {"name": "自走", "doneDef": "各人が自走し、勝ち型がチームに展開されている", "tasks": [{"name": "勝ち型をチームの標準トークに展開する", "status": "未着手", "done": false}, {"name": "各人が自走できる仕組みにする", "status": "未着手", "done": false}], "due": "2026-08-28"}], "startDate": "2026-07-06", "dueDate": "2026-08-28", "logs": []},
-  {"name": "古賀", "note": "wanny・新人（2026-07-01参戦）", "theme": "営業の基礎を固める（新人クローザー）", "goal": "基本の型（ヒアリング〜クロージング）を身につけ、指導つきで商談を一周回せる", "vision": "指導なしで商談を一周回せる一人前のクローザーになり、自分の勝ち型を持つ", "visionDue": "半年後（2026年内）", "midGoal": "指導つきで商談の一部を任され、基本の型どおり話せる", "midDue": "2ヶ月後", "why": "7/1入社。まず型を覚え、自分で商談を最後まで回せる状態を目指す", "focus": "まずは商談の基本フローと勝ち筋を理解する（①型を知る）", "next": "②練習へ：基本トークをロープレで繰り返す", "currentStage": 1, "cycle": 1, "logs": [], "_source": "新人スターター（テンプレ）。2026-07-01参戦のため全タスク未着手＝卵スタート。実進捗はMTで更新（2026-06-30作成）。岡野が管理・先輩が指導役。", "phases": [{"name": "型を知る", "doneDef": "営業の基本フローと勝ち筋を説明できる", "tasks": [{"name": "商談の基本フロー（挨拶〜クロージング）を覚える", "status": "未着手", "done": false}, {"name": "先輩のトップ商談に同席し、型をメモする", "status": "未着手", "done": false}], "due": "2026-07-14"}, {"name": "練習", "doneDef": "ロープレで基本の型どおり話せる", "tasks": [{"name": "基本トークをロープレで繰り返す", "status": "未着手", "done": false}, {"name": "商品知識・よくある質問を覚える", "status": "未着手", "done": false}], "due": "2026-07-28"}, {"name": "実践", "doneDef": "指導つきで商談の一部を担当できる", "tasks": [{"name": "指導つきで商談に同席し、一部を担当する", "status": "未着手", "done": false}, {"name": "商談後に良かった点・詰まった点を記録する", "status": "未着手", "done": false}], "due": "2026-08-11"}, {"name": "振り返り", "doneDef": "うまくいった／詰まった点を言語化できる", "tasks": [{"name": "週次で自分の商談を振り返る", "status": "未着手", "done": false}, {"name": "つまずきポイントを先輩と確認する", "status": "未着手", "done": false}], "due": "2026-08-21"}, {"name": "自走", "doneDef": "指導なしで基本の商談を一周完遂できる", "tasks": [{"name": "指導なしで1商談を最後まで担当する", "status": "未着手", "done": false}, {"name": "自分の改善テーマを1つ決める", "status": "未着手", "done": false}], "due": "2026-08-31"}], "startDate": "2026-07-01", "dueDate": "2026-08-31"},
-  {"name": "宮腰", "note": "wanny・戸田指導", "theme": "契約を安定させる（クローザー）", "goal": "客層を問わず自分の型で契約まで運び、成約が安定する", "vision": "自分の成約を安定させ、戸田を一人前のクローザーに育てられる", "visionDue": "半年後（2026年内）", "midGoal": "自分の型を安定させつつ、戸田に型を教え始められる", "midDue": "2〜3ヶ月後", "why": "自分の成約を安定させつつ、戸田に型を教えられる状態を目指す", "focus": "苦手ケースの切り返しをロープレで固める（②練習・進行中）", "next": "③実践へ：商談前に型の要点を確認する", "currentStage": 2, "_source": "Notion『GMタスクDB』で宮腰ゴールに紐づく実タスク10件のミラー（2026-06-24時点）。done=ステータス『完了』。基礎④⑤の一部は未登録で、見直しで追加予定。", "phases": [{"name": "型を知る", "doneDef": "自分の勝ち負けを言語化できる", "tasks": [{"name": "直近の成約・失注を5件ずつ振り返る", "status": "完了", "done": true}, {"name": "勝ち／負けパターンを言語化する", "status": "完了", "done": true}], "due": "2026-06-19"}, {"name": "練習", "doneDef": "苦手ケースでも型どおり切り返せる", "tasks": [{"name": "苦手ケースの切り返しをロープレ", "status": "進行中", "done": false}, {"name": "トップ商談の録音を聞く", "status": "未着手", "done": false}], "due": "2026-06-28"}, {"name": "実践", "doneDef": "商談で型を意図的に使えている", "tasks": [{"name": "商談前に型の要点を確認する", "status": "未着手", "done": false}, {"name": "ネック処理を意図的に試す", "status": "未着手", "done": false}], "due": "2026-07-06"}, {"name": "振り返り", "doneDef": "失注の共通要因を、戸田に教える前提で言語化できる", "tasks": [{"name": "週次で成約率の推移を確認", "status": "未着手", "done": false}, {"name": "戸田と一緒に失注を振り返り、教える前提で言語化", "status": "未着手", "done": false}], "due": "2026-07-15"}, {"name": "自走", "doneDef": "指導なしで型を回し、戸田に教えられる", "tasks": [{"name": "戸田に自分の型を教える", "status": "未着手", "done": false}, {"name": "戸田の商談に同行してFBする", "status": "未着手", "done": false}], "due": "2026-07-23"}], "startDate": "2026-06-11", "dueDate": "2026-07-23", "logs": []},
-  {"name": "岡野", "note": "wanny", "theme": "契約を安定させる（クローザー）", "goal": "客層を問わず自分の型で契約まで運び、成約が安定する", "vision": "自分の型を安定させ、wannyメンバーの成約を底上げできる管理者になる", "visionDue": "半年後（2026年内）", "midGoal": "自分の型を安定させ、wannyの失注要因を1つ言語化できる", "midDue": "2〜3ヶ月後", "why": "成約率が客層で振れる。型を固めて安定させたい", "focus": "苦手ケースの切り返しをロープレで固める（②練習・進行中）", "next": "③実践へ：商談前に型の要点を確認する", "currentStage": 2, "_source": "Notion『GMタスクDB』の実タスク・実ステータスのミラー（2026-06-24時点）。done=ステータス『完了』。statusに実値を保持。", "phases": [{"name": "型を知る", "doneDef": "自分の勝ち負けを言語化できる", "tasks": [{"name": "直近の成約・失注を5件ずつ振り返る", "status": "完了", "done": true}, {"name": "勝ち／負けパターンを言語化する", "status": "完了", "done": true}], "due": "2026-06-19"}, {"name": "練習", "doneDef": "苦手ケースでも型どおり切り返せる", "tasks": [{"name": "苦手ケースの切り返しをロープレ", "status": "進行中", "done": false}, {"name": "トップ商談の録音を聞く", "status": "未着手", "done": false}], "due": "2026-06-28"}, {"name": "実践", "doneDef": "商談で型を意図的に使えている", "tasks": [{"name": "商談前に型の要点を確認する", "status": "未着手", "done": false}, {"name": "ネック処理を意図的に試す", "status": "未着手", "done": false}], "due": "2026-07-06"}, {"name": "振り返り", "doneDef": "失注の共通要因を抽出し、wany全体に展開できる", "tasks": [{"name": "週次で成約率の推移を確認", "status": "未着手", "done": false}, {"name": "失注の共通要因を抽出する", "status": "未着手", "done": false}, {"name": "wannyメンバーの失注商談を1件レビューし、要因を自分の型と照合", "status": "未着手", "done": false}, {"name": "【管理】wany全体の成約率を把握し、底上げ対象メンバーを決める", "status": "未着手", "done": false}], "due": "2026-07-15"}, {"name": "自走", "doneDef": "指導なしで型を回し、wanyの標準トークに言語化できる", "tasks": [{"name": "苦手客層を指名で担当する", "status": "未着手", "done": false}, {"name": "自分の型を後輩に共有する", "status": "未着手", "done": false}, {"name": "勝ち型をwannyの標準トークに言語化・共有する", "status": "未着手", "done": false}, {"name": "メンバーのロープレを主催し、教えて詰まった点を自分の再発見に使う", "status": "未着手", "done": false}, {"name": "【管理】wannyメンバーと1on1し、各人の今週フォーカスを握る", "status": "未着手", "done": false}], "due": "2026-07-23"}], "startDate": "2026-06-11", "dueDate": "2026-07-23", "logs": []},
-  {"name": "戸田", "note": "wanny・宮腰指導", "theme": "契約を安定させる（クローザー）", "goal": "客層を問わず自分の型で契約まで運び、成約が安定する", "vision": "宮腰の指導を離れ、自分の型で安定して契約できるクローザーになる", "visionDue": "半年後（2026年内）", "midGoal": "宮腰の指導つきで、苦手ケースを型どおり切り返せる", "midDue": "2〜3ヶ月後", "why": "宮腰の指導を受けながら、自分の型を固めて成約を安定させる", "focus": "まずは現状の勝ち負けを言語化する（①型を知る）", "next": "②練習へ：苦手ケースの切り返しをロープレ", "currentStage": 1, "_source": "スターター（テンプレ）。Notion未登録のため、実タスク・実進捗は要見直し（2026-06-26作成）。月初は全タスク未着手＝卵スタート。宮腰が指導役。", "phases": [{"name": "型を知る", "doneDef": "自分の勝ち負けを言語化できる", "tasks": [{"name": "直近の成約・失注を5件ずつ振り返る", "status": "未着手", "done": false}, {"name": "勝ち／負けパターンを言語化する", "status": "未着手", "done": false}], "due": "2026-07-17"}, {"name": "練習", "doneDef": "苦手ケースでも型どおり切り返せる", "tasks": [{"name": "苦手ケースの切り返しを宮腰とロープレ", "status": "未着手", "done": false}, {"name": "トップ商談の録音を聞く", "status": "未着手", "done": false}], "due": "2026-07-27"}, {"name": "実践", "doneDef": "商談で型を意図的に使えている", "tasks": [{"name": "商談前に型の要点を確認する", "status": "未着手", "done": false}, {"name": "ネック処理を意図的に試す", "status": "未着手", "done": false}], "due": "2026-08-07"}, {"name": "振り返り", "doneDef": "失注の共通要因を抽出できる", "tasks": [{"name": "週次で成約率の推移を確認", "status": "未着手", "done": false}, {"name": "失注を宮腰と振り返り、要因を言語化", "status": "未着手", "done": false}], "due": "2026-08-17"}, {"name": "自走", "doneDef": "指導なしで型を回せる", "tasks": [{"name": "指導なしで1商談を型どおり完遂する", "status": "未着手", "done": false}, {"name": "自分の勝ち型を言語化する", "status": "未着手", "done": false}], "due": "2026-08-28"}], "startDate": "2026-07-06", "dueDate": "2026-08-28", "logs": []},
-  {"name": "藤江", "note": "ピタサチ・営業", "theme": "契約を安定させる（クローザー）", "goal": "客層を問わず自分の型で契約まで運び、成約が安定する", "vision": "どんな客層でも自分の型で安定して契約でき、勝ち型を後輩に教えられる", "visionDue": "半年後（2026年内）", "midGoal": "苦手客層でも型どおり切り返せるようになる", "midDue": "2〜3ヶ月後", "why": "型を固めて成約率を安定させたい", "focus": "まずは現状の勝ち負けを言語化する（①型を知る）", "next": "②練習へ：苦手ケースの切り返しをロープレ", "currentStage": 1, "_source": "スターター（テンプレ）。Notion未登録のため、実タスク・実進捗は要見直し（2026-06-26作成）。月初は全タスク未着手＝卵スタート。", "phases": [{"name": "型を知る", "doneDef": "自分の勝ち負けを言語化できる", "tasks": [{"name": "直近の成約・失注を5件ずつ振り返る", "status": "未着手", "done": false}, {"name": "勝ち／負けパターンを言語化する", "status": "未着手", "done": false}], "due": "2026-07-17"}, {"name": "練習", "doneDef": "苦手ケースでも型どおり切り返せる", "tasks": [{"name": "苦手ケースの切り返しをロープレ", "status": "未着手", "done": false}, {"name": "トップ商談の録音を聞く", "status": "未着手", "done": false}], "due": "2026-07-27"}, {"name": "実践", "doneDef": "商談で型を意図的に使えている", "tasks": [{"name": "商談前に型の要点を確認する", "status": "未着手", "done": false}, {"name": "ネック処理を意図的に試す", "status": "未着手", "done": false}], "due": "2026-08-07"}, {"name": "振り返り", "doneDef": "失注の共通要因を抽出できる", "tasks": [{"name": "週次で成約率の推移を確認", "status": "未着手", "done": false}, {"name": "失注の共通要因を抽出する", "status": "未着手", "done": false}], "due": "2026-08-17"}, {"name": "自走", "doneDef": "指導なしで型を回し、人に教えられる", "tasks": [{"name": "自分の型を後輩に共有する", "status": "未着手", "done": false}, {"name": "勝ち型を標準トークに言語化・共有する", "status": "未着手", "done": false}], "due": "2026-08-28"}], "startDate": "2026-07-06", "dueDate": "2026-08-28", "logs": []},
-  {"name": "門田", "note": "ピタサチ・役員兼営業", "theme": "契約を安定させる（クローザー）", "goal": "客層を問わず自分の型で契約まで運び、成約が安定する", "vision": "自分の型を確立し、ピタサチ代理店に勝ち型を展開して育てられる", "visionDue": "1年後（2027年）", "midGoal": "自分の型を安定させ、ピタサチの成約率を把握・底上げ着手できる", "midDue": "2〜3ヶ月後", "why": "成約を安定させ、チームに型を示せる状態を目指す", "focus": "まずは現状の勝ち負けを言語化する（①型を知る）", "next": "②練習へ：苦手ケースの切り返しをロープレ", "currentStage": 1, "_source": "スターター（テンプレ）。Notion未登録のため、実タスク・実進捗は要見直し（2026-06-26作成）。月初は全タスク未着手＝卵スタート。", "phases": [{"name": "型を知る", "doneDef": "自分の勝ち負けを言語化できる", "tasks": [{"name": "直近の成約・失注を5件ずつ振り返る", "status": "未着手", "done": false}, {"name": "勝ち／負けパターンを言語化する", "status": "未着手", "done": false}], "due": "2026-07-17"}, {"name": "練習", "doneDef": "苦手ケースでも型どおり切り返せる", "tasks": [{"name": "苦手ケースの切り返しをロープレ", "status": "未着手", "done": false}, {"name": "トップ商談の録音を聞く", "status": "未着手", "done": false}], "due": "2026-07-27"}, {"name": "実践", "doneDef": "商談で型を意図的に使えている", "tasks": [{"name": "商談前に型の要点を確認する", "status": "未着手", "done": false}, {"name": "ネック処理を意図的に試す", "status": "未着手", "done": false}], "due": "2026-08-07"}, {"name": "振り返り", "doneDef": "失注の共通要因を抽出できる", "tasks": [{"name": "週次で成約率の推移を確認", "status": "未着手", "done": false}, {"name": "失注の共通要因を抽出する", "status": "未着手", "done": false}, {"name": "【管理】ピタサチ全体の成約率を把握し、底上げ対象を決める", "status": "未着手", "done": false}], "due": "2026-08-17"}, {"name": "自走", "doneDef": "指導なしで型を回し、代理店メンバーを育てられる", "tasks": [{"name": "自分の型を後輩に共有する", "status": "未着手", "done": false}, {"name": "勝ち型を標準トークに言語化・共有する", "status": "未着手", "done": false}, {"name": "【管理】ピタサチメンバーと1on1し、各人のフォーカスを握る", "status": "未着手", "done": false}, {"name": "【管理】ピタサチに勝ち型を標準トークとして展開する", "status": "未着手", "done": false}], "due": "2026-08-28"}], "startDate": "2026-07-06", "dueDate": "2026-08-28", "logs": []}
+  {"name": "三浦", "note": "クローザー", "theme": "決裁者ネックを先回りし、当たり前感で言い切って取り切る", "goal": "挨拶で『丁寧な人・会社』の信頼を作った上で、決裁者（夫婦）のネックを先回りして潰し、共感だけで終わらせず当たり前感で言い切ってアポ・商談を取り切れている状態。", "vision": "", "visionDue": "", "midGoal": "", "midDue": "", "why": "決裁者対策と当たり前感での言い切りが最大の伸びしろ（通話ログより）", "focus": "決裁者ネックの先回り＋当たり前感での言い切り", "next": "日程切り前に『旦那さんに予定聞かないとですよね』の前出しを全件で入れる", "currentStage": 3, "cycle": 1, "level": 5, "logs": [], "_source": "Notion🧭目標マップ＋✅GMタスクDBより反映（2026-07-08）。ゴール・タスクとも本番データ。", "startDate": "2026-06-28", "dueDate": "2026-08-28", "phases": [{"name": "型を知る", "doneDef": "自分の勝ち負け・型を言語化できる", "tasks": [{"name": "両面（夫婦同席）アポ取得のコツを岡野・宮腰からヒアリングして自分の型に落とす", "status": "未着手", "done": false}], "due": ""}, {"name": "練習", "doneDef": "苦手ケースでも型どおり実行できる", "tasks": [{"name": "日程を聞く前に「旦那さんに予定聞かないとですよね」を先出しし、決裁者ネックを出させないトークを固める", "status": "未着手", "done": false}], "due": ""}, {"name": "実践", "doneDef": "商談で意図的に型を使えている", "tasks": [{"name": "挨拶で「丁寧な人・会社」を印象づけ、表情・テンション・声のトーンにメリハリをつけて本題の刲さりを上げる", "status": "未着手", "done": false}, {"name": "【今週の1点】対話→アポの決め切り：当たり前感で言い切り→次アクション固定（アポ率11%→20%）", "status": "未着手", "done": false}, {"name": "共感で終わらせず「当たり前感で言い切る」→次アクション固定までやり切る", "status": "未着手", "done": false}], "due": ""}, {"name": "振り返り", "doneDef": "うまくいった／詰まった点を言語化できる", "tasks": [], "due": ""}, {"name": "自走", "doneDef": "指導なしで型を回せる", "tasks": [], "due": ""}]},
+  {"name": "今川", "note": "管理", "theme": "チーム・代理店の「売れる仕組み」を構築し、事業部売上を過去最高へ（マネジメント）", "goal": "自分が営業の基準となる行動を継続でき、メンバーが迷わず実践できる営業フロー・商材・管理体制が整い、クーリングオフ・審査落ち対策が営業プロセスに組み込まれ、代理店展開を開始できる状態", "vision": "", "visionDue": "", "midGoal": "", "midDue": "", "why": "再現性のある営業組織を作ることが役割。短期の売上改善と中長期の組織成長の両方を狙う", "focus": "「売れる仕組み」と「失注する原因」を見える化し、改善優先順位を決める", "next": "クーリングオフ・審査落ち・失注を案件ごとに振り返り、原因をカテゴリ化する（Week1）", "currentStage": 1, "cycle": 1, "level": 8, "logs": [], "_source": "Notion🧭目標マップ＋✅GMタスクDBより反映（2026-07-08）。ゴール・タスクとも本番データ。", "startDate": "2026-07-06", "dueDate": "2026-08-09", "phases": [{"name": "型を知る", "doneDef": "自分の勝ち負け・型を言語化できる", "tasks": [{"name": "現在の営業フロー（集客～契約～工事）を書き出し、「改善すべきポイント」を整理する", "status": "未着手", "done": false}, {"name": "クーリングオフ・審査落ち・失注を案件ごとに振り返り、原因をカテゴリ化する", "status": "未着手", "done": false}], "due": ""}, {"name": "練習", "doneDef": "苦手ケースでも型どおり実行できる", "tasks": [{"name": "商材・提案資料・営業トークを改善し、実際の営業で使える形まで完成させる", "status": "未着手", "done": false}, {"name": "メンバーとロープレ・営業レビューを実施し、新しい営業フローを全員で試す", "status": "未着手", "done": false}], "due": ""}, {"name": "実践", "doneDef": "商談で意図的に型を使えている", "tasks": [{"name": "自ら現場で改善した営業を実践し、成功・失敗事例をチームへ共有する", "status": "未着手", "done": false}, {"name": "メンバーの商談同行・レビューを行い、改善点をその場でフィードバックする", "status": "未着手", "done": false}], "due": ""}, {"name": "振り返り", "doneDef": "うまくいった／詰まった点を言語化できる", "tasks": [{"name": "商材改善・営業改善によって起きた変化を振り返り、残る課題を整理する", "status": "未着手", "done": false}, {"name": "クーリングオフ・審査落ちについて再度分析し、営業プロセスへ改善策を反映する", "status": "未着手", "done": false}], "due": ""}, {"name": "自走", "doneDef": "指導なしで型を回せる", "tasks": [{"name": "チームが自走できるよう、週次レビュー・KPI管理・教育の運用ルールを定着させる", "status": "未着手", "done": false}, {"name": "代理店がそのまま使える営業マニュアル・資料・教育フローを完成させる", "status": "未着手", "done": false}], "due": ""}]},
+  {"name": "古賀", "note": "新人", "theme": "アポの型を習得する（新人立ち上げ）", "goal": "工事挨拶〜アポ取得までの基本トークをマニュアルなしで一通り回せ、毎日アポ結果と学びを報告できている状態", "vision": "", "visionDue": "", "midGoal": "", "midDue": "", "why": "7/1入社の立ち上げ期。型を正確に覚え、行動量と振り返りの習慣を作ることが最優先", "focus": "マニュアル暗記と工事挨拶トークの習得、先輩同行での型の観察", "next": "基本トークを音読・ロープレし、毎日アポ結果と気づきを学びログに投稿", "currentStage": 1, "cycle": 1, "level": 0, "logs": [], "_source": "Notion🧭目標マップ＋✅GMタスクDBより反映（2026-07-08）。ゴール・タスクとも本番データ。", "startDate": "2026-07-01", "dueDate": "2026-08-31", "phases": [{"name": "型を知る", "doneDef": "自分の勝ち負け・型を言語化できる", "tasks": [{"name": "商談の基本フロー（挨拶〜クロージング）を覚える", "status": "未着手", "done": false}, {"name": "先輩のトップ商談に同席し、型をメモする", "status": "未着手", "done": false}], "due": ""}, {"name": "練習", "doneDef": "苦手ケースでも型どおり実行できる", "tasks": [{"name": "商品知識・よくある質問を覚える", "status": "未着手", "done": false}, {"name": "基本トークをロープレで繰り返す", "status": "未着手", "done": false}], "due": ""}, {"name": "実践", "doneDef": "商談で意図的に型を使えている", "tasks": [{"name": "指導つきで商談に同席し、一部を担当する", "status": "未着手", "done": false}, {"name": "商談後に良かった点・詰まった点を記録する", "status": "未着手", "done": false}], "due": ""}, {"name": "振り返り", "doneDef": "うまくいった／詰まった点を言語化できる", "tasks": [{"name": "つまずきポイントを先輩と確認する", "status": "未着手", "done": false}, {"name": "週次で自分の商談を振り返る", "status": "未着手", "done": false}], "due": ""}, {"name": "自走", "doneDef": "指導なしで型を回せる", "tasks": [{"name": "指導なしで１商談を最後まで担当する", "status": "未着手", "done": false}, {"name": "自分の改善テーマを1つ決める", "status": "未着手", "done": false}], "due": ""}]},
+  {"name": "宮腰", "note": "クローザー", "theme": "温度感を自在に切り替え、間を作って当たり前スタンスで主導権を保つ", "goal": "自分のテンションを相手に合わせて自在に切り替え、早口にならず『間』を作ってお客様に話させながら、当たり前スタンスで主導権を保ってアポを取り切れている状態。", "vision": "", "visionDue": "", "midGoal": "", "midDue": "", "why": "温度コントロールと当たり前スタンスの維持が最大の伸びしろ", "focus": "間を作る＋温度感スイッチング（初手を上げすぎない）", "next": "1商談ごとに『早口になっていないか』『当たり前スタンスを保てたか』を終礼で自己採点", "currentStage": 3, "cycle": 1, "level": 4, "logs": [], "_source": "Notion🧭目標マップ＋✅GMタスクDBより反映（2026-07-08）。ゴール・タスクとも本番データ。", "startDate": "2026-06-28", "dueDate": "2026-08-28", "phases": [{"name": "型を知る", "doneDef": "自分の勝ち負け・型を言語化できる", "tasks": [], "due": ""}, {"name": "練習", "doneDef": "苦手ケースでも型どおり実行できる", "tasks": [{"name": "早口を抑えて「間」を意識的に作り、質問→沈黙で待ってお客様に話させる練習", "status": "未着手", "done": false}], "due": ""}, {"name": "実践", "doneDef": "商談で意図的に型を使えている", "tasks": [{"name": "不信感でお願いスタンスに陥ったら「取れていた時の当たり前スタンス」を思い出して立て直す", "status": "未着手", "done": false}, {"name": "初手のテンションを上げすぎず、相手の反応に合わせて温度を切り替える「温度感スイッチング」を現場で試す", "status": "未着手", "done": false}], "due": ""}, {"name": "振り返り", "doneDef": "うまくいった／詰まった点を言語化できる", "tasks": [{"name": "深い褒め（「こうだから凄いですね」）→本音引き出しが効いた場面を週次で記録して再現性を高める", "status": "未着手", "done": false}], "due": ""}, {"name": "自走", "doneDef": "指導なしで型を回せる", "tasks": [], "due": ""}]},
+  {"name": "岡野", "note": "クローザー", "theme": "保証の価値を具体イメージで伝え、『高い』を越えて契約を取り切る（クローザー）", "goal": "関係構築だけで終わらせず、設備の故障リスクや保証の安心感を具体的にイメージさせ、お客様の興味と商材を結びつけて『高い＝金額判断』にさせず契約を取り切れている状態。", "vision": "", "visionDue": "", "midGoal": "", "midDue": "", "why": "6/13でクローザーに昇格。価値訴求とヒアリング深掘りが次の伸びしろ", "focus": "『高い＝価値が伝わっていない』を前提に、故障リスク・保証の安心感を具体イメージで語る", "next": "商談前に『このお客様の興味』と『商材の結び付け』を1枚で準備してから臨む", "currentStage": 3, "cycle": 1, "level": 4, "logs": [], "_source": "Notion🧭目標マップ＋✅GMタスクDBより反映（2026-07-08）。ゴール・タスクとも本番データ。", "startDate": "2026-06-28", "dueDate": "2026-08-28", "phases": [{"name": "型を知る", "doneDef": "自分の勝ち負け・型を言語化できる", "tasks": [], "due": ""}, {"name": "練習", "doneDef": "苦手ケースでも型どおり実行できる", "tasks": [{"name": "『高い＝価値が伝わっていない』前提で、故障リスク・保証の安心感を具体イメージで語る説明をロープレで固める", "status": "未着手", "done": false}], "due": ""}, {"name": "実践", "doneDef": "商談で意図的に型を使えている", "tasks": [{"name": "商談冒頭で拾った興味ワードを、クロージングで商材と結びつけて話す", "status": "未着手", "done": false}, {"name": "メリットだけでなくデメリットも正直に伝えて信頼を作ってからクロージングに入る", "status": "未着手", "done": false}], "due": ""}, {"name": "振り返り", "doneDef": "うまくいった／詰まった点を言語化できる", "tasks": [{"name": "自作ロープレを商談版でも作り、「この返しにこれを返す」を細部まで準備して臨む", "status": "未着手", "done": false}], "due": ""}, {"name": "自走", "doneDef": "指導なしで型を回せる", "tasks": [], "due": ""}]},
+  {"name": "戸田", "note": "クローザー", "theme": "一方的なセリフ伝達をやめ、間と聞く力でお客様主導に話させて取り切る", "goal": "一方的なセリフ伝達をやめ、思うよりゆっくり（0.5倍速）話して「間」と聞く力でお客様に「やりたい」と言わせ、当たり前感・特別感で温度感を上げてからアポを取り切れている状態。", "vision": "", "visionDue": "", "midGoal": "", "midDue": "", "why": "量→質に移る段階。伝え方とヒアリングの精度が課題", "focus": "0.5倍速＋間で聞くスタンスに切り替え、お客様に話させる", "next": "アポ中「自分：お客様」の話す割合を体感で半々以下に抑える", "currentStage": 2, "cycle": 1, "level": 3, "logs": [], "_source": "Notion🧭目標マップ＋✅GMタスクDBより反映（2026-07-08）。ゴール・タスクとも本番データ。", "startDate": "2026-06-28", "dueDate": "2026-08-28", "phases": [{"name": "型を知る", "doneDef": "自分の勝ち負け・型を言語化できる", "tasks": [], "due": ""}, {"name": "練習", "doneDef": "苦手ケースでも型どおり実行できる", "tasks": [{"name": "0.5倍速でゆっくり話し、思うより「間」を取る話し方をロープレで体に入れる", "status": "未着手", "done": false}, {"name": "【今週の1点】対象→対話の突破：0.5倍速＋間でお客様に話させる（対話率41%→70%）", "status": "未着手", "done": false}, {"name": "一方的に説明せず「相手が知りたくなる言い方→質問させてから答える」型を固める", "status": "未着手", "done": false}], "due": ""}, {"name": "実践", "doneDef": "商談で意図的に型を使えている", "tasks": [{"name": "当たり前感＋見える情報（リッター数・築年数）を業者口調で話し、温度感を上げてから日程切り", "status": "未着手", "done": false}, {"name": "決裁者（旦那様）には確認依頼の前に「受けたい」温度感まで上げ、可能なら直接説明する流れを作る", "status": "未着手", "done": false}], "due": ""}, {"name": "振り返り", "doneDef": "うまくいった／詰まった点を言語化できる", "tasks": [], "due": ""}, {"name": "自走", "doneDef": "指導なしで型を回せる", "tasks": [], "due": ""}]},
+  {"name": "藤江", "note": "新人", "theme": "基礎トークを固め、お願い営業を脱して対等・堂々と踏み込んで取り切る（新人）", "goal": "トークマニュアルを脳死で言えるレベルに固めた上で、お願い営業にならず対等・堂々と興味付けから踏み込み、共感とリアクションで自然に会話を広げてアポを取り切れている状態。", "vision": "", "visionDue": "", "midGoal": "", "midDue": "", "why": "6月に訪販デビュー。基礎の型固めと自信を持って踏み込むメンタル・表情管理が最優先", "focus": "対等・堂々＋オーバー表情で、興味付けから引かずに踏み込む", "next": "「うちは大丈夫」と言われても1テーマは興味付けで踏み込んでから引く", "currentStage": 2, "cycle": 1, "level": 3, "logs": [], "_source": "Notion🧭目標マップ＋✅GMタスクDBより反映（2026-07-08）。ゴール・タスクとも本番データ。", "startDate": "2026-06-28", "dueDate": "2026-08-28", "phases": [{"name": "型を知る", "doneDef": "自分の勝ち負け・型を言語化できる", "tasks": [{"name": "トークマニュアルを「脳死で言える」レベルまで暗記し、工事挨拶の第一声を固める", "status": "未着手", "done": false}], "due": ""}, {"name": "練習", "doneDef": "苦手ケースでも型どおり実行できる", "tasks": [{"name": "【今週の1点】対面→対象の見極め：興味付けから引かず対等に踏み込む（対象率67%→80%）", "status": "未着手", "done": false}, {"name": "鏡を見てオーバーに表情練習し、お客様のテンションに合わせて右肩下がりにならない表情管理を身につける", "status": "未着手", "done": false}, {"name": "自分主体の質問で押さず、相手の返答にリアクション・共感を重ねて会話を広げる型を反復", "status": "未着手", "done": false}], "due": ""}, {"name": "実践", "doneDef": "商談で意図的に型を使えている", "tasks": [{"name": "「うちは大丈夫」と言われても空気を読まず、興味付けから自信を持って踏み込む", "status": "未着手", "done": false}], "due": ""}, {"name": "振り返り", "doneDef": "うまくいった／詰まった点を言語化できる", "tasks": [], "due": ""}, {"name": "自走", "doneDef": "指導なしで型を回せる", "tasks": [], "due": ""}]},
+  {"name": "門田", "note": "クローザー", "theme": "焦らず雑談で距離を縮め、当たり前ベースで主導権を握り温度感を保って取り切る", "goal": "取れない焦りで一方的に話さず、挨拶・雑談で距離を縮めてから当たり前ベースで主導権を握り、ネック先出しに走らず温度感を保ったまま言い切りでアポ・即決まで持っていけている状態。", "vision": "", "visionDue": "", "midGoal": "", "midDue": "", "why": "焦りのコントロールと温度感維持が最大の伸びしろ", "focus": "焦らず雑談で距離を縮め、当たり前ベースで温度感を上げてから日程切り", "next": "出会い頭のサービス提示をやめ、雑談1テーマ挿んでから提示するを全件徹底", "currentStage": 3, "cycle": 1, "level": 6, "logs": [], "_source": "Notion🧭目標マップ＋✅GMタスクDBより反映（2026-07-08）。ゴール・タスクとも本番データ。", "startDate": "2026-06-28", "dueDate": "2026-08-28", "phases": [{"name": "型を知る", "doneDef": "自分の勝ち負け・型を言語化できる", "tasks": [{"name": "ガス家への玄関突破ワードを他メンバーから収集し、自分の入りトークに加える", "status": "未着手", "done": false}], "due": ""}, {"name": "練習", "doneDef": "苦手ケースでも型どおり実行できる", "tasks": [{"name": "怖しいネックを先出しで潰すのをやめ、「当たり前ベースで聞かれたら答える」スタンスをロープレで固める", "status": "未着手", "done": false}], "due": ""}, {"name": "実践", "doneDef": "商談で意図的に型を使えている", "tasks": [{"name": "工事挨拶直後にサービス提示せず、雑談1テーマで距離を縮めてから提示する", "status": "未着手", "done": false}, {"name": "母数が少ない日ほど焦ってトーク量を増やさず、間を取って温度感を上げてから日程切りする", "status": "未着手", "done": false}, {"name": "【今週の1点】在宅→対面の突破：玄関で雑談1テーマ→距離を縮める（対面率47%→65%）", "status": "未着手", "done": false}], "due": ""}, {"name": "振り返り", "doneDef": "うまくいった／詰まった点を言語化できる", "tasks": [], "due": ""}, {"name": "自走", "doneDef": "指導なしで型を回せる", "tasks": [], "due": ""}]}
 ];
 const clone = x => JSON.parse(JSON.stringify(x));
 const embeddedNames = () => EMBEDDED.map(m=>m.name);
@@ -229,6 +259,13 @@ function save(d){localStorage.setItem(KEY(d.name),JSON.stringify(d));flash("保�
 function load(n){const v=localStorage.getItem(KEY(n));return v?JSON.parse(v):null;}
 let saveTimer;function flash(msg){document.getElementById("saved").textContent=msg;clearTimeout(saveTimer);saveTimer=setTimeout(()=>document.getElementById("saved").textContent="",1500);}
 
+// このブラウザ（＝この端末を使う本人）が最後に見ていたメンバーを覚えておき、
+// ?member= 無しでリンクを開いた時にそこへ自動で戻す（毎回一覧からの選び直しを防ぐ）。
+// "goalmap:" prefixだとlistMembers()に紛れ込むため、別プレフィックスを使う。
+const LAST_KEY = "goalmap-last-member";
+function saveLastMember(n){ try{ localStorage.setItem(LAST_KEY, n); }catch(e){} }
+function loadLastMember(){ try{ return localStorage.getItem(LAST_KEY); }catch(e){ return null; } }
+
 let data;
 
 // ───────── SVG描画（Python版と同一仕様）─────────
@@ -236,121 +273,210 @@ const esc = s => String(s==null?"":s).replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt
 const wrap = (t,n) => {t=String(t||"");const r=[];for(let i=0;i<t.length;i+=n)r.push(t.slice(i,i+n));return r.length?r:[""];};
 const phaseH = n => Math.max(60, 24 + 18*n);
 
-// ───────── 成長キャラ（鶏→不死鳥）。1タスク=餌1つ、1フェーズ食べ切る=進化 ─────────
-const FORM_NAMES=["たまご","ひよこ","小鶏","とさか鶏","極彩鶏","不死鳥"];
+// ───────── 成長キャラ（卵→鯉→龍・全10段階）。レベル制：アバター＝本人のレベル、今期タスク＝進化ゲージ ─────────
+// 【思想】アバターの姿は「level（0-9）＝役職・業務・スキルの定性評価による本人の現在レベル」を如実に映す。
+// 今期ゴールのタスク消化は姿を変えず、進化ゲージ（餌）を満タンにする。満タン＝レベルアップ判定待ち（光る）で、
+// メンターがMTで昇格を確定し level を上げると次の姿へ進化する。魚は周回で卵に戻らない（レベルは維持）。
+// これで「タスクの✓連打で見た目だけ上がる」を防ぎ、姿がそのまま実力レベルを表す評価ツールになる。
+const FORM_NAMES=["たまご","針子","稚鯉","若鯉","錦鯉","大錦鯉","滝登り","化龍","青龍","金龍"];
+function memberLevel(d){ return Math.max(0,Math.min(9,Math.floor(+(d.level!=null?d.level:d.startForm)||0))); }
 function growth(d){
   const per=(d.phases||[]).map(p=>{const t=p.tasks||[];return{done:t.filter(x=>x.done).length,total:t.length};});
   const all=per.reduce((s,p)=>s+p.total,0), allDone=per.reduce((s,p)=>s+p.done,0);
-  const rate=all?Math.round(allDone/all*100):0;
-  let cleared=0; for(const p of per){ if(p.total>0&&p.done===p.total)cleared++; else break; }
-  const form=rate>=100?5:Math.min(cleared,4);
+  const rate=all?Math.round(allDone/all*100):0;             // 今期ゴールの進化ゲージ（餌の割合）
+  const level=memberLevel(d);                                // 本人の現在レベル（メンター評価）
+  const form=level;                                          // アバターは常にレベルそのもの
+  const ready=(rate>=100 && level<9);                        // ゲージ満タン＝レベルアップ判定待ち（光る）
   let np=null; for(const p of per){ if(!(p.total>0&&p.done===p.total)){np=p;break;} }
   if(!np)np=per[per.length-1]||{done:0,total:0};
   const cycle=Math.max(1,Math.floor(+d.cycle||1));
-  // earned＝これまでに孵した不死鳥の数（過去の周回＋今回100%なら今回も）
-  const earned=(cycle-1)+(rate>=100?1:0);
-  return {rate,form,allDone,all,need:Math.max(0,np.total-np.done),phaseDone:np.done,phaseTotal:np.total,cycle,earned};
+  const earned=(cycle-1);                                    // これまでに達成した今期ゴールの数
+  return {rate,form,level,ready,allDone,all,need:Math.max(0,np.total-np.done),phaseDone:np.done,phaseTotal:np.total,cycle,earned};
 }
 function star(cx,cy,r,fill){
   const pts=[[0,-1],[0.24,-0.24],[1,0],[0.24,0.24],[0,1],[-0.24,0.24],[-1,0],[-0.24,-0.24]]
     .map(([x,y])=>`${(cx+x*r).toFixed(1)},${(cy+y*r).toFixed(1)}`).join(" ");
   return `<polygon points="${pts}" fill="${fill}"/>`;
 }
-function birdMarkup(form,cx,cy,s,phaseDone,gen){
+function birdMarkup(form,cx,cy,s,phaseDone,gen,ready){
   gen=Math.floor(+gen||0);
-  const X=v=>(cx+v*s).toFixed(1),Y=v=>(cy+v*s).toFixed(1),R=v=>(v*s).toFixed(1);
+  const path=(d,f,st,w,op)=>`<path d="${d}" fill="${f||"none"}"${st?` stroke="${st}" stroke-width="${w||1}" stroke-linecap="round" stroke-linejoin="round"`:""}${op?` opacity="${op}"`:""}/>`;
+  const circ=(x,y,r,f,op)=>`<circle cx="${x}" cy="${y}" r="${r}" fill="${f}"${op?` opacity="${op}"`:""}/>`;
+  const ell=(x,y,rx,ry,f,op)=>`<ellipse cx="${x}" cy="${y}" rx="${rx}" ry="${ry}" fill="${f}"${op?` opacity="${op}"`:""}/>`;
+  const lstar=(x,y,r,f)=>{const pts=[[0,-1],[0.24,-0.24],[1,0],[0.24,0.24],[0,1],[-0.24,0.24],[-1,0],[-0.24,-0.24]].map(([a,b])=>`${(x+a*r).toFixed(1)},${(y+b*r).toFixed(1)}`).join(" ");return `<polygon points="${pts}" fill="${f}"/>`;};
+
+  // ── 写実寄りの鯉（横向き・右が頭）。紡錘形の胴＋二叉尾＋背びれ・胸びれ・鱗・えら・ひげ
+  function koi(opt){
+    const g=opt.grad, fin=opt.fin, line=opt.line, sc=opt.scaleCol;
+    const a=[];
+    // 尾びれ（二叉・鰭条つき）
+    a.push(path("M-14.8,-1 C-18.6,-4.8 -22.6,-8.2 -27.4,-9.4 C-24.9,-5.6 -24.3,-2.6 -23.9,0.2 C-24.3,2.9 -25.1,5.8 -27.6,9.6 C-22.7,8.4 -18.6,4.9 -14.8,1.4 Z",fin,line,0.5,0.95));
+    ["M-16,-0.4 C-19.5,-3 -22.4,-5.3 -25.2,-7","M-16.4,0.4 C-19.8,0.3 -22,0.2 -24.4,0.2","M-16,1.1 C-19.5,3.4 -22.3,5.5 -25.4,7.4"].forEach(d=>a.push(path(d,null,line,0.5,0.4)));
+    if(opt.flow){ // 大錦鯉：たなびく飾り尾
+      a.push(path("M-24,-6 C-26.8,-8.4 -29,-9 -30.6,-8.4",null,fin,1.1,0.7));
+      a.push(path("M-24.6,6.4 C-27.4,8.8 -29.6,9.4 -30.9,8.9",null,fin,1.1,0.7));
+    }
+    // 背びれ・尻びれ
+    a.push(path("M-1.4,-7.7 C-4.6,-11.6 -9.6,-12.6 -13.2,-10.5 C-9.9,-9.2 -5.8,-8.2 -2.6,-7.8 Z",fin,line,0.5,0.95));
+    a.push(path("M-4.2,7.9 C-5.8,10.5 -7.9,11.7 -9.7,11.8 C-8.1,9.8 -6.6,8.6 -5,7.8 Z",fin,line,0.5,0.9));
+    // 胴体（紡錘形）
+    a.push(path("M17.2,0.3 C16.6,-3.6 9.5,-7.8 1,-7.9 C-6.8,-8 -12.6,-4.6 -15.8,-1.4 L-15.8,2 C-12.6,4.9 -6.8,8.4 1,8.4 C9.5,8.3 16.6,4.2 17.2,0.3 Z",g,line,0.6,null));
+    // 模様（錦の斑）
+    (opt.patches||[]).forEach(p=>a.push(path(p[0],p[1],null,null,p[2]||0.95)));
+    // 鱗（網目状のアーチ）
+    const rows=[[-4.6,[-9,-4.8,-0.6,3.6]],[-1.6,[-11.4,-7.2,-3,1.2,5.4]],[1.5,[-11.4,-7.2,-3,1.2,5.4]],[4.4,[-9,-4.8,-0.6,3.6]]];
+    rows.forEach(([y,xs])=>xs.forEach(x=>a.push(path(`M${x},${y} q2.1,2.4 4.2,0`,null,sc,0.55,0.22))));
+    // 背の陰影・腹の照り
+    a.push(ell(0,-5.2,11,2.4,"#1F2933",0.06));
+    a.push(ell(3,4.6,9.2,2.8,"#FFFFFF",0.28));
+    // えら・口・鼻孔
+    a.push(path("M10.8,-4.6 C8.9,-1.4 8.9,1.6 10.6,4.4",null,line,0.6,0.4));
+    a.push(path("M17.2,1.1 C16.4,1.8 15.4,2 14.5,1.9",null,line,0.6,0.6));
+    a.push(circ(15.7,-1.7,0.35,line,0.5));
+    // 胸びれ（体の手前）
+    a.push(path("M8.6,3.6 C6.8,7.7 4.1,10.1 1,10.9 C3.5,7 5.6,4.8 7.4,3.4 Z",fin,line,0.5,0.95));
+    // ひげ（鯉の証・成長で伸びる）
+    if(opt.barbel>=1){a.push(path("M15.6,2 C18.6,2.2 20.5,3.5 21.3,5.6",null,"#8A7A66",0.8));}
+    if(opt.barbel>=2){a.push(path("M14.6,2.8 C16.7,3.4 17.9,4.5 18.3,6.1",null,"#8A7A66",0.7));}
+    // 目
+    a.push(circ(12.3,-2.6,1.8,opt.eyeAmber?"#C89A4A":"#5B6670"));
+    a.push(circ(12.5,-2.5,1.05,"#17110B"));
+    a.push(circ(11.8,-3.1,0.45,"#FFFFFF",0.95));
+    // 龍化の兆し（化龍：枝角・伸びたひげ・背のたてがみ）
+    if(opt.antlers){
+      a.push(path("M11.6,-5.4 C10.6,-9.6 8.2,-11.6 5.2,-12.2",null,"#A9700F",1.3));
+      a.push(path("M8.9,-10.4 C7.6,-11.8 6,-12.4 4.4,-12.4",null,"#A9700F",0.9));
+      a.push(path("M14.4,-4.8 C15,-9.2 17.4,-11.2 20.2,-11.6",null,"#A9700F",1.3));
+      a.push(path("M17,-10.2 C18.4,-11.6 20,-12.2 21.6,-12.2",null,"#A9700F",0.9));
+      a.push(path("M15.6,2 C20,2.4 22.8,4.4 23.8,7.4",null,"#A9700F",0.9));
+      ["M-3,-8.2 C-4.6,-10.6 -6.8,-11.8 -9,-12","M-7,-7.4 C-8.6,-9.6 -10.6,-10.6 -12.6,-10.8"].forEach(d=>a.push(path(d,null,"#E5651A",1.2,0.85)));
+    }
+    return a.join("");
+  }
+
+  // ── 龍（蛇体・長い口吻・枝角・たてがみ・三本爪。gold=金龍/false=青龍）
+  function dragon(gold){
+    const g=gold?"url(#drgGld)":"url(#drgBlu)";
+    const line=gold?"#8A5A00":"#1E4E86";
+    const mane=gold?"#E5651A":"#E8B23A";
+    const belly=gold?"#F6E7BE":"#CFE6F2";
+    const a=[];
+    if(gold){ // 光背・瑞雲（金龍のみ）
+      a.push(circ(0,-2,27,"url(#glowG)"));
+      for(let i=0;i<8;i++){const th=i*Math.PI/4,x2=Math.cos(th)*26,y2=-2+Math.sin(th)*26;
+        a.push(`<line x1="0" y1="-2" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" stroke="#F2C230" stroke-width="${i%2?1:1.8}" stroke-linecap="round" opacity="0.3"/>`);}
+      a.push(`<circle cx="0" cy="-2" r="21" fill="none" stroke="#F2C230" stroke-width="0.9" opacity="0.4"/>`);
+      a.push(ell(-14,20,9,3.4,"#FFFFFF",0.55));a.push(ell(13,21.5,7.5,3,"#FFFFFF",0.55));
+    }
+    const s1="M8,-17 C-3,-13.5 -8.5,-5.5 1,0", s2="M1,0 C9.5,5 4,12 -4.5,13.8", s3="M-4.5,13.8 C-11,15.2 -16.5,16.4 -22,19.5";
+    // 縁取り→胴→腹板（細く薄いダッシュ）で先細りの蛇体を表現
+    [[s1,10.6],[s2,8.4],[s3,5.2]].forEach(([d,w])=>a.push(path(d,null,line,w+1.5)));
+    [[s1,9.4],[s2,7.2],[s3,4.2]].forEach(([d,w])=>a.push(path(d,null,g,w)));
+    [[s1,2.6],[s2,2.2],[s3,1.3]].forEach(([d,w])=>a.push(`<path d="${d}" fill="none" stroke="${belly}" stroke-width="${w}" stroke-dasharray="1.5 1.9" stroke-linecap="butt" opacity="0.55" transform="translate(1.3,2.1)"/>`));
+    // 背びれのトゲ（外側の背に沿って）
+    [[6.5,-19.2,-64],[1,-17,-35],[-4.4,-14.2,-32],[-8.6,-9.4,-10],[7,5.4,64],[3.6,11.4,110],[-9.4,11.8,-18],[-15.4,13.4,-22]].forEach(([x,y,r])=>
+      a.push(`<g transform="translate(${x},${y}) rotate(${r})"><path d="M-1.9,0 L0,-4 L1.9,0 Z" fill="${mane}" stroke="${line}" stroke-width="0.4"/></g>`));
+    // 前脚・後脚（三本爪）
+    a.push(path("M4.6,-5.4 C3.2,-3 2.6,-1 3,1",null,line,2.2));
+    ["M3,1 C1.4,2 0.2,2.4 -1,2.3","M3,1 C2.5,2.6 2.2,3.8 2.4,4.9","M3,1 C4.2,2.2 5,3 5.9,3.4"].forEach(d=>a.push(path(d,null,belly,1)));
+    a.push(path("M-5.5,12.5 C-6.6,14 -7,15.4 -6.7,16.9",null,line,1.9));
+    ["M-6.7,16.9 C-8,17.6 -9,17.8 -10,17.6","M-6.7,16.9 C-7,18.2 -7.1,19.2 -6.9,20.1","M-6.7,16.9 C-5.7,17.8 -5,18.4 -4.2,18.7"].forEach(d=>a.push(path(d,null,belly,0.9)));
+    // 尾の房
+    a.push(path("M-22,19.5 C-25.4,18 -27.6,18.4 -29.4,20.2 C-27.2,20.4 -25.9,21 -24.9,22.1 C-26.7,22.5 -28,23.5 -28.7,24.9 C-26.2,24.3 -23.8,23.6 -21.6,21.6 Z",mane,line,0.5));
+    // 頭（長い口吻・上顎の切れ込み）
+    a.push(path("M4.5,-18.5 C3.8,-23 6.6,-26.6 11.4,-27.4 C14.6,-27.9 17.8,-27.4 20.8,-26 L25.6,-23.6 C24,-22.5 22.2,-22.2 20.6,-22.4 L24.4,-19.8 C21.6,-17.6 17.6,-16.9 13.8,-17.8 C10,-18.7 7,-18.4 4.5,-18.5 Z",g,line,0.7));
+    a.push(path("M19,-21.8 C17,-20 14.4,-19.2 11.8,-19.4",null,line,0.7,0.7));
+    a.push(circ(22.8,-24.6,0.55,line));
+    // 目（吊り目＋眉）
+    a.push(ell(12.4,-23.4,1.5,1.1,"#FFFFFF"));
+    a.push(circ(12.8,-23.3,0.75,"#17110B"));
+    a.push(path("M10.2,-25.3 L15,-25.9",null,line,0.9));
+    // 枝角（鹿角状・金茶）
+    const horn=gold?"#8A5A00":"#C9A227";
+    a.push(path("M10.2,-27 C8.8,-31.6 5.6,-34 1.8,-34.6",null,horn,1.8));
+    a.push(path("M6.4,-32.6 C4.8,-34 3,-34.6 1.2,-34.6",null,horn,1.1));
+    a.push(path("M15.2,-27.3 C16,-32 19,-34.4 23.2,-34.9",null,horn,1.8));
+    a.push(path("M19,-33.2 C20.6,-34.6 22.4,-35.2 24.2,-35.2",null,horn,1.1));
+    // たてがみ（後頭部から流れる）＋あご髭
+    ["M5.8,-22 C0.4,-22 -3.6,-19.4 -6.4,-15.6","M6.2,-20 C1.6,-19.4 -1.8,-17 -4,-13.6","M7,-25.6 C3,-27 -0.6,-26.6 -3.6,-24.6"].forEach(d=>a.push(path(d,null,mane,1.6,0.9)));
+    a.push(path("M12,-19.2 C11,-17 9.6,-15.6 7.8,-14.8",null,mane,1.2,0.85));
+    // 長いひげ
+    a.push(path("M23.4,-22.6 C28.2,-21.6 31,-18 31.8,-13.2",null,mane,0.9));
+    a.push(path("M22.6,-21 C26.4,-19.2 28.4,-16 28.8,-12",null,mane,0.8));
+    if(gold){a.push(path("M8.2,-27.8 L9,-31.4 L10.8,-28.6 L12,-31.9 L13.2,-28.6 L15,-31.5 L15.6,-27.9 Z","url(#drgGld)","#8A5A00",0.7));a.push(circ(11.9,-32.6,1.1,"#E0352B"));}
+    a.push(lstar(gold?-22:-20,-8,1.9,"#FFF1B8"));
+    a.push(lstar(24,6,1.7,gold?"#FFE7A0":"#DCEFFA"));
+    if(gold)a.push(lstar(0,-1,1.6,"#FFFFFF"));
+    return a.join("");
+  }
+
   const o=[];
-  const line=(x1,y1,x2,y2,c,w)=>o.push(`<line x1="${X(x1)}" y1="${Y(y1)}" x2="${X(x2)}" y2="${Y(y2)}" stroke="${c}" stroke-width="${R(w)}" stroke-linecap="round"/>`);
-  const circ=(x,y,r,f)=>o.push(`<circle cx="${X(x)}" cy="${Y(y)}" r="${R(r)}" fill="${f}"/>`);
-  const ell=(x,y,rx,ry,f)=>o.push(`<ellipse cx="${X(x)}" cy="${Y(y)}" rx="${R(rx)}" ry="${R(ry)}" fill="${f}"/>`);
-  const beak=(x,y,w,c)=>o.push(`<polygon points="${X(x)},${Y(y-2.2)} ${X(x+w)},${Y(y)} ${X(x)},${Y(y+2.2)}" fill="${c||'#F2870D'}"/>`);
-  const eye=(x,y)=>{circ(x,y,2.1,"#FFFFFF");circ(x+0.3,y,1.2,"#33270D");};
-  const comb=(x,y,n,r)=>{for(let i=0;i<n;i++)circ(x+i*r*1.3-((n-1)*r*1.3)/2,y-(i%2?1.6:0),r,"#E0352B");};
-  const M=(x,y)=>`M${X(x)},${Y(y)}`,Q=(a,b,x,y)=>`Q${X(a)},${Y(b)} ${X(x)},${Y(y)}`,L=(x,y)=>`L${X(x)},${Y(y)}`;
-  const path=(d,f,st,w)=>o.push(`<path d="${d}" fill="${f||'none'}"${st?` stroke="${st}" stroke-width="${R(w||2)}" stroke-linecap="round" stroke-linejoin="round"`:''}/>`);
   if(form===0){
-    ell(0,0,15,19,"#FFF3D6");
-    o.push(`<ellipse cx="${X(0)}" cy="${Y(0)}" rx="${R(15)}" ry="${R(19)}" fill="none" stroke="#E2D2A0" stroke-width="${R(1.4)}"/>`);
-    circ(-5,-3,1.5,"#E6D3A0");circ(5,5,1.3,"#E6D3A0");circ(1,11,1.2,"#E6D3A0");
-    if(phaseDone>0)path(M(-6,-7)+L(-2,-3)+L(-6,1)+L(-1,5),null,"#C9B27A",1.6);
+    // たまご：グラデ＋ハイライト＋接地影。餌が入ると殻にヒビ
+    o.push(ell(0,20,11,2.2,"#1F2933",0.08));
+    o.push(ell(0,0,15,19,"url(#eggG)"));
+    o.push(`<ellipse cx="0" cy="0" rx="15" ry="19" fill="none" stroke="#E2D2A0" stroke-width="1.3"/>`);
+    o.push(path("M-7.5,-9 C-9.5,-4 -9.5,3 -7.5,8",null,"#FFFFFF",2.2,0.55));
+    o.push(circ(-4.5,-3,1.4,"#E6D3A0"));o.push(circ(5,5,1.2,"#E6D3A0"));o.push(circ(1,11,1.1,"#E6D3A0"));
+    if(phaseDone>0)o.push(path("M-6,-7 L-2,-3 L-6,1 L-1,5",null,"#C9B27A",1.5));
   }else if(form===1){
-    line(-4,13,-4,19,"#F2A30D",2);line(4,13,4,19,"#F2A30D",2);
-    circ(0,2,13,"#FFD23F");ell(-8,3,4.5,7,"#F4C12B");
-    circ(0,-9,8,"#FFD23F");beak(7,-9,6);eye(3,-11);
-    path(M(-1,-16)+Q(-3,-21,1,-21),null,"#F4C12B",1.6);
+    // 針子：孵化直後の稚魚（半透明・卵黄が残る）
+    o.push(`<g transform="scale(1.15)">`);
+    o.push(path("M6.5,0 C5.5,-2 2.2,-3 -1,-2.6 C-4.2,-2.2 -6.8,-1 -8.6,0 C-6.8,1 -4.2,2.2 -1,2.6 C2.2,3 5.5,2 6.5,0 Z","#CFE8F4","#9FC4D8",0.5,0.9));
+    o.push(path("M-8.4,0 C-10.2,-1.6 -11.6,-2.2 -12.8,-2.2 C-11.9,-0.9 -11.6,0 -11.5,0 C-11.6,0 -11.9,0.9 -12.8,2.2 C-11.6,2.2 -10.2,1.6 -8.4,0 Z","#B9DCEE",null,null,0.85));
+    o.push(path("M-7.5,0 L4,0",null,"#9FC4D8",0.5,0.8));
+    o.push(circ(0.4,1,1.5,"#F5D9A8",0.9));
+    o.push(circ(3.9,-0.5,1.15,"#17110B"));o.push(circ(3.6,-0.8,0.4,"#FFFFFF"));
+    o.push(`</g>`);
   }else if(form===2){
-    line(-5,15,-5,21,"#F2A30D",2);line(5,15,5,21,"#F2A30D",2);
-    path(M(-13,2)+Q(-21,0,-22,-8),null,"#F4C12B",3);
-    ell(0,3,15,14,"#FFE066");ell(-7,4,5.5,9,"#F4C12B");line(-9,0,-5,7,"#E8B23A",1.4);
-    circ(2,-9,9,"#FFE066");comb(2,-18,2,2.4);beak(11,-9,6);eye(6,-11);
+    o.push(`<g transform="scale(0.62)">${koi({grad:"url(#fishBlu)",fin:"#6E9EBB",line:"#4E6E86",scaleCol:"#3E6E8E",barbel:1})}</g>`);
   }else if(form===3){
-    line(-5,17,-5,24,"#E8901F",2.2);line(5,17,5,24,"#E8901F",2.2);
-    path(M(-14,2)+Q(-26,-2,-24,-14),null,"#E8B04B",4);
-    path(M(-13,5)+Q(-24,4,-26,-6),null,"#C98A2E",3);
-    ell(0,4,17,15,"#FBEFD0");ell(-6,5,7,10,"#E8B04B");line(-8,1,-3,9,"#CC9A3D",1.5);
-    circ(4,-9,9,"#FBEFD0");comb(4,-19,3,2.6);
-    o.push(`<ellipse cx="${X(11)}" cy="${Y(-4)}" rx="${R(1.8)}" ry="${R(3.4)}" fill="#E0352B"/>`);
-    beak(12,-8,6);eye(7,-11);
+    o.push(`<g transform="scale(0.8)">${koi({grad:"url(#fishBlu)",fin:"#6E9EBB",line:"#4E6E86",scaleCol:"#3E6E8E",barbel:2,patches:[["M9.6,0.6 C10.8,1.4 11.4,2.6 11.2,3.8 C10,4.2 8.8,3.8 8,2.8 C8.2,1.8 8.8,1 9.6,0.6 Z","#D8503A",0.7]]})}</g>`);
   }else if(form===4){
-    line(-5,18,-5,25,"#E8901F",2.4);line(5,18,5,25,"#E8901F",2.4);
-    path(M(-14,3)+Q(-30,-3,-27,-18),null,"#37C9B0",4.5);
-    path(M(-15,6)+Q(-30,4,-30,-9),null,"#FF8A3D",4);
-    path(M(-13,9)+Q(-26,11,-29,1),null,"#FFD23F",3.5);
-    ell(0,5,18,16,"url(#hen)");ell(-5,6,7.5,11,"#FF8A3D");line(-7,2,-2,11,"#E0702A",1.6);
-    circ(5,-9,10,"url(#hen)");comb(5,-21,3,3);
-    o.push(`<ellipse cx="${X(13)}" cy="${Y(-4)}" rx="${R(2)}" ry="${R(3.8)}" fill="#E0352B"/>`);
-    beak(13,-8,7);eye(8,-11);
-    o.push(star(cx+15*s,cy-16*s,3.4*s,"#FFFFFF"));
+    o.push(`<g transform="scale(0.94)">${koi({grad:"url(#fishWht)",fin:"#D9DEE3",line:"#9AA3AD",scaleCol:"#B9C1C8",barbel:2,patches:[
+      ["M4,-7.6 C8.6,-7.2 12,-5 13.4,-2.4 C10.6,-0.8 6.8,-0.6 3.4,-2 C2,-4 2.4,-6.2 4,-7.6 Z","#D8402C"],
+      ["M-6,1.8 C-2.6,0.6 0.8,1.4 2.2,3.6 C0.6,6.2 -3,7.4 -6.4,6.6 C-7.6,5 -7.4,3.2 -6,1.8 Z","#D8402C"],
+      ["M-12.8,-3.4 C-10.4,-4.4 -8.2,-4 -7.2,-2.4 C-8.2,-0.8 -10.6,-0.4 -12.6,-1.2 C-13.2,-2 -13.2,-2.8 -12.8,-3.4 Z","#D8402C"]]})}</g>`);
+    o.push(lstar(18,-13,2.2,"#F7E9B0"));
+  }else if(form===5){
+    o.push(`<g transform="scale(1.02)">${koi({grad:"url(#fishWht)",fin:"#E8C05A",line:"#A98A3F",scaleCol:"#B9C1C8",barbel:2,flow:true,patches:[
+      ["M4,-7.6 C8.6,-7.2 12,-5 13.4,-2.4 C10.6,-0.8 6.8,-0.6 3.4,-2 C2,-4 2.4,-6.2 4,-7.6 Z","#D8402C"],
+      ["M-6,1.8 C-2.6,0.6 0.8,1.4 2.2,3.6 C0.6,6.2 -3,7.4 -6.4,6.6 C-7.6,5 -7.4,3.2 -6,1.8 Z","#E8862B"],
+      ["M-12.8,-3.4 C-10.4,-4.4 -8.2,-4 -7.2,-2.4 C-8.2,-0.8 -10.6,-0.4 -12.6,-1.2 C-13.2,-2 -13.2,-2.8 -12.8,-3.4 Z","#D8402C"],
+      ["M-2,-6.8 C0.4,-6.4 1.8,-5.2 1.6,-3.8 C0,-3.2 -2.4,-3.6 -3.6,-4.8 C-3.2,-5.8 -2.8,-6.4 -2,-6.8 Z","#2E2A26",0.85]]})}</g>`);
+    o.push(lstar(19,-14,2.4,"#F7E9B0"));
+  }else if(form===6){
+    // 滝登り：滝すじ＋水しぶき＋斜めに跳ねる黄金鯉
+    o.push(path("M-19,-26 C-16,-10 -19,6 -15,22",null,"#BFE0F2",6,0.5));
+    o.push(path("M-12,-28 C-10,-12 -12.6,4 -9.6,20",null,"#CFE8F6",4.4,0.45));
+    [[-15,20,3.2],[-8,22.5,2.5],[-19.5,23,2.1],[-3,21,1.7]].forEach(b=>o.push(circ(b[0],b[1],b[2],"#DDF0FA",0.85)));
+    o.push(`<g transform="rotate(-42) scale(0.9)">${koi({grad:"url(#fishGld)",fin:"#D89020",line:"#A9700F",scaleCol:"#B87A12",barbel:2,eyeAmber:true,patches:[["M2,-7 C5.8,-6.6 8.6,-4.8 9.8,-2.6 C7.4,-1.2 4.2,-1 1.4,-2.2 C0.2,-3.9 0.6,-5.8 2,-7 Z","#D8402C",0.9]]})}</g>`);
+    o.push(lstar(17,-18,2.6,"#FFF3D6"));
+  }else if(form===7){
+    // 化龍：角とたてがみが生えた黄金鯉が雲を抜けて昇る
+    o.push(`<g transform="rotate(-50) scale(0.9)">${koi({grad:"url(#fishGld)",fin:"#D89020",line:"#A9700F",scaleCol:"#B87A12",barbel:2,eyeAmber:true,antlers:true,patches:[["M2,-7 C5.8,-6.6 8.6,-4.8 9.8,-2.6 C7.4,-1.2 4.2,-1 1.4,-2.2 C0.2,-3.9 0.6,-5.8 2,-7 Z","#D8402C",0.9]]})}</g>`);
+    o.push(ell(-9,21,8,2.8,"#FFFFFF",0.5));
+    o.push(lstar(15,-19,2.4,"#FFF3D6"));o.push(lstar(-19,-6,1.8,"#FFE7A0"));
+  }else if(form===8){
+    o.push(`<g transform="scale(0.86)">${dragon(false)}</g>`);
   }else{
-    // 最終進化：クジャク×黄金のゴージャス版（青緑〜金イリデッセント・特大の羽・目玉の大扇・黄金の装飾）
-    const RAYS=[[31,0],[22,22],[0,31],[-22,22],[-31,0],[-22,-22],[0,-31],[22,-22]];
-    RAYS.forEach((p,i)=>o.push(`<line x1="${X(0)}" y1="${Y(0)}" x2="${X(p[0])}" y2="${Y(p[1])}" stroke="#F2C230" stroke-width="${R(i%2?1.4:2.4)}" stroke-linecap="round" opacity="0.28"/>`));
-    o.push(`<circle cx="${X(0)}" cy="${Y(0)}" r="${R(30)}" fill="#2BD0C0" opacity="0.10"/>`);
-    o.push(`<circle cx="${X(0)}" cy="${Y(0)}" r="${R(24)}" fill="none" stroke="#F2C230" stroke-width="${R(1.4)}" opacity="0.45"/>`);
-    o.push(`<circle cx="${X(0)}" cy="${Y(0)}" r="${R(20)}" fill="#FFF6D8" opacity="0.14"/>`);
-    // 孔雀の大扇（黄金の羽軸＋目玉模様）
-    const UF=[[-0.914,-0.407],[-0.695,-0.719],[-0.375,-0.927],[0,-1],[0.375,-0.927],[0.695,-0.719],[0.914,-0.407]];
-    const Rf=32, bX=0, bY=6;
-    UF.forEach(d2=>{
-      const tx=bX+d2[0]*Rf, ty=bY+d2[1]*Rf, mx=bX+d2[0]*Rf*0.55, my=bY+d2[1]*Rf*0.55;
-      path(M(bX,bY)+Q(mx,my,tx,ty),null,"#C9A227",2.4);
-      circ(tx,ty,6,"#E6B422");circ(tx,ty,4.4,"#C9A227");circ(tx,ty,3.2,"#1FA6A0");circ(tx,ty,1.9,"#173A8C");
-      o.push(`<circle cx="${X(tx-0.6)}" cy="${Y(ty-0.6)}" r="${R(0.7)}" fill="#FFFFFF"/>`);
-    });
-    // 特大の翼（金の縁取り）
-    path(M(-3,0)+Q(-22,-6,-35,-16)+Q(-20,-12,-5,-5)+"Z","url(#pcock)");
-    path(M(-3,3)+Q(-24,2,-35,-3)+Q(-18,-2,-5,-1)+"Z","#1746A0");
-    path(M(-3,0)+Q(-22,-6,-35,-16),null,"#F2C230",1.6);
-    path(M(3,0)+Q(22,-6,35,-16)+Q(20,-12,5,-5)+"Z","url(#pcock)");
-    path(M(3,3)+Q(24,2,35,-3)+Q(18,-2,5,-1)+"Z","#1746A0");
-    path(M(3,0)+Q(22,-6,35,-16),null,"#F2C230",1.6);
-    // 胴＋黄金の胸当て
-    ell(0,6,12,15,"url(#pcock)");
-    o.push(`<ellipse cx="${X(0)}" cy="${Y(9)}" rx="${R(6)}" ry="${R(9.5)}" fill="url(#gold)" opacity="0.95"/>`);
-    o.push(`<ellipse cx="${X(-2)}" cy="${Y(5)}" rx="${R(2.4)}" ry="${R(4.5)}" fill="#FFF6D8" opacity="0.55"/>`);
-    // 首〜頭（濃紺）
-    circ(0,-9,7.5,"#1C4FB0");
-    // 黄金の冠
-    path(M(-5,-15)+L(-4,-21)+L(-2,-16)+L(0,-22)+L(2,-16)+L(4,-21)+L(5,-15)+"Z","url(#gold)");
-    circ(0,-22.5,1.5,"#FFF0A8");
-    beak(7,-9,7,"#E8E0C8");eye(3,-11);
-    // 輝き
-    o.push(star(cx,cy-13*s,2*s,"#FFFFFF"));
-    o.push(star(cx-27*s,cy-9*s,2.6*s,"#FFF1B8"));
-    o.push(star(cx+28*s,cy-3*s,2.2*s,"#FFF1B8"));
-    o.push(star(cx+20*s,cy+15*s,2*s,"#FFE7A0"));
+    o.push(`<g transform="scale(0.86)">${dragon(true)}</g>`);
   }
-  // 周回番号：2周目以降、卵や鳥の胸（不死鳥は黄金の胸当て）に番号を刻む。
-  // 卵に戻ってもリセット感を出さない＝何羽目の不死鳥かが一目で分かる。
+  // 周回番号：2周目以降、胴に番号を刻む（何度目の金龍かが一目で分かる）
   if(gen>=2){
-    // [chx, chy, r] フォーム別の胸（卵は本体中央）の位置と紋章サイズ
-    const CH={0:[0,4,6.4],1:[0,3,5.4],2:[0,5,6.0],3:[0,6,6.4],4:[0,7,6.8],5:[0,9,5.8]};
-    const c=CH[form]||[0,5,6.2], chx=c[0],chy=c[1],cr=c[2];
-    o.push(`<circle cx="${X(chx)}" cy="${Y(chy)}" r="${R(cr)}" fill="#7A3E00" opacity="0.92"/>`);
-    o.push(`<circle cx="${X(chx)}" cy="${Y(chy)}" r="${R(cr)}" fill="none" stroke="#F2C230" stroke-width="${R(1)}"/>`);
-    o.push(`<text x="${X(chx)}" y="${(cy+chy*s+cr*0.52*s).toFixed(1)}" text-anchor="middle" font-size="${R(cr*1.5)}" font-weight="800" fill="#FFF3D6">${gen}</text>`);
+    const CH={0:[0,3,6.2],1:[0,-6.5,3],2:[-1,0,4],3:[-1,0,4.6],4:[-1,0,5],5:[-1,0,5.2],6:[3,3,4.6],7:[4,4,4.6],8:[-2,6,4.8],9:[-2,6,4.8]};
+    const c=CH[form]||[0,0,5],chx=c[0],chy=c[1],cr=c[2];
+    o.push(circ(chx,chy,cr,"#7A3E00",0.92));
+    o.push(`<circle cx="${chx}" cy="${chy}" r="${cr}" fill="none" stroke="#F2C230" stroke-width="0.9"/>`);
+    o.push(`<text x="${chx}" y="${(chy+cr*0.55).toFixed(1)}" text-anchor="middle" font-size="${(cr*1.5).toFixed(1)}" font-weight="800" fill="#FFF3D6">${gen}</text>`);
   }
-  return o.join("");
+  // レベルアップ判定待ち（今期ゲージ満タン）：光の輪＋⬆で「進化間近」を演出
+  if(ready){
+    o.unshift(circ(0,0,25,"url(#glowG)",0.9));
+    o.push(`<circle cx="0" cy="0" r="24" fill="none" stroke="#F7C531" stroke-width="1.4" stroke-dasharray="3 3" opacity="0.9"/>`);
+    o.push(lstar(0,-25,3,"#FFD23F"));o.push(`<text x="0" y="-22.5" text-anchor="middle" font-size="4.4" font-weight="800" fill="#B7791F">⬆</text>`);
+  }
+  return `<g transform="translate(${cx},${cy}) scale(${s})">${o.join("")}</g>`;
 }
 
 // 現在のアバターだけを切り出した単体カード（朝礼/Slack/Notionに貼る用）
@@ -361,18 +487,16 @@ function buildAvatarCard(d){
   o.push(SVG_DEFS);
   o.push(`<rect x="0" y="0" width="${W}" height="${H}" fill="#fff"/>`);
   o.push(`<rect x="5" y="5" width="${W-10}" height="${H-10}" rx="18" fill="#FFFDF7" stroke="#EFE7D6" stroke-width="1.5"/>`);
-  o.push(birdMarkup(g.form, W/2, 84, 2.35, g.phaseDone, g.cycle>=2?g.cycle:0));
-  // 周回リボン（右上に「○周目」＝何羽目の不死鳥を目指しているか）
-  if(g.cycle>=2 || g.earned>0){
-    o.push(`<rect x="${W-92}" y="16" width="76" height="24" rx="12" fill="url(#gold)" stroke="#fff" stroke-width="1.5"/>`);
-    o.push(`<text x="${W-54}" y="32" text-anchor="middle" font-size="12.5" font-weight="800" fill="#7A3E00">${g.cycle}周目</text>`);
-  }
-  // 文字の可読性確保の帯（背の高い不死鳥でも名前が読める）
+  o.push(birdMarkup(g.form, W/2, 84, 2.35, g.phaseDone, g.cycle>=2?g.cycle:0, g.ready));
+  // レベル章（右上に「Lv.N 形態名」）
+  o.push(`<rect x="${W-104}" y="16" width="88" height="24" rx="12" fill="url(#gold)" stroke="#fff" stroke-width="1.5"/>`);
+  o.push(`<text x="${W-60}" y="32" text-anchor="middle" font-size="12" font-weight="800" fill="#7A3E00">Lv.${g.level} ${FORM_NAMES[g.form]}</text>`);
+  // 文字の可読性確保の帯
   o.push(`<rect x="14" y="158" width="${W-28}" height="62" rx="12" fill="#FFFDF7" opacity="0.92"/>`);
   o.push(`<text x="${W/2}" y="182" text-anchor="middle" font-size="20" font-weight="700" fill="${ink}">${esc(d.name||"")}</text>`);
-  o.push(`<text x="${W/2}" y="202" text-anchor="middle" font-size="15" font-weight="700" fill="${g.form===5?"#C2410C":"#B7791F"}">達成率 ${g.rate}%</text>`);
-  let sub2 = g.form<5 ? `あと${g.need}コで進化（餌 ${g.phaseDone}/${g.phaseTotal}）` : `覚醒！全タスク完了`;
-  if(g.earned>0) sub2 += `　通算${g.earned}羽`;
+  o.push(`<text x="${W/2}" y="202" text-anchor="middle" font-size="15" font-weight="700" fill="${g.ready?"#C2410C":"#B7791F"}">進化ゲージ ${g.rate}%</text>`);
+  let sub2 = g.ready ? `🔥 レベルアップ判定待ち！` : (g.level>=9 ? `最高到達 金龍` : `あと${g.need}コで満タン（餌 ${g.phaseDone}/${g.phaseTotal}）`);
+  if(g.earned>0) sub2 += `　通算ゴール${g.earned}`;
   o.push(`<text x="${W/2}" y="217" text-anchor="middle" font-size="11.5" fill="${sub}">${esc(sub2)}</text>`);
   o.push("</svg>");
   return o.join("\n");
@@ -448,19 +572,21 @@ function buildSvg(d){
   o.push(star(PHASE_X+PHASE_W-16, gy+15, 6, "#FFF1B8"));
   goalLines.forEach((l,k)=>o.push(`<text x="${PHASE_X+14}" y="${gy+38+k*16}" font-size="13" font-weight="600" fill="#fff">${esc(l)}</text>`));
   pill(gy+GOAL_H/2,"達成","#B7791F","#FFF3D6");
-  // ── 成長キャラ（達成感メーター：1タスク=餌、1フェーズ完食=進化）──
+  // ── 成長キャラ（レベル制：アバター＝レベル、今期タスク＝進化ゲージ）──
   const g=growth(d);
   const ccx=402, ccy=gy+Math.round(GOAL_H/2)+6, cs=1.7, tx=ccx+46;
-  o.push(birdMarkup(g.form,ccx,ccy,cs,g.phaseDone,g.cycle>=2?g.cycle:0));
-  if(g.form<5){
-    o.push(`<text x="${tx}" y="${ccy-3}" font-size="13" font-weight="700" fill="${COL.ink}">あと${g.need}コで進化</text>`);
-    o.push(`<text x="${tx}" y="${ccy+15}" font-size="11" fill="${COL.sub}">餌 ${g.phaseDone}/${g.phaseTotal}　累計 ${g.allDone}/${g.all}</text>`);
+  o.push(birdMarkup(g.form,ccx,ccy,cs,g.phaseDone,g.cycle>=2?g.cycle:0,g.ready));
+  o.push(`<text x="${tx}" y="${ccy-16}" font-size="13" font-weight="800" fill="#B7791F">Lv.${g.level} ${FORM_NAMES[g.form]}</text>`);
+  if(g.ready){
+    o.push(`<text x="${tx}" y="${ccy+2}" font-size="13" font-weight="700" fill="#C2410C">🔥 レベルアップ判定待ち</text>`);
+  }else if(g.level>=9){
+    o.push(`<text x="${tx}" y="${ccy+2}" font-size="12" font-weight="700" fill="#C2410C">最高到達（金龍）</text>`);
   }else{
-    o.push(`<text x="${tx}" y="${ccy+2}" font-size="13" font-weight="700" fill="#C2410C">覚醒！全タスク完了</text>`);
+    o.push(`<text x="${tx}" y="${ccy-1}" font-size="12" font-weight="700" fill="${COL.ink}">進化ゲージ ${g.rate}%</text>`);
+    o.push(`<text x="${tx}" y="${ccy+16}" font-size="11" fill="${COL.sub}">餌 ${g.phaseDone}/${g.phaseTotal}　あと${g.need}コで満タン</text>`);
   }
-  // 周回（何羽目の不死鳥まで来たか）— 2周目以降 or 不死鳥で表示
   if(g.cycle>=2 || g.earned>0){
-    o.push(`<text x="${tx}" y="${ccy+33}" font-size="11" font-weight="700" fill="#B7791F">${g.cycle}周目${g.earned>0?`・達成 ${g.earned}羽`:""}</text>`);
+    o.push(`<text x="${tx}" y="${ccy+33}" font-size="11" font-weight="700" fill="#B7791F">${g.cycle}周目${g.earned>0?`・達成ゴール ${g.earned}`:""}</text>`);
   }
   o.push(`<text x="${PILL_X}" y="62" font-size="10" fill="${COL.sub}">目標時期</text>`);
   const todayIso=todayISO(); let overdueAny=false;
@@ -478,7 +604,7 @@ function buildSvg(d){
     else if(due && due<todayIso){pl="⚠"+weekLabelDate(due);pf="#DC2626";pb="#FEE2E2";overdueAny=true;}
     else{pl=due?weekLabelDate(due):"—";pf=(st==="now")?COL.now:COL.future;pb=(st==="now")?COL.nowBg:COL.futureBg;}
     const sw=st==="now"?2:1;
-    o.push(`<rect${sn===cur?' id="z-home"':""} x="${PHASE_X}" y="${y}" width="${PHASE_W}" height="${h}" rx="10" fill="${bg}" stroke="${fg}" stroke-width="${sw}"/>`);
+    o.push(`<rect id="z-phase-${idx}" x="${PHASE_X}" y="${y}" width="${PHASE_W}" height="${h}" rx="10" fill="${bg}" stroke="${fg}" stroke-width="${sw}"/>`);
     const mcy=y+20;
     o.push(`<circle cx="${PHASE_X-12}" cy="${mcy}" r="9" fill="${fg}"/>`);
     if(st==="done")o.push(`<path d="M${PHASE_X-16},${mcy} l3,3 l6,-7" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`);
@@ -516,14 +642,21 @@ function renderEditor(){
     <div class="field"><label>🏔 中目標（中期のマイルストーン・今期ゴールと大枠の間の一里塚）</label><input type="text" data-f="midGoal" value="${esc(data.midGoal||'')}" placeholder="例：苦手客層でも型どおり切り返せるようになる"></div>
     <div class="field"><label>中目標の時期ラベル（任意・例「2〜3ヶ月後」）</label><input type="text" data-f="midDue" value="${esc(data.midDue||'')}" placeholder="2〜3ヶ月後"></div>
     <div class="field"><label>現在ステージ（今ここ）</label><div class="stage-pick">${stageBtns}</div></div>
-    <div class="field"><label>周回（何周目／達成した不死鳥の番号）</label>
+    <div class="field"><label>🐉 成長レベル（本人の実力＝アバターの姿。メンターが評価して設定）</label>
+      <div class="cycle-row">
+        <select data-f-level style="width:150px">${FORM_NAMES.map((nm,i)=>`<option value="${i}"${memberLevel(data)===i?' selected':''}>Lv.${i} ${nm}</option>`).join("")}</select>
+        <button class="lvup" data-levelup title="今のレベルを1つ上げる">⬆ レベルアップ</button>
+        <span class="hint" style="margin:0">今期ゴールを全達成（進化ゲージ満タン）したらMTで昇格を判定</span>
+      </div>
+    </div>
+    <div class="field"><label>周回（何周目／達成した今期ゴールの回数）</label>
       <div class="cycle-row">
         <input type="number" min="1" step="1" data-f-cycle value="${Math.max(1,Math.floor(+data.cycle||1))}" style="width:72px">
-        <span class="hint" style="margin:0">アバターに番号が付き、何羽目か一目で分かる</span>
+        <span class="hint" style="margin:0">ゴール達成ごとに1つ進む（アバターは戻らずレベル維持）</span>
         <button class="nextgoal" data-nextgoal>🎉 ゴール達成 → 次のゴールへ</button>
       </div>
     </div>
-    <p class="hint">週次MTの編集：①できたタスクに<b>チェック</b> ②遅れたら<b>期限を延期</b>（日付を変更／「＋1週」で以降もまとめてずらす・赤=超過） ③タスク内容は<b>その場で書き換え・追加・×削除</b> ④ステージが進んだら上のボタンで変更。終了時に「JSON保存」。</p>`;
+    <p class="hint">週次MTの編集：①できたタスクに<b>チェック</b>（進化ゲージが貯まる） ②遅れたら<b>期限を延期</b>（日付を変更／「＋1週」で以降もまとめてずらす・赤=超過） ③タスク内容は<b>その場で書き換え・追加・×削除</b> ④ステージが進んだら上のボタンで変更 ⑤実力が上がったら<b>成長レベル</b>を上げる（＝アバター進化）。終了時に「JSON保存」。</p>`;
   // フェーズは図解と同じ並び（⑤→①）
   const tIso=todayISO();
   [4,3,2,1,0].forEach(idx=>{
@@ -589,18 +722,37 @@ function renderCanvas(){
   if(data.name!==lastRenderedName){lastRenderedName=data.name;requestAnimationFrame(()=>fitAll(true));}
   else zApply();
 }
-// スクロール／ピンチ／ドラッグの入力（#canvas をビューポートに）
+// タップした段（大枠→中目標→今期→フェーズ）へ寄る＝中の細かいタスクへ入っていく演出
+function drillTo(el){
+  const id=el&&el.id||"";
+  if(id.indexOf("z-phase-")===0){const i=+id.slice(8);frameTo("#"+id,"▶ "+STAGE_NAMES[i]+"（この中のタスク）",0.92,true);}
+  else if(id==="z-goal")frameTo("#z-goal","🎯 今期ゴール → ①〜⑤のアクションへ",0.82,false);
+  else if(id==="z-mid")frameTo("#z-mid","🌏 中目標",0.82,false);
+  else if(id==="z-vision")frameTo("#z-vision","🌌 大枠ゴール",0.82,false);
+  else return false;
+  return true;
+}
+// スクロール／ピンチ／ドラッグ／タップの入力（#canvas をビューポートに）
 (function(){
   const cv=zCanvas(); if(!cv)return;
   cv.addEventListener("wheel",e=>{if(summaryMode)return;e.preventDefault();const r=cv.getBoundingClientRect();zStage().style.transition="";zoomAt(e.clientX-r.left,e.clientY-r.top,Math.exp(-e.deltaY*0.0015));},{passive:false});
-  const pts=new Map(); let pd=0;
-  cv.addEventListener("pointerdown",e=>{if(summaryMode)return;cv.setPointerCapture(e.pointerId);pts.set(e.pointerId,{x:e.clientX,y:e.clientY});zStage().style.transition="";});
+  const pts=new Map(); let pd=0, moved=false, downX=0, downY=0;
+  cv.addEventListener("pointerdown",e=>{if(summaryMode)return;cv.setPointerCapture(e.pointerId);pts.set(e.pointerId,{x:e.clientX,y:e.clientY});if(pts.size===1){moved=false;downX=e.clientX;downY=e.clientY;}zStage().style.transition="";});
   cv.addEventListener("pointermove",e=>{if(!pts.has(e.pointerId))return;const prev=pts.get(e.pointerId);pts.set(e.pointerId,{x:e.clientX,y:e.clientY});
-    if(pts.size===1){ZS.x+=e.clientX-prev.x;ZS.y+=e.clientY-prev.y;zApply();}
-    else if(pts.size===2){const a=[...pts.values()],d=Math.hypot(a[0].x-a[1].x,a[0].y-a[1].y),r=cv.getBoundingClientRect();
+    if(pts.size===1){if(Math.hypot(e.clientX-downX,e.clientY-downY)>6)moved=true;ZS.x+=e.clientX-prev.x;ZS.y+=e.clientY-prev.y;zApply();}
+    else{moved=true;const a=[...pts.values()],d=Math.hypot(a[0].x-a[1].x,a[0].y-a[1].y),r=cv.getBoundingClientRect();
       if(pd)zoomAt((a[0].x+a[1].x)/2-r.left,(a[0].y+a[1].y)/2-r.top,d/pd);pd=d;}});
-  const up=e=>{pts.delete(e.pointerId);if(pts.size<2)pd=0;};
-  cv.addEventListener("pointerup",up);cv.addEventListener("pointercancel",up);cv.addEventListener("pointerleave",up);
+  const up=e=>{
+    const wasSingle=pts.size===1; pts.delete(e.pointerId); if(pts.size<2)pd=0;
+    if(wasSingle&&!moved&&!summaryMode){ // タップ＝寄る（ドラッグと区別）。テキストが上に載るので重なり全部から z- 段を探す
+      const els=document.elementsFromPoint(e.clientX,e.clientY);
+      const hit=els.find(el=>el.id&&el.id.indexOf("z-")===0);
+      if(hit)drillTo(hit);
+    }
+  };
+  cv.addEventListener("pointerup",up);
+  cv.addEventListener("pointercancel",e=>{pts.delete(e.pointerId);if(pts.size<2)pd=0;});
+  cv.addEventListener("pointerleave",e=>{pts.delete(e.pointerId);if(pts.size<2)pd=0;});
   cv.addEventListener("dblclick",e=>{if(summaryMode)return;e.preventDefault();fitAll(true);});
 })();
 
@@ -651,8 +803,8 @@ function buildSummarySvg(d){
   wrap(d.goal,18).slice(0,2).forEach((l,k)=>o.push(`<text x="${PAD+12}" y="${gy+40+k*17}" font-size="14" font-weight="600" fill="#fff">${esc(l)}</text>`));
   // アバター（小）＋キャプション
   const acx=Math.round((PAD+gw+(W-PAD))/2), acy=gy+32;
-  o.push(birdMarkup(g.form,acx,acy,1.3,g.phaseDone,g.cycle>=2?g.cycle:0));
-  o.push(`<text x="${acx}" y="${gy+gh+2}" text-anchor="middle" font-size="11" font-weight="700" fill="#B7791F">${g.form<5?`あと${g.need}コ`:"覚醒"}${g.cycle>=2?`・${g.cycle}周目`:""}</text>`);
+  o.push(birdMarkup(g.form,acx,acy,1.3,g.phaseDone,g.cycle>=2?g.cycle:0,g.ready));
+  o.push(`<text x="${acx}" y="${gy+gh+2}" text-anchor="middle" font-size="11" font-weight="700" fill="#B7791F">Lv.${g.level} ${FORM_NAMES[g.form]}${g.ready?"・判定待ち":""}</text>`);
   // 今週の最優先ストリップ
   o.push(`<rect x="${PAD}" y="${py}" width="${W-2*PAD}" height="${stripH}" rx="10" fill="${COL.nowBg}" stroke="${COL.now}"/>`);
   o.push(`<text x="${PAD+12}" y="${py+17}" font-size="12" font-weight="700" fill="${COL.now}">🎯 今週の最優先（今ここ：${esc(STAGE_NAMES[tt.stage])}）</text>`);
@@ -688,7 +840,7 @@ function buildSummarySvg(d){
 }
 function miniAvatar(d){
   const g=growth(d), S=66;
-  return `<svg viewBox="0 0 ${S} ${S}" width="${S}" height="${S}">${SVG_DEFS}${birdMarkup(g.form,S/2,S/2+5,1.15,g.phaseDone,g.cycle>=2?g.cycle:0)}</svg>`;
+  return `<svg viewBox="0 0 ${S} ${S}" width="${S}" height="${S}">${SVG_DEFS}${birdMarkup(g.form,S/2,S/2+5,1.15,g.phaseDone,g.cycle>=2?g.cycle:0,g.ready)}</svg>`;
 }
 function renderRoster(){
   const el=document.getElementById("roster");
@@ -810,7 +962,40 @@ async function toggleRec(){
   }catch(e){alert("録音を開始できませんでした（マイク許可が必要）: "+e);}
 }
 
-function renderAll(){renderEditor();renderCanvas();refreshMemberSelect();renderRoster();renderMtlog();}
+// ───────── 📅 日報（毎日の共有）─────────
+// 毎日の商談内容・共有事項をその日に記録して蓄積する固定パネル。週次MTの評価根拠
+// （基準書§5：実績DB＋商談記録＋日報）になる。data.daily=[{date,text}] に貯まる。
+let dailyDraft={date:"",text:""}, dailyDraftFor=null;
+function dailyEnsureDraft(){ if(dailyDraftFor!==data.name){dailyDraftFor=data.name;dailyDraft={date:todayISO(),text:""};} }
+function renderDaily(){
+  const el=document.getElementById("daily"); if(!el)return;
+  if(viewing){el.style.display="none";return;} el.style.display="";
+  dailyEnsureDraft();
+  const items=(data.daily||[]);
+  const recent=items.map((it,i)=>({it,i})).slice(-7).reverse();   // 直近7件・新しい順（iは実インデックス）
+  const listHtml=recent.length?recent.map(({it,i})=>
+    `<div class="drow"><span class="ddate">🗓 ${esc(it.date||"")}</span><span class="dtext">${esc(it.text||"")}</span><button class="ddel" data-ddel="${i}" title="この日報を削除">×</button></div>`
+  ).join(""):`<div class="dempty">まだ日報がありません。今日の商談内容・共有事項を記録しましょう。</div>`;
+  el.innerHTML=`
+    <div class="dhead">📅 日報（毎日の共有）<span class="dcount">計${items.length}件</span><span class="dnote">商談内容・気づき・共有事項をその日に記録。週次評価の根拠になります（基準書§5）。</span></div>
+    <div class="dform">
+      <input type="date" id="dailyDate" value="${esc(dailyDraft.date||todayISO())}">
+      <textarea id="dailyText" rows="2" placeholder="例）〇〇様商談：決裁者ネックを先出しで潰せた。明日は前日リマインドを全件徹底。">${esc(dailyDraft.text)}</textarea>
+      <button id="dailySave" class="primary">＋ 記録</button>
+    </div>
+    <div class="dlist">${listHtml}</div>`;
+}
+function saveDaily(){
+  const dt=document.getElementById("dailyDate"), tx=document.getElementById("dailyText");
+  const date=(dt&&dt.value)||todayISO(), text=((tx&&tx.value)||"").trim();
+  if(!text){alert("今日の共有内容を入力してください");return;}
+  if(!data.daily)data.daily=[];
+  data.daily.push({date,text});
+  dailyDraft={date:todayISO(),text:""};
+  persist();renderDaily();flash("日報を記録しました ✓");
+}
+
+function renderAll(){renderEditor();renderCanvas();refreshMemberSelect();renderRoster();renderDaily();renderMtlog();}
 // 履歴の読み取り専用プレビュー中は保存・編集を一切しない
 let viewing=false;
 function persist(){if(viewing)return;save(data);renderCanvas();renderRoster();}
@@ -866,6 +1051,7 @@ function archiveCycle(d){
 document.getElementById("editor").addEventListener("input",ev=>{
   const t=ev.target;
   if(t.dataset.f){data[t.dataset.f]=t.value;}
+  else if(t.dataset.fLevel!=null){data.level=Math.max(0,Math.min(9,Math.floor(+t.value||0)));persist();renderAll();return;}
   else if(t.dataset.fCycle!=null){data.cycle=Math.max(1,Math.floor(+t.value||1));}
   else if(t.dataset.phasename!=null){data.phases[+t.dataset.phasename].name=t.value;}
   else if(t.dataset.donedef!=null){data.phases[+t.dataset.donedef].doneDef=t.value;}
@@ -879,19 +1065,25 @@ document.getElementById("editor").addEventListener("input",ev=>{
 document.getElementById("editor").addEventListener("click",ev=>{
   const t=ev.target;
   if(t.dataset.stage){data.currentStage=+t.dataset.stage;persist();renderEditor();}
+  else if(t.dataset.levelup!=null){const lv=memberLevel(data);if(lv>=9){flash("すでに最高レベル（金龍）です");}else{data.level=lv+1;persist();renderAll();flash(`Lv.${lv+1} ${FORM_NAMES[lv+1]} に進化！ ✓`);}}
   else if(t.dataset.addtask!=null){data.phases[+t.dataset.addtask].tasks.push({name:"新しいタスク",done:false});persist();renderEditor();}
   else if(t.dataset.deltask){const[i,j]=t.dataset.deltask.split(":").map(Number);data.phases[i].tasks.splice(j,1);persist();renderEditor();}
   else if(t.dataset.dueplus!=null){const i=+t.dataset.dueplus;
     for(let j=i;j<data.phases.length;j++){const p=data.phases[j];const d=p.due?new Date(p.due+"T00:00:00"):new Date();d.setDate(d.getDate()+7);p.due=isoOf(d);}
     persist();renderEditor();}
   else if(t.dataset.nextgoal!=null){
-    if(confirm("現在のゴールを達成として、次のゴールに進みます。\n\nまず【この周回の地図(PNG)とデータ(JSON)を書き出し】てから:\n・周回数を+1（アバターに番号が付き、何羽目か分かる）\n・全タスクのチェックを外す（卵に戻る）\n・ステージを①に戻す\n\n書き出した2ファイルは tools/goalmap/out/archive/ に保存してコミットすると、過去の達成地図をいつでも見返せます。\nゴール文・テーマ・タスクは、このあと新しいゴールに手動で書き換えてください。")){
+    const g=growth(data), willLvUp=(g.rate>=100 && memberLevel(data)<9);
+    const msg="現在のゴールを達成として、次のゴールに進みます。\n\nまず【この周回の地図(PNG)とデータ(JSON)を書き出し】てから:\n・周回数を+1（達成した今期ゴールの回数）\n"
+      +(willLvUp?"・進化ゲージ満タンなので【成長レベルを+1（アバターが進化）】\n":"")
+      +"・全タスクのチェックを外す（新しいゴールの餌へ）\n・ステージを①に戻す\n※アバターは卵に戻りません（レベルは維持）\n\n書き出した2ファイルは tools/goalmap/out/archive/ に保存してコミットすると、過去の達成地図をいつでも見返せます。\nゴール文・テーマ・タスクは、このあと新しいゴールに手動で書き換えてください。";
+    if(confirm(msg)){
       const base=archiveCycle(data); // ★リセット前にこの周回をアーカイブ書き出し
       data.cycle=Math.max(1,Math.floor(+data.cycle||1))+1;
+      if(willLvUp)data.level=memberLevel(data)+1;
       data.currentStage=1;
       (data.phases||[]).forEach(p=>(p.tasks||[]).forEach(x=>{x.done=false;if("status" in x)x.status="未着手";}));
-      persist();renderEditor();
-      flash(`${base} を書き出しました → out/archive/ に保存 ✓`);
+      persist();renderAll();
+      flash(`${base} を書き出し${willLvUp?`・Lv.${data.level} ${FORM_NAMES[data.level]}に進化！`:""} ✓`);
     }
   }
 });
@@ -912,12 +1104,22 @@ document.getElementById("editor").addEventListener("click",ev=>{
     if(t.dataset.dellog!=null){const i=+t.dataset.dellog;if(confirm("この議事録を削除しますか？")){data.logs.splice(i,1);persist();renderMtlog();}return;}
     if(t.dataset.logtask!=null){const[i,j]=t.dataset.logtask.split(":").map(Number);const idx=(+document.getElementById("taskPhase").value||1)-1;const name=(data.logs[i].next||[])[j];if(name&&addTasksToPhase([name],idx))flash(`「${name}」を ${STAGE_NAMES[idx]} に追加 ✓`);return;}});
 })();
-document.getElementById("member").addEventListener("change",ev=>{leaveViewing();const n=ev.target.value;const d=load(n)||findEmbedded(n);if(d){data=d;save(data);renderAll();}});
+// 📅 日報（#daily は再描画で中身だけ入れ替わる。コンテナに一度だけ委譲）
+(function(){
+  const dl=document.getElementById("daily"); if(!dl)return;
+  dl.addEventListener("input",ev=>{const t=ev.target;
+    if(t.id==="dailyDate")dailyDraft.date=t.value;
+    else if(t.id==="dailyText")dailyDraft.text=t.value;});
+  dl.addEventListener("click",ev=>{const t=ev.target;
+    if(t.id==="dailySave"){saveDaily();return;}
+    if(t.dataset.ddel!=null){const i=+t.dataset.ddel;if(confirm("この日報を削除しますか？")){data.daily.splice(i,1);persist();renderDaily();}return;}});
+})();
+document.getElementById("member").addEventListener("change",ev=>{leaveViewing();const n=ev.target.value;const d=load(n)||findEmbedded(n);if(d){data=d;save(data);saveLastMember(n);renderAll();}});
 document.getElementById("roster").addEventListener("click",ev=>{
   const t=ev.target.closest("[data-rmember]"); if(!t)return;
   leaveViewing();
   const n=t.dataset.rmember; const d=load(n)||findEmbedded(n);
-  if(d){data=d;save(data);renderAll();}});
+  if(d){data=d;save(data);saveLastMember(n);renderAll();}});
 // 履歴を見る（読み取り専用・上書きしない）
 document.getElementById("history").addEventListener("click",()=>document.getElementById("historyFile").click());
 document.getElementById("historyFile").addEventListener("change",ev=>{
@@ -931,7 +1133,7 @@ document.getElementById("reset").addEventListener("click",()=>{
   if(!base){alert("このメンバーは内蔵の初期値がありません（手元のJSONから読み込んでください）");return;}
   if(!confirm(`「${data.name}」を内蔵の初期値に戻します。今の編集内容は消えます。よろしいですか？`))return;
   data=base;save(data);renderAll();});
-document.getElementById("new").addEventListener("click",()=>{leaveViewing();const n=prompt("メンバー名は？");if(!n)return;data=template(n);save(data);renderAll();});
+document.getElementById("new").addEventListener("click",()=>{leaveViewing();const n=prompt("メンバー名は？");if(!n)return;data=template(n);save(data);saveLastMember(n);renderAll();});
 document.getElementById("import").addEventListener("change",ev=>{
   const f=ev.target.files[0];if(!f)return;leaveViewing();const r=new FileReader();
   r.onload=()=>{try{data=JSON.parse(r.result);save(data);renderAll();}catch(e){alert("JSONの読み込みに失敗: "+e);}};r.readAsText(f);});
@@ -950,7 +1152,8 @@ document.getElementById("summary").addEventListener("click",()=>{
 // 🔭 望遠鏡ズームのプリセット（宇宙→地球→日本→家 の高度へ一気に寄せる）
 document.getElementById("zoomctl").addEventListener("click",ev=>{
   const b=ev.target.closest("[data-zoom]"); if(!b)return;
-  const P={1:["#z-home","🏠 家（現在地）",0.92,true],2:["#z-goal","🗾 日本（今期ゴール）",0.8,false],
+  const cur=(+data.currentStage||1)-1;
+  const P={1:["#z-phase-"+cur,"🏠 家（現在地）",0.92,true],2:["#z-goal","🗾 日本（今期ゴール）",0.8,false],
            3:["#z-mid","🌏 地球（中目標）",0.8,false],4:["#z-vision","🌌 宇宙（大枠）",0.8,false]};
   const p=P[+b.dataset.zoom]; if(!p)return;
   frameTo(p[0],p[1],p[2],p[3]);
@@ -981,7 +1184,16 @@ document.getElementById("exportPng").addEventListener("click",()=>{
   // 内蔵メンバーで、まだlocalStorageに無いものを初期投入（既存の編集は上書きしない）
   EMBEDDED.forEach(m=>{ if(!load(m.name)) localStorage.setItem(KEY(m.name),JSON.stringify(m)); });
   const members=listMembers();
-  data=load(members[0])||clone(EMBEDDED[0]);
+  // ?member=名前 が付いていれば最優先（組織ゴールマップからの遷移用）。
+  // 無ければ、この端末で最後に見ていたメンバーを復元する（毎回一覧の先頭に戻ってストレスにならないように）。
+  // それも無ければ従来どおり先頭メンバー。
+  const qMember=new URLSearchParams(location.search).get("member");
+  const lastMember=loadLastMember();
+  const initial=(qMember&&(load(qMember)||findEmbedded(qMember)))
+    ||(lastMember&&(load(lastMember)||findEmbedded(lastMember)))
+    ||load(members[0])||clone(EMBEDDED[0]);
+  data=initial;
+  saveLastMember(data.name);
   renderAll();
 })();
 </script>
