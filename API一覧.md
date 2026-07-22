@@ -15,7 +15,7 @@
 | PLAUD NOTE | 商談の録音（無料スタータープラン。文字起こしは使わずMP3書き出しのみ） | https://jp.plaud.ai ＋ スマホアプリ | APIなし（アプリログインのみ） | 各クローザー |
 | Notion（DB 商談分析＆アポ分析） | 商談分析の蓄積・ダッシュボード（商談分析運用.md） | Notionワークスペース内 | Claude Code の Notion connector（MCP）経由でアクセス。このリポジトリ・elp-goalsにトークンは置かない | 今川 |
 | LINE（@124rnagj） | タスク通知・日報リマインド等（社内限定） | Webhook/push実装は `MGC-inc/elp-goals`（`/api/line/webhook`, `lib/line.ts`） | ローカル `.env` の `ELP_LINE_CHANNEL_SECRET` / `ELP_LINE_CHANNEL_ACCESS_TOKEN`（Vercel環境変数にも同値） | MGC |
-| LINE（商談録音Bot・新規） | 商談録音の受付（社内クローザー＋代理店）。@124rnagjとは別アカウント（商談分析運用.md セクション0） | 未作成（今後アカウント発行） | 未定（作成時に追記） | 今川 |
+| LINE（商談録音Bot・新規） | 商談録音の受付（社内クローザー＋代理店）。@124rnagjとは別アカウント（商談分析運用.md セクション0、作成時チェックリスト付き） | 未作成（今後アカウント発行） | ローカル `.env` の `DEAL_LINE_CHANNEL_SECRET` / `DEAL_LINE_CHANNEL_ACCESS_TOKEN`（予定・作成時に確定） | 今川 |
 | GitHub | このリポジトリ | https://github.com/MGC-inc/e.l.p- | | |
 | Supabase（elp） | 組織データDB（タスク/日報/営業成績/議事録/通話ログ／商談録音の受付台帳 `deal_recordings`・Storageバケット `deal-recordings`） | https://supabase.com/dashboard/project/xhkcptfyjdbilhrpwcau | ローカル `.env` の `ELP_SUPABASE_*` | MGC |
 | <!-- TODO --> | | | | |
@@ -35,7 +35,7 @@
 ## シークレットの保管ルール
 
 - キー値は**リポジトリ直下の `.env`（.gitignoreで除外済み）**に置く
-- 変数名: `INNOVERA_HOST` / `INNOVERA_API_KEY` / `GOOGLE_API_KEY` / `GEMINI_API_KEY` / `ELP_SUPABASE_URL` / `ELP_SUPABASE_ANON_KEY` / `ELP_SUPABASE_SERVICE_ROLE_KEY` / `ELP_SUPABASE_DB_PASSWORD`
+- 変数名: `INNOVERA_HOST` / `INNOVERA_API_KEY` / `GOOGLE_API_KEY` / `GEMINI_API_KEY` / `ELP_SUPABASE_URL` / `ELP_SUPABASE_ANON_KEY` / `ELP_SUPABASE_SERVICE_ROLE_KEY` / `ELP_SUPABASE_DB_PASSWORD` / `DEAL_LINE_CHANNEL_SECRET`（予定） / `DEAL_LINE_CHANNEL_ACCESS_TOKEN`（予定）
 - サーバー側で自動化を動かす際はMGCのDopplerへ移行する
 
 ## 2. 記載ルール
