@@ -1,0 +1,23 @@
+{
+  "id": "5798c3a2-fe16-4530-86f9-9cc46b9a0fdc",
+  "level": 2,
+  "title": "E.L.P",
+  "children": [
+    {
+      "id": "38bda094-9999-8111-90a7-f7ced01f09fe:5798c3a2-fe16-4530-86f9-9cc46b9a0fdc",
+      "level": 3,
+      "title": "今川",
+      "owner": "今川",
+      "status": "in_progress",
+      "externalLink": "/studio/5798c3a2-fe16-4530-86f9-9cc46b9a0fdc.html?member=%E4%BB%8A%E5%B7%9D",
+      "description": "チーム・代理店の「売れる仕組み」を構築し、事業部売上を過去最高へ（マネジメント）",
+      "progress": 0,
+      "growthLevel": 8,
+      "growthForm": "青龍"
+    }
+  ],
+  "description": "E.L.P直轄チーム（マネジメント）",
+  "owner": "今川",
+  "status": "in_progress",
+  "progress": 0.0
+}

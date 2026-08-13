@@ -9,13 +9,22 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch("./data/roadmap.json")
+    // ?agency=<代理店トークン> があれば、その代理店専用の部分木だけを取得する
+    // （全社版roadmap.jsonへは絶対にフォールバックしない＝他代理店データの漏洩防止）
+    const agency = new URLSearchParams(window.location.search).get("agency");
+    const dataUrl = agency ? `./data/roadmap-${agency}.json` : "./data/roadmap.json";
+
+    fetch(dataUrl)
       .then((r) => {
         if (!r.ok) throw new Error(String(r.status));
         return r.json();
       })
       .then((data: RoadmapNode) => setRoot(data))
       .catch(() => {
+        if (agency) {
+          setError("このリンクのデータを取得できませんでした。URLをご確認ください。");
+          return;
+        }
         // public/data/roadmap.json が無い/読めない場合はバンドル同梱のサンプルにフォールバック
         setRoot(sampleData as unknown as RoadmapNode);
         setError("data/roadmap.json を取得できなかったため、同梱サンプルを表示しています。");

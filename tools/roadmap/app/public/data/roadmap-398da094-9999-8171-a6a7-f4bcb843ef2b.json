@@ -1,0 +1,47 @@
+{
+  "id": "398da094-9999-8171-a6a7-f4bcb843ef2b",
+  "level": 2,
+  "title": "ピタサチ",
+  "children": [
+    {
+      "id": "25be2676-b616-4402-a874-2e2c02c1c940:398da094-9999-8171-a6a7-f4bcb843ef2b",
+      "level": 3,
+      "title": "藤江",
+      "owner": "藤江",
+      "status": "in_progress",
+      "externalLink": "/studio/398da094-9999-8171-a6a7-f4bcb843ef2b.html?member=%E8%97%A4%E6%B1%9F",
+      "description": "基礎トークを固め、お願い営業を脱して対等・堂々と踏み込んで取り切る（新人）",
+      "progress": 0,
+      "growthLevel": 3,
+      "growthForm": "若鯉"
+    },
+    {
+      "id": "5bcd676b-1247-4e66-a3de-d548ae1c1045:398da094-9999-8171-a6a7-f4bcb843ef2b",
+      "level": 3,
+      "title": "門田",
+      "owner": "門田",
+      "status": "in_progress",
+      "externalLink": "/studio/398da094-9999-8171-a6a7-f4bcb843ef2b.html?member=%E9%96%80%E7%94%B0",
+      "description": "焼らず雑談で距離を縮め、当たり前ベースで主導権を握り温度感を保って取り切る",
+      "progress": 0,
+      "growthLevel": 6,
+      "growthForm": "滝登り"
+    },
+    {
+      "id": "f329c075-1457-4f25-a618-7057f8d43ed6:398da094-9999-8171-a6a7-f4bcb843ef2b",
+      "level": 3,
+      "title": "三浦",
+      "owner": "三浦",
+      "status": "in_progress",
+      "externalLink": "/studio/398da094-9999-8171-a6a7-f4bcb843ef2b.html?member=%E4%B8%89%E6%B5%A6",
+      "description": "決裁者ネックを先回りし、当たり前感で言い切って取り切る",
+      "progress": 0,
+      "growthLevel": 5,
+      "growthForm": "大錦鯉"
+    }
+  ],
+  "description": "代理店 株式会社ピタサチ",
+  "owner": "門田",
+  "status": "in_progress",
+  "progress": 0.0
+}

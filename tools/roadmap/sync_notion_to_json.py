@@ -316,6 +316,64 @@ def attach_members(company: dict, goal_pages: list[dict]) -> None:
             team.setdefault("children", []).append(leaf)
 
 
+def find_agency_nodes(node: dict) -> list[dict]:
+    """代理店（アクセス制御の境界）ノードを見つける。
+
+    Level2（チーム＝代理店。例：ピタサチ／wanny）は無条件に境界。
+    Level1は、Level2の子を持たず（＝チーム層を経ない代理店構成）かつ
+    Level3（メンバー）を直接子に持つ場合のみ境界として扱う（将来、
+    施工部・クリーニング事業部にチーム層を作らずメンバーを直接
+    ぶら下げるケースの拡張余地）。それ以外のLevel1（例：現状の
+    営業部＝Level2の親）は境界にせず、配下を掘り進める。
+    """
+    found: list[dict] = []
+
+    def walk(n: dict) -> None:
+        if n["level"] == 2:
+            found.append(n)
+            return
+        if n["level"] == 1:
+            children = n.get("children", [])
+            has_level2_child = any(c["level"] == 2 for c in children)
+            has_direct_member = any(c["level"] == 3 for c in children)
+            if not has_level2_child and has_direct_member:
+                found.append(n)
+                return
+        for c in n.get("children", []):
+            walk(c)
+
+    walk(node)
+    return found
+
+
+def _rewrite_member_links(node: dict, token: str) -> None:
+    """代理店スコープの部分木内で、個人リンクを代理店専用studioへ向け直す。"""
+    if node["level"] == 3 and "externalLink" in node:
+        link = node["externalLink"]
+        prefix = "/goalmap-studio.html?"
+        if link.startswith(prefix):
+            node["externalLink"] = f"/studio/{quote(token)}.html?{link[len(prefix):]}"
+    for c in node.get("children", []):
+        _rewrite_member_links(c, token)
+
+
+def slice_agency_subtrees(company: dict) -> list[tuple[str, dict]]:
+    """代理店境界ノードごとに、その配下だけを含む部分木を作る。
+
+    各部分木はその境界ノード自身を新しいrootとする（＝「自社チームの
+    配下だけ」を見せる。組織全体のシェルは見せない）。トークンは
+    新規発行せず、境界ノードの既存id（Notion UUID・十分に推測不能）を
+    そのまま流用する。
+    """
+    subtrees: list[tuple[str, dict]] = []
+    for boundary in find_agency_nodes(company):
+        sub = json.loads(json.dumps(boundary, ensure_ascii=False))  # deep copy
+        token = boundary["id"]
+        _rewrite_member_links(sub, token)
+        subtrees.append((token, sub))
+    return subtrees
+
+
 def rollup_progress(node: dict) -> float | None:
     """子の進捗率の単純平均を、未設定ノードのprogressとして埋める（下から上へ）。"""
     children = node.get("children", [])
@@ -359,6 +417,12 @@ def main() -> None:
         SAMPLE_OUTPUT.parent.mkdir(parents=True, exist_ok=True)
         SAMPLE_OUTPUT.write_text(text, encoding="utf-8")
         print(f"wrote {SAMPLE_OUTPUT}")
+
+    for token, sub in slice_agency_subtrees(company):
+        agency_path = args.output.parent / f"roadmap-{token}.json"
+        agency_text = json.dumps(sub, ensure_ascii=False, indent=2) + "\n"
+        agency_path.write_text(agency_text, encoding="utf-8")
+        print(f"wrote {agency_path} (代理店: {sub.get('title')})")
 
 
 if __name__ == "__main__":

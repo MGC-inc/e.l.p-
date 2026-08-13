@@ -12,9 +12,10 @@ MT後に `members/*.json`（studioで「JSON保存」した“正”データ）
     4. 📊 チーム達成率バー        team_chart.py              → out/チーム達成率.png
     5. 🖥️ 週次スライド(任意)      build_weekly_deck.py       → out/週次.pptx（python-pptx必要）
     6. 🏢 組織ロードマップ同期(任意) roadmap/sync_notion_to_json.py（NOTION_TOKENがある時のみ）
+    7. 🔐 代理店ごとの専用スタジオ(任意) build_agency_studio.py（6が実行された時のみ）
 
 使い方:
-    python3 tools/goalmap/weekly_update.py            # 1〜6を実行（6はTOKEN無ければスキップ）
+    python3 tools/goalmap/weekly_update.py            # 1〜7を実行（6・7はTOKEN無ければスキップ）
     python3 tools/goalmap/weekly_update.py --commit   # 生成物をgit add＋コミットまで
     python3 tools/goalmap/weekly_update.py --no-notion # 組織マップ同期をスキップ
     python3 tools/goalmap/weekly_update.py --no-deck   # スライド生成をスキップ
@@ -116,8 +117,16 @@ def main(argv: list[str]) -> int:
         print("  同期したい時: export NOTION_TOKEN=... して再実行（値はリポジトリに書かない）。")
         results.append(("skip", "🏢 組織ロードマップ同期（NOTION_TOKEN無し）"))
     else:
-        results.append(run("🏢 組織ロードマップ同期",
-                           [PY, "sync_notion_to_json.py"], cwd=HERE.parent / "roadmap"))
+        notion_status, notion_detail = run(
+            "🏢 組織ロードマップ同期", [PY, "sync_notion_to_json.py"], cwd=HERE.parent / "roadmap"
+        )
+        results.append((notion_status, notion_detail))
+
+        # 7. 代理店ごとの専用スタジオ（6でroadmap-<token>.jsonが更新された時のみ）
+        if notion_status == "ok":
+            results.append(run("🔐 代理店ごとの専用スタジオ", [PY, "build_agency_studio.py"]))
+        else:
+            results.append(("skip", "🔐 代理店ごとの専用スタジオ（組織ロードマップ同期が未実行のため）"))
 
     # ── まとめ ──
     print("\n" + "=" * 44)
@@ -130,7 +139,8 @@ def main(argv: list[str]) -> int:
 
     # git 差分の可視化
     diff = subprocess.run(["git", "status", "--short", "tools/goalmap/out",
-                           "tools/roadmap/app/public/data"],
+                           "tools/roadmap/app/public/data",
+                           "tools/roadmap/app/public/studio"],
                           cwd=str(REPO), capture_output=True, text=True)
     changed = [l for l in (diff.stdout or "").splitlines() if l.strip()]
     print(f"\n変更ファイル: {len(changed)}件")
@@ -141,7 +151,8 @@ def main(argv: list[str]) -> int:
 
     if args.commit and changed:
         subprocess.run(["git", "add", "tools/goalmap/out",
-                        "tools/roadmap/app/public/data", "tools/roadmap/app/src/data"],
+                        "tools/roadmap/app/public/data", "tools/roadmap/app/src/data",
+                        "tools/roadmap/app/public/studio"],
                        cwd=str(REPO))
         msg = f"chore(goalmap): 週次更新（{len(ms)}名分の図解・カード再生成）"
         c = subprocess.run(["git", "commit", "-m", msg], cwd=str(REPO),
