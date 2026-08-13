@@ -138,7 +138,7 @@
     .mtlog .mt-grid{grid-template-columns:1fr}
     .mtlog input[type=date],.mtlog textarea{font-size:16px}
   }
-  body.summary #mtlog,body.summary #daily{display:none}
+  body.summary #mtlog,body.summary #daily,body.summary #weekly{display:none}
   /* 📅 日報（毎日の共有）固定パネル */
   .daily{background:#fff;border-bottom:1px solid var(--line);padding:10px 16px}
   .daily .dhead{font-size:13px;font-weight:700;color:var(--ink);margin-bottom:6px;display:flex;align-items:center;flex-wrap:wrap;gap:6px}
@@ -154,7 +154,24 @@
   .daily .ddel{border:none;background:none;color:var(--sub);cursor:pointer;font-size:14px}
   .daily .dempty{font-size:12px;color:var(--sub)}
   @media (max-width:760px){.daily .dform input[type=date],.daily .dform textarea{font-size:16px}}
-  @media print{header,.editor,.roster,.ro-banner,#mtlog,#daily,#zoomhud{display:none}.wrap{grid-template-columns:1fr}.canvas{height:auto;overflow:visible;border:none}#zoomstage{transform:none!important}#zoomstage svg{max-width:100%}svg{border:none}}
+  /* 📚 今週の学び（達成率とは別管理の振り返りチェック）固定パネル */
+  .weekly{background:#fff;border-bottom:1px solid var(--line);padding:10px 16px}
+  .weekly .whead{font-size:13px;font-weight:700;color:var(--ink);margin-bottom:6px;display:flex;align-items:center;flex-wrap:wrap;gap:6px}
+  .weekly .wcount{font-size:11px;font-weight:700;color:#2F6F4E;background:#E7F5EF;border:1px solid #1D9E75;border-radius:999px;padding:1px 8px}
+  .weekly .wnote{font-size:11px;font-weight:400;color:var(--sub)}
+  .weekly .wform{display:flex;gap:8px;align-items:flex-start;flex-wrap:wrap}
+  .weekly .wform input[type=text]{padding:6px 8px;border:1px solid var(--line);border-radius:6px;font-size:13px}
+  .weekly .wform textarea{flex:1;min-width:220px;padding:6px 8px;border:1px solid var(--line);border-radius:6px;font-size:13px;font-family:inherit;resize:vertical}
+  .weekly .wlist{margin-top:8px;max-height:120px;overflow:auto;display:flex;flex-direction:column;gap:4px}
+  .weekly .wrow{display:flex;align-items:flex-start;gap:8px;font-size:12px;border:1px solid var(--line);border-radius:8px;padding:5px 8px;background:#FBFCFD}
+  .weekly .wrow.checked{background:#F0FAF5;border-color:#1D9E75}
+  .weekly .wweek{color:var(--sub);white-space:nowrap;font-weight:700}
+  .weekly .wtext{flex:1;color:var(--ink);white-space:pre-wrap}
+  .weekly .wsrc{color:var(--sub);font-size:11px;white-space:nowrap}
+  .weekly .wdel{border:none;background:none;color:var(--sub);cursor:pointer;font-size:14px}
+  .weekly .wempty{font-size:12px;color:var(--sub)}
+  @media (max-width:760px){.weekly .wform input[type=text],.weekly .wform textarea{font-size:16px}}
+  @media print{header,.editor,.roster,.ro-banner,#mtlog,#daily,#weekly,#zoomhud{display:none}.wrap{grid-template-columns:1fr}.canvas{height:auto;overflow:visible;border:none}#zoomstage{transform:none!important}#zoomstage svg{max-width:100%}svg{border:none}}
 </style>
 </head>
 <body>
@@ -182,6 +199,7 @@
 <div class="roster" id="roster" title="クリックでメンバー切替（今のアバターが見えます）"></div>
 <div id="roBanner" class="ro-banner" style="display:none"></div>
 <section id="daily" class="daily"></section>
+<section id="weekly" class="weekly"></section>
 <div class="wrap">
   <div class="editor" id="editor"></div>
   <div class="canvas" id="canvas">
@@ -225,7 +243,7 @@ const SVG_DEFS = `<defs>`+
 
 function template(name){
   return {name:name||"新規メンバー",note:"",theme:"テーマ",goal:"観察できる状態でゴールを書く",
-    vision:"",visionDue:"",midGoal:"",midDue:"",why:"",currentStage:1,cycle:1,level:0,logs:[],daily:[],
+    vision:"",visionDue:"",midGoal:"",midDue:"",why:"",currentStage:1,cycle:1,level:0,logs:[],daily:[],weeklyLearnings:[],
     phases:[
       {name:"型を知る",doneDef:"観察できる完了の状態",tasks:[]},
       {name:"練習",doneDef:"観察できる完了の状態",tasks:[]},
@@ -995,7 +1013,50 @@ function saveDaily(){
   persist();renderDaily();flash("日報を記録しました ✓");
 }
 
-function renderAll(){renderEditor();renderCanvas();refreshMemberSelect();renderRoster();renderDaily();renderMtlog();}
+// ───────── 📚 今週の学び（達成率とは別管理の振り返りチェック）─────────
+// 日々のLINE→Notion日報（アポ報告）から、週1件を引用して振り返りチェックする。
+// タスク達成率（成長実感の軸）とは完全に別集計。data.weeklyLearnings=[{week,text,source,checked}]
+const DAILY_NOTION_URL="https://app.notion.com/p/1390f33071954624a22fa2af7361e179";
+let weeklyDraft={week:"",text:"",source:""}, weeklyDraftFor=null;
+function weeklyEnsureDraft(){ if(weeklyDraftFor!==data.name){weeklyDraftFor=data.name;weeklyDraft={week:todayISO(),text:"",source:""};} }
+function renderWeekly(){
+  const el=document.getElementById("weekly"); if(!el)return;
+  if(viewing){el.style.display="none";return;} el.style.display="";
+  weeklyEnsureDraft();
+  const items=(data.weeklyLearnings||[]);
+  const checkedCount=items.filter(it=>it.checked).length;
+  const recent=items.map((it,i)=>({it,i})).slice(-12).reverse();
+  const listHtml=recent.length?recent.map(({it,i})=>
+    `<div class="wrow${it.checked?" checked":""}"><input type="checkbox" data-wcheck="${i}" ${it.checked?"checked":""} title="振り返り済み">`+
+    `<span class="wweek">🗓 ${esc(it.week||"")}</span><span class="wtext">${esc(it.text||"")}</span>`+
+    `<span class="wsrc">${esc(it.source||"")}</span><button class="wdel" data-wdel="${i}" title="この学びを削除">×</button></div>`
+  ).join(""):`<div class="wempty">まだ今週の学びがありません。Notion日報から1件引用しましょう。</div>`;
+  el.innerHTML=`
+    <div class="whead">📚 今週の学び<span class="wcount">振り返り済み ${checkedCount}/${items.length}件</span><span class="wnote">達成率（タスク）とは別管理。<a href="${DAILY_NOTION_URL}" target="_blank" rel="noopener">📎 Notion日報を開く</a></span></div>
+    <div class="wform">
+      <input type="text" id="weeklyWeek" value="${esc(weeklyDraft.week||todayISO())}" style="width:110px" placeholder="週">
+      <textarea id="weeklyText" rows="2" placeholder="例）決裁者のネックを先に聞く質問を1つ増やしたら通過率が上がった">${esc(weeklyDraft.text)}</textarea>
+      <input type="text" id="weeklySource" value="${esc(weeklyDraft.source)}" style="width:140px" placeholder="引用元（例：7/10分日報）">
+      <button id="weeklySave" class="primary">＋ 引用</button>
+    </div>
+    <div class="wlist">${listHtml}</div>`;
+}
+function saveWeekly(){
+  const wk=document.getElementById("weeklyWeek"), tx=document.getElementById("weeklyText"), sc=document.getElementById("weeklySource");
+  const week=(wk&&wk.value)||todayISO(), text=((tx&&tx.value)||"").trim(), source=(sc&&sc.value)||"";
+  if(!text){alert("今週の学びを入力してください");return;}
+  if(!data.weeklyLearnings)data.weeklyLearnings=[];
+  data.weeklyLearnings.push({week,text,source,checked:false});
+  weeklyDraft={week:todayISO(),text:"",source:""};
+  persist();renderWeekly();flash("今週の学びを記録しました ✓");
+}
+function toggleWeeklyChecked(i){
+  if(!data.weeklyLearnings||!data.weeklyLearnings[i])return;
+  data.weeklyLearnings[i].checked=!data.weeklyLearnings[i].checked;
+  persist();renderWeekly();
+}
+
+function renderAll(){renderEditor();renderCanvas();refreshMemberSelect();renderRoster();renderDaily();renderWeekly();renderMtlog();}
 // 履歴の読み取り専用プレビュー中は保存・編集を一切しない
 let viewing=false;
 function persist(){if(viewing)return;save(data);renderCanvas();renderRoster();}
@@ -1113,6 +1174,19 @@ document.getElementById("editor").addEventListener("click",ev=>{
   dl.addEventListener("click",ev=>{const t=ev.target;
     if(t.id==="dailySave"){saveDaily();return;}
     if(t.dataset.ddel!=null){const i=+t.dataset.ddel;if(confirm("この日報を削除しますか？")){data.daily.splice(i,1);persist();renderDaily();}return;}});
+})();
+// 📚 今週の学び（#weekly も同様にコンテナへ一度だけ委譲）
+(function(){
+  const wl=document.getElementById("weekly"); if(!wl)return;
+  wl.addEventListener("input",ev=>{const t=ev.target;
+    if(t.id==="weeklyWeek")weeklyDraft.week=t.value;
+    else if(t.id==="weeklyText")weeklyDraft.text=t.value;
+    else if(t.id==="weeklySource")weeklyDraft.source=t.value;});
+  wl.addEventListener("change",ev=>{const t=ev.target;
+    if(t.dataset.wcheck!=null)toggleWeeklyChecked(+t.dataset.wcheck);});
+  wl.addEventListener("click",ev=>{const t=ev.target;
+    if(t.id==="weeklySave"){saveWeekly();return;}
+    if(t.dataset.wdel!=null){const i=+t.dataset.wdel;if(confirm("この学びを削除しますか？")){data.weeklyLearnings.splice(i,1);persist();renderWeekly();}return;}});
 })();
 document.getElementById("member").addEventListener("change",ev=>{leaveViewing();const n=ev.target.value;const d=load(n)||findEmbedded(n);if(d){data=d;save(data);saveLastMember(n);renderAll();}});
 document.getElementById("roster").addEventListener("click",ev=>{
