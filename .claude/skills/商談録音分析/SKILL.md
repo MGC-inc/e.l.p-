@@ -11,8 +11,8 @@ description: LINEで送られてきた商談録音（PLAUD NOTE等のMP3）をGe
 
 ## 前提
 
-- LINE Webhook（`ユメイク営業分析bot`。実装は`elp-goals`側または新規の軽量Webhook）が録音を受信した瞬間にSupabase Storage（バケット `deal-recordings`）へ保存し、Supabaseテーブル `deal_recordings` に行を作成している。アポインター→お客様名（〇〇邸形式）→結果→分析する/しない、の聞き返しが完了すると `status` が `ready`（分析する）または `skipped`（分析しない）になる。
-- この前提がまだ実装されていない場合、このスキルは「未分析の商談はありません」と応答するだけになる。実装状況は `商談分析運用.md` を確認する。
+- LINE Webhook（`line-webhook/`。今川さん個人のVercelアカウントで運用）が録音を受信した瞬間にSupabase Storage（バケット `deal-recordings`）へ保存し、Supabaseテーブル `deal_recordings` に行を作成している。アポインター→お客様名（〇〇邸形式）→結果→分析する/しない、の聞き返しが完了すると `status` が `ready`（分析する）または `skipped`（分析しない）になる。詳細は `line-webhook/README.md`。
+- クーリングオフの検知は、このスキルとは別に**日次Routine**がNotion DBを監視して行う（商談分析運用.md セクション7）。このスキル自体はクーリングオフを特別扱いしない。
 
 ## 手順（通常実行: 「商談録音を分析して」）
 
@@ -30,7 +30,7 @@ description: LINEで送られてきた商談録音（PLAUD NOTE等のMP3）をGe
 
    ```bash
    python3 scripts/deal_analysis.py <一時保存パス> \
-     --closer <deal_recordings.closer_employee_idから解決した氏名> \
+     --closer <deal_recordings.closer_name> \
      --customer <deal_recordings.customer_name（〇〇邸の形式）> \
      --result <deal_recordings.result> \
      --appointer <deal_recordings.appointer（LINEで確定済み）> \
@@ -55,9 +55,23 @@ description: LINEで送られてきた商談録音（PLAUD NOTE等のMP3）をGe
 
    成功した行を `status='done'`, `notion_url=<作成したページURL>` に更新する（PostgRESTのPATCHで）。
 
-6. **LINEで完了通知を送る**
+6. **クローザーごとに、分析結果とゴールマップをまとめて1通で送る**
 
-   `ELP_LINE_CHANNEL_ACCESS_TOKEN` を使い、`https://api.line.me/v2/bot/message/push` にPOSTして `deal_recordings.line_user_id` 宛てに「〇〇邸の分析が完了しました: <Notionリンク>」を送る（`scripts/line_richmenu.py` のurllib直叩きパターンを踏襲する）。
+   送信数を増やさないため、クローザー1人につき**1回のpush呼び出し**（`messages`配列にテキスト＋画像をまとめる）で送る。`DEAL_LINE_CHANNEL_ACCESS_TOKEN` を使い、`https://api.line.me/v2/bot/message/push` にPOSTする（`scripts/line_richmenu.py` のurllib直叩きパターンを踏襲する）。
+
+   `closer_line_users` の全行についてループする（今回のバッチで分析対象がなかった人も含む）:
+
+   a. その人（`line_user_id`）に紐づく、今回のバッチで新たにNotion登録した商談を集め、1行ずつ「お客様名（結果）採点＜100点満点の総合点のみ＞→Notionリンク」の形式でテキストにする。0件なら「今週の分析対象はありません」の1行にする。
+
+   b. `closer_line_users.goalmap_member_name` を使い、`tools/goalmap/members/<goalmap_member_name>.json` を読む。`phases`のうち`currentStage`が指す現在フェーズ名、達成率（全`tasks`の`done:true`の割合×100、`tools/goalmap/generate_goalmap.py`と同じ計算式）、現在フェーズの`due`が本日より前かつ未完了なら期限超過、を求める。コメントを1行組み立てる:
+      - 通常: `現在フェーズ: ①<フェーズ名>（達成率<n>%）`
+      - 期限超過: `⚠ 期限に遅れがあります（①<フェーズ名>）`
+
+   c. 画像は `https://raw.githubusercontent.com/MGC-inc/e.l.p-/main/tools/goalmap/out/<goalmap_member_name>.png` をそのまま使う（新たな生成・アップロードは不要）。
+
+   d. a〜cを1回のpushで送る: `messages: [{"type":"text","text":"<aの内容>\n\n<bのコメント>"}, {"type":"image","originalContentUrl":"<cのURL>","previewImageUrl":"<cのURL>"}]`
+
+   `goalmap_member_name` が未設定の人は、bとcを省略しテキストのみ送る。
 
 7. **失敗があれば管理者に通知する**
 
