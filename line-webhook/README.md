@@ -26,8 +26,12 @@
 4. 「Environment Variables」に以下を設定する（値はこのリポジトリやチャットには書かない）:
    - `DEAL_LINE_CHANNEL_SECRET`
    - `DEAL_LINE_CHANNEL_ACCESS_TOKEN`
-   - `ELP_SUPABASE_URL`
-   - `ELP_SUPABASE_SERVICE_ROLE_KEY`
+   - `DEAL_SUPABASE_URL`
+   - `DEAL_SUPABASE_SERVICE_ROLE_KEY`
+
+   （`ELP_SUPABASE_URL`等の名前は使わない。Vercelチーム共有変数として既に別用途で使われており、
+   Vercelの通常デプロイでは共有変数がFile Upload APIデプロイに反映されない問題が確認されたため、
+   このプロジェクト専用の変数名で直接追加する）
 5. Deployをクリックする
 
 ### 3. LINE側の設定

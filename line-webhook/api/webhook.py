@@ -19,8 +19,8 @@ from http.server import BaseHTTPRequestHandler
 
 LINE_CHANNEL_SECRET = os.environ["DEAL_LINE_CHANNEL_SECRET"]
 LINE_CHANNEL_ACCESS_TOKEN = os.environ["DEAL_LINE_CHANNEL_ACCESS_TOKEN"]
-SUPABASE_URL = os.environ["ELP_SUPABASE_URL"]
-SUPABASE_SERVICE_ROLE_KEY = os.environ["ELP_SUPABASE_SERVICE_ROLE_KEY"]
+SUPABASE_URL = os.environ["DEAL_SUPABASE_URL"]
+SUPABASE_SERVICE_ROLE_KEY = os.environ["DEAL_SUPABASE_SERVICE_ROLE_KEY"]
 
 RESULT_OPTIONS = ["契約", "保留", "失注", "クーリングオフ", "審査落ち", "キャンセル"]
 # 要: 今川さんが実際のメンバー構成に合わせて随時更新する
