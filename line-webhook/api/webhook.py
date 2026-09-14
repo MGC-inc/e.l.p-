@@ -23,8 +23,6 @@ SUPABASE_URL = os.environ["DEAL_SUPABASE_URL"]
 SUPABASE_SERVICE_ROLE_KEY = os.environ["DEAL_SUPABASE_SERVICE_ROLE_KEY"]
 
 RESULT_OPTIONS = ["契約", "保留", "失注", "クーリングオフ", "審査落ち", "キャンセル"]
-# 要: 今川さんが実際のメンバー構成に合わせて随時更新する
-APPOINTER_OPTIONS = ["今川", "三浦", "古賀", "宮腰", "岡野", "戸田", "藤江", "門田"]
 PENDING_STATUSES = "awaiting_appointer,awaiting_customer,awaiting_result,awaiting_confirm"
 
 
@@ -161,8 +159,7 @@ def handle_audio_message(event: dict, closer: dict):
 
     line_reply(reply_token, [{
         "type": "text",
-        "text": "録音を受け取りました。アポインターは誰ですか？",
-        "quickReply": quick_reply(APPOINTER_OPTIONS),
+        "text": "録音を受け取りました。アポインターは誰ですか？（お名前を入力してください）",
     }])
 
 
