@@ -116,21 +116,49 @@ def upload_audio(key, path):
     raise RuntimeError("file processing timeout (15min)")
 
 
-def generate(key, model, prompt, file_uri, file_mime):
+def generate(key, model, prompt, file_uri, file_mime, retries=3):
+    """商談全体（2〜3時間超）の音声を1リクエストで分析する。
+
+    2.5系モデルはデフォルトで内部thinkingを行い、そのトークンも
+    maxOutputTokensの予算を消費する。thinkingBudgetを明示的に絞らないと、
+    3時間超の音声では本文（タイムスタンプ付き詳細＋末尾の構造化JSON）を
+    書き切る前に予算を使い切り、出力が同じ文の繰り返しループに陥ったり
+    途中で切れたりする（実際に発生した障害）。そのためthinkingBudgetを
+    小さく固定し、maxOutputTokensはモデル上限まで確保する。
+    """
     url = f"{GEMINI_BASE}/v1beta/models/{model}:generateContent?key={key}"
     payload = json.dumps({
         "contents": [{"parts": [
             {"text": prompt},
             {"file_data": {"mime_type": file_mime, "file_uri": file_uri}},
         ]}],
-        "generationConfig": {"temperature": 0.2, "maxOutputTokens": 32768},
+        "generationConfig": {
+            "temperature": 0.2,
+            "maxOutputTokens": 65536,
+            "thinkingConfig": {"thinkingBudget": 2048},
+        },
     }).encode()
-    res, _ = http(url, data=payload, headers={"Content-Type": "application/json"}, timeout=1800)
+    for attempt in range(1, retries + 1):
+        try:
+            res, _ = http(url, data=payload, headers={"Content-Type": "application/json"}, timeout=1800)
+            break
+        except urllib.error.HTTPError as e:
+            body = e.read().decode("utf-8", "replace")
+            if e.code == 429 and attempt < retries:
+                m = re.search(r'"retryDelay":\s*"(\d+)s"', body)
+                wait = int(m.group(1)) + 5 if m else 60 * attempt
+                log(f"429 (レート/クォータ制限)。{wait}秒待って再試行します（{attempt}/{retries}）...")
+                time.sleep(wait)
+                continue
+            raise RuntimeError(f"generateContent failed ({e.code}): {body[:500]}")
     cand = (res.get("candidates") or [{}])[0]
+    finish_reason = cand.get("finishReason")
     parts = cand.get("content", {}).get("parts", [])
-    text = "".join(p.get("text", "") for p in parts)
+    text = "".join(p.get("text", "") for p in parts if not p.get("thought"))
     if not text:
-        raise RuntimeError(f"empty response: {json.dumps(res, ensure_ascii=False)[:300]}")
+        raise RuntimeError(f"empty response (finishReason={finish_reason}): {json.dumps(res, ensure_ascii=False)[:300]}")
+    if finish_reason not in (None, "STOP"):
+        log(f"警告: finishReason={finish_reason}（出力が途中で打ち切られた可能性があります）")
     return text.strip()
 
 

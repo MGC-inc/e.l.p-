@@ -197,7 +197,30 @@ python3 scripts/people_graph_pptx.py     # 人の指示→作業つながり（�
 
 ---
 
-## 9. 未整備（今後）
+## 9. 営業マン（クローザー／アポインター）の追加
+
+商談録音分析パイプライン（`.claude/skills/商談録音分析/`）に新しい営業マンを登録する手順。
+「全社共通の従業員登録」（内線・タスク割当等）が目的なら、これとは別に elp-goals の
+`/staff` ページ＋一般LINE Bot（@124rnagj）を使う（本人がBotを友だち追加して名前を送るだけ）。
+
+商談分析用は次の手順（本人のLINE登録が絡むため2段階になる）:
+
+1. **本人に「ユメイク営業分析bot」へLINEで何か送ってもらう**
+   （録音でなくてよい。挨拶でOK）→ Webhookが自動で `closer_line_users` に
+   `line_user_id` と `display_name`（LINE表示名）を仮登録する
+2. `python3 scripts/add_closer.py --list-pending` で仮登録待ち（`closer_name` 未設定）を確認
+3. `python3 scripts/add_closer.py <正式な氏名> --display-name "<LINE表示名>"` で本登録する
+   - アポインターとしても選ばせたい場合は `--appointer`（`line-webhook/api/webhook.py` の
+     `APPOINTER_OPTIONS` に追加。反映には commit・push が必要）
+   - 代理店所属なら `--agency "<会社名>"`（`従業員.md` の代理店メンバー表に追加）
+   - ゴールマップも使うなら `--goalmap`（`tools/goalmap/members/<氏名>.json` の雛形を作成。
+     テーマ・ゴール・フェーズは追って手動で埋める）
+4. **Notion「DB 商談分析＆アポ分析」のクローザー／アポインター選択肢に名前を追加する**
+   （スクリプトは意図的にここを自動化していない。既存の選択肢文字列と完全一致させる運用のため、
+   Claude Codeセッションで Notion MCP の `notion-update-data-source` を使って追加する）
+5. `webhook.py` を変更した場合はコミット・push（今川さん個人のVercelプロジェクトに自動反映）
+
+## 10. 未整備（今後）
 
 - ログイン認証（現状は認証なし・URLを知れば誰でも閲覧）
 - KGI/事業部/KPI の管理UI（今はseedスクリプト `scripts/seed_kgi_tree.py`）

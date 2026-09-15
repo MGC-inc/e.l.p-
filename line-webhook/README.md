@@ -1,6 +1,10 @@
 # line-webhook — 商談録音分析のLINE受信プログラム
 
-「ユメイク営業分析bot」宛てに送られた商談録音を受け取り、アポインター→お客様名→結果→分析する/しないの
+「ユメイク営業分析bot」宛てのメッセージを受け付ける。クローザー（商談録音を送る人）・
+アポインター（週次の実績配信を受け取るだけの人）どちらも、初回メッセージで
+あいさつ→お名前（苗字）→役割選択、の自己登録フローに乗る（表示名がwebhook.pyの
+KNOWN_CLOSERS/KNOWN_APPOINTERSに一致する人は即時登録され、この問答は省略される）。
+登録済みのクローザーが録音を送ると、アポインター→お客様名→結果→分析する/しないの
 4問クイックリプライで必要事項を確定させ、Supabaseに記録する。今川さん個人のVercelアカウントで運用する
 （詳細な設計・全体像は [`../商談分析運用.md`](../商談分析運用.md) を参照）。
 
@@ -12,11 +16,16 @@
 ### 1. Supabase
 
 1. [`supabase/schema.sql`](supabase/schema.sql) の内容を、SupabaseダッシュボードのSQL Editorで実行する
+   （既存環境で `closer_line_users` に `role` 列がまだない場合は、schema.sql末尾の
+   `alter table ... add column if not exists role text;` も忘れず実行する）
 2. 「Storage」→「New bucket」で `deal-recordings` という名前のバケットを作成する（Publicにしなくてよい）
-3. `closer_line_users` テーブルに、クローザー・アポインター（社内＋代理店）の分だけ行を用意する。
-   最初は `line_user_id` が分からないので空でよい。各自が一度「ユメイク営業分析bot」に何かメッセージを送ると、
-   Webhookが自動で `line_user_id` と `display_name`（LINEの表示名）を仮登録する。
-   その後、Supabase側で該当行の `closer_name`（正式な氏名）を埋めれば、その人はBotを使えるようになる
+3. 各自が「ユメイク営業分析bot」を友だち追加して何かメッセージを送ると、`closer_line_users` に
+   `line_user_id` と `display_name`（LINEの表示名）が仮登録され、続けてbotからのあいさつに
+   従って苗字→クローザー/アポインターの役割を答えるだけで本登録が完了する。
+   表示名が `api/webhook.py` の `KNOWN_CLOSERS`/`KNOWN_APPOINTERS` に一致する人は
+   この問答なしで初回メッセージから即登録される（一致しない新規メンバーだけこの問答が出る）。
+   自己登録がうまくいかない場合のみ、Supabase側で該当行の `closer_name`・`role` を
+   手動で埋める（または `scripts/add_closer.py` を使う）
 
 ### 2. Vercelへのデプロイ
 
@@ -41,10 +50,11 @@
 
 ### 4. 動作確認
 
-1. 社内クローザーの誰か（またはテスト用のLINEアカウント）から「ユメイク営業分析bot」にテキストを送る
-   → `担当者名が未登録です` と返ってくれば疎通OK
-2. Supabaseの `closer_line_users` にその人の行ができているのを確認し、`closer_name` を埋める
-3. もう一度何か送ると、担当者として認識される
+1. テスト用のLINEアカウント（表示名がKNOWN_CLOSERS/KNOWN_APPOINTERSに一致しないもの）から
+   「ユメイク営業分析bot」にテキストを送る → あいさつ＋苗字を尋ねるメッセージが返れば疎通OK
+2. 苗字を送る → クローザー/アポインターの役割を尋ねるクイックリプライが返る
+3. 「クローザー」を選ぶ → 登録完了メッセージが返り、Supabaseの `closer_line_users` にその人の行
+   （`closer_name`・`role='closer'` 設定済み）ができていることを確認する
 4. 実際に音声ファイル（MP3等）を送り、アポインター→お客様名→結果→分析する/しない、の4問に順番に答えて
    `deal_recordings` の行が `ready` または `skipped` になることを確認する
 5. Supabase Storageの `deal-recordings` バケットに音声ファイルが保存されていることを確認する
@@ -60,4 +70,6 @@
 
 - ここで受け取った録音は消さない（分析後も含め、Supabase Storageに保持し続ける方針。商談分析運用.md参照）
 - チャネルシークレット・アクセストークンの値は、Vercelの環境変数以外（このリポジトリ・チャット等）に書かない
-- `APPOINTER_OPTIONS`（`api/webhook.py`冒頭）はメンバー構成が変わったら手動で更新する
+- `APPOINTER_OPTIONS`・`KNOWN_CLOSERS`・`KNOWN_APPOINTERS`（`api/webhook.py`冒頭）はメンバー構成が
+  変わったら手動で更新する（`scripts/add_closer.py` は従業員.md・Notion側の更新を支援するが、
+  この3つのPython定数は別途コード編集が必要）
