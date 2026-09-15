@@ -23,9 +23,28 @@ SUPABASE_URL = os.environ["ELP_SUPABASE_URL"]
 SUPABASE_SERVICE_ROLE_KEY = os.environ["ELP_SUPABASE_SERVICE_ROLE_KEY"]
 
 RESULT_OPTIONS = ["契約", "保留", "失注", "クーリングオフ", "審査落ち", "キャンセル"]
-# 要: 今川さんが実際のメンバー構成に合わせて随時更新する
-APPOINTER_OPTIONS = ["今川", "三浦", "古賀", "宮腰", "岡野", "戸田", "藤江", "門田"]
+# 要: 今川さんが実際のメンバー構成に合わせて随時更新する（LINEのクイックリプライは最大13件まで）
+APPOINTER_OPTIONS = ["今川", "三浦", "古賀", "宮腰", "岡野", "戸田", "藤江", "門田", "山下", "安達"]
 PENDING_STATUSES = "awaiting_appointer,awaiting_customer,awaiting_result,awaiting_confirm"
+
+# 既存の在籍者はLINEの表示名が一致すれば初回メッセージで自動的にクローザーとして
+# 認識される（今川さんの手動承認を待たずに録音を送れる）。LINE表示名は本名・姓のみ・
+# 姓名（スペースあり/なし）などブレがあるため、想定される表記を複数登録しておく。
+# 新規メンバーや表記が一致しない場合は従来どおり手動登録（scripts/add_closer.py）が必要。
+# 要: 入退社・表記変更があったら随時更新する（従業員.md と揃える）
+KNOWN_CLOSERS = {
+    "今川": "今川", "今川吉輝": "今川", "今川 吉輝": "今川",
+    "山下": "山下", "山下寛矢": "山下", "山下 寛矢": "山下",
+    "門田": "門田", "門田義斗": "門田", "門田 義斗": "門田",
+    "三浦": "三浦", "三浦虎之介": "三浦", "三浦 虎之介": "三浦",
+    "藤江": "藤江", "藤江真白": "藤江", "藤江 真白": "藤江",
+    "鈴木虎春": "鈴木", "鈴木 虎春": "鈴木",
+    "岡野": "岡野", "岡野翔": "岡野", "岡野 翔": "岡野",
+    "宮腰": "宮腰", "宮腰幹士": "宮腰", "宮腰 幹士": "宮腰",
+    "戸田": "戸田", "戸田昴": "戸田", "戸田 昴": "戸田",
+    "古賀": "古賀",
+    "安達": "安達",
+}
 
 
 # ---- LINE API ----------------------------------------------------------
@@ -104,15 +123,20 @@ def find_closer(line_user_id: str):
     return rows[0] if rows else None
 
 
-def register_unknown_sender(line_user_id: str):
-    existing = sb("GET", f"closer_line_users?line_user_id=eq.{line_user_id}&select=id")
+def register_unknown_sender(line_user_id: str) -> dict:
+    """初回メッセージの送信者をcloser_line_usersに登録する。
+    LINE表示名がKNOWN_CLOSERSに一致すれば、closer_nameを即座に確定させる
+    （今川さんの手動承認を待たずに以降のメッセージ・録音を処理できる）。
+    """
+    existing = sb("GET", f"closer_line_users?line_user_id=eq.{line_user_id}&select=*")
     if existing:
-        return
+        return existing[0]
     profile = line_get_profile(line_user_id)
     display_name = profile.get("displayName", "")
-    sb("POST", "closer_line_users", [
-        {"line_user_id": line_user_id, "display_name": display_name, "closer_name": None}
-    ])
+    closer_name = KNOWN_CLOSERS.get(display_name.strip())
+    row = {"line_user_id": line_user_id, "display_name": display_name, "closer_name": closer_name}
+    created = sb("POST", "closer_line_users", [row])
+    return created[0] if created else row
 
 
 def latest_pending_recording(line_user_id: str):
@@ -233,9 +257,9 @@ def handle_event(event: dict):
 
     closer = find_closer(line_user_id)
     if closer is None:
-        register_unknown_sender(line_user_id)
-        line_reply(event["replyToken"], [{"type": "text", "text": "担当者名が未登録です。今川さんに連絡してください。"}])
-        return
+        closer = register_unknown_sender(line_user_id)
+        # KNOWN_CLOSERSに一致していればここで closer_name が確定しているので、
+        # 手動登録を待たずにこのメッセージ自体（録音も含む）をそのまま処理する
     if closer.get("closer_name") is None:
         line_reply(event["replyToken"], [{"type": "text", "text": "担当者名が未登録です。今川さんに連絡してください。"}])
         return
