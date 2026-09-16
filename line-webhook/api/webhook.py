@@ -1,8 +1,16 @@
 """LINE Webhook — 商談録音分析の受付（Vercel Python Function）
 
-「ユメイク営業分析bot」宛てに送られた商談録音を受け取り、
-アポインター→お客様名→結果→分析する/しない、の4問クイックリプライで
-必要事項を確定させ、Supabase（deal_recordings・Storage）に記録する。
+「ユメイク営業分析bot」宛てのメッセージを受け付ける。
+
+- 初回メッセージの送信者は、LINE表示名がKNOWN_CLOSERS/KNOWN_APPOINTERSに
+  一致すれば即座に本登録される。一致しない場合はあいさつメッセージで
+  お名前（苗字）→クローザー/アポインターの役割、の2問で自己登録してもらう
+  （closer_line_users.role）。
+- 登録済みのクローザーが録音を送ると、アポインター→お客様名→結果→
+  分析する/しない、の4問クイックリプライで必要事項を確定させ、
+  Supabase（deal_recordings・Storage）に記録する。
+- アポインターは録音を送らず、週次の実績配信（別途のバッチ処理）の
+  宛先として line_user_id を保持するためだけに登録する。
 
 標準ライブラリのみで実装（外部SDK不使用）。詳細: 商談分析運用.md セクション3。
 """
@@ -23,15 +31,44 @@ SUPABASE_URL = os.environ["DEAL_SUPABASE_URL"]
 SUPABASE_SERVICE_ROLE_KEY = os.environ["DEAL_SUPABASE_SERVICE_ROLE_KEY"]
 
 RESULT_OPTIONS = ["契約", "保留", "失注", "クーリングオフ", "審査落ち", "キャンセル"]
+# アポインター（商談を設定した人。自分では録音を送らない役割）。
+# 代理店別の現在の稼働メンバー（2026-09時点。今川さん確認済み）:
+#   ピタサチ=藤江 / wanny=戸田・巻田・林 / TRYGROUP=安達・平井・山川 / VIZZ=田村
+# 要: 今川さんが実際のメンバー構成に合わせて随時更新する（LINEのクイックリプライは最大13件まで）
+APPOINTER_OPTIONS = ["藤江", "戸田", "巻田", "林", "安達", "平井", "山川", "田村"]
 PENDING_STATUSES = "awaiting_appointer,awaiting_customer,awaiting_result,awaiting_confirm"
 
-# Notion「DB 商談分析＆アポ分析」の「アポインター」選択肢と同期させる（社内クローザー＋代理店）。
-# 新メンバー追加時はNotion側の選択肢とあわせてここも更新する。
-KNOWN_MEMBER_NAMES = [
-    "宮腰", "岡野", "催事", "鈴木", "三浦", "門田", "山下", "今川",
-    "藤江", "戸田", "林", "樺澤", "福本", "柚木", "安達", "山川", "平井",
-    "松田", "中井", "岩本", "巻田", "下川", "古賀", "田村",
-]
+# クローザー（自分で商談録音をbotに送る役割）。LINEの表示名が一致すれば初回メッセージで
+# 自動的にクローザーとして認識される（今川さんの手動承認を待たずに録音を送れる）。
+# LINE表示名は本名・姓のみ・姓名（スペースあり/なし）などブレがあるため、想定される
+# 表記を複数登録しておく。新規メンバーや表記が一致しない場合は従来どおり手動登録
+# （scripts/add_closer.py）が必要。
+# 代理店別の現在の稼働メンバー（2026-09時点。今川さん確認済み）:
+#   E.L.P（自社）=今川 / ピタサチ=門田・三浦 / wanny=岡野・宮腰 / TRYGROUP=柚木 / ネクアス=福本
+# 要: 入退社・表記変更があったら随時更新する（従業員.md と揃える）
+KNOWN_CLOSERS = {
+    "今川": "今川", "今川吉輝": "今川", "今川 吉輝": "今川",
+    "門田": "門田", "門田義斗": "門田", "門田 義斗": "門田",
+    "三浦": "三浦", "三浦虎之介": "三浦", "三浦 虎之介": "三浦",
+    "岡野": "岡野", "岡野翔": "岡野", "岡野 翔": "岡野",
+    "宮腰": "宮腰", "宮腰幹士": "宮腰", "宮腰 幹士": "宮腰",
+    "柚木": "柚木",
+    "福本": "福本",
+}
+
+# アポインターも同様にLINE表示名が一致すれば即座に本登録される（role="appointer"）。
+# 表記が一致しない場合は他の新規メンバーと同じくあいさつ→苗字→役割選択の
+# 自己登録フローに進む。
+KNOWN_APPOINTERS = {
+    "藤江": "藤江", "藤江真白": "藤江", "藤江 真白": "藤江",
+    "戸田": "戸田", "戸田昴": "戸田", "戸田 昴": "戸田",
+    "巻田": "巻田",
+    "林": "林",
+    "安達": "安達",
+    "平井": "平井",
+    "山川": "山川",
+    "田村": "田村", "田村征大": "田村", "田村 征大": "田村",
+}
 
 
 # ---- LINE API ----------------------------------------------------------
@@ -110,15 +147,30 @@ def find_closer(line_user_id: str):
     return rows[0] if rows else None
 
 
-def register_unknown_sender(line_user_id: str):
-    existing = sb("GET", f"closer_line_users?line_user_id=eq.{line_user_id}&select=id")
+def register_unknown_sender(line_user_id: str) -> dict:
+    """初回メッセージの送信者をcloser_line_usersに登録する。
+    LINE表示名がKNOWN_CLOSERS/KNOWN_APPOINTERSに一致すれば、closer_name・role
+    を即座に確定させる（今川さんの手動承認や本人の自己申告を待たずに、
+    以降のメッセージ・録音（クローザーの場合）を処理できる）。
+    一致しない場合は closer_name・role とも空のまま登録し、handle_event側の
+    あいさつ→苗字→役割選択フローに委ねる。
+    """
+    existing = sb("GET", f"closer_line_users?line_user_id=eq.{line_user_id}&select=*")
     if existing:
-        return
+        return existing[0]
     profile = line_get_profile(line_user_id)
     display_name = profile.get("displayName", "")
-    sb("POST", "closer_line_users", [
-        {"line_user_id": line_user_id, "display_name": display_name, "closer_name": None}
-    ])
+    key = display_name.strip()
+
+    closer_name = KNOWN_CLOSERS.get(key)
+    role = "closer" if closer_name else None
+    if not closer_name:
+        closer_name = KNOWN_APPOINTERS.get(key)
+        role = "appointer" if closer_name else None
+
+    row = {"line_user_id": line_user_id, "display_name": display_name, "closer_name": closer_name, "role": role}
+    created = sb("POST", "closer_line_users", [row])
+    return created[0] if created else row
 
 
 def latest_pending_recording(line_user_id: str):
@@ -229,31 +281,49 @@ def handle_text_message(event: dict):
             }])
 
 
-def handle_registration(event: dict, line_user_id: str):
+def handle_registration(event: dict, closer: dict, is_first_contact: bool) -> bool:
+    """closer_name・role が未確定の相手からのメッセージをあいさつ登録フローで処理する。
+    処理した（＝これ以上event側で扱う必要がない）場合True、
+    登録済みで通常フローに進んでよい場合Falseを返す。
+    """
     reply_token = event["replyToken"]
-    message_type = event.get("message", {}).get("type")
+    message = event.get("message", {})
 
-    if message_type != "text":
-        line_reply(reply_token, [{
-            "type": "text",
-            "text": "先にお名前（苗字）を教えてください（例: 杉浦）。録音は登録完了後に送ってください。",
-        }])
-        return
+    if closer.get("closer_name") is None:
+        if is_first_contact:
+            line_reply(reply_token, [{
+                "type": "text",
+                "text": "はじめまして。ユメイク営業分析botです。担当者確認のため、お名前（苗字）を送ってください。",
+            }])
+        elif message.get("type") == "text" and message.get("text", "").strip():
+            name = message["text"].strip()
+            sb("PATCH", f"closer_line_users?id=eq.{closer['id']}", {"closer_name": name})
+            line_reply(reply_token, [{
+                "type": "text",
+                "text": f"{name}さんですね。クローザー（商談録音を送る）とアポインター（週次の実績だけ受け取る）、どちらですか？",
+                "quickReply": quick_reply(["クローザー", "アポインター"]),
+            }])
+        else:
+            line_reply(reply_token, [{"type": "text", "text": "お名前（苗字）をテキストで送ってください。"}])
+        return True
 
-    name = event["message"]["text"].strip()
-    if name not in KNOWN_MEMBER_NAMES:
-        line_reply(reply_token, [{
-            "type": "text",
-            "text": "お名前が確認できませんでした。正しい苗字を入力してください（例: 杉浦）。"
-                    "心当たりがない場合は今川さんに連絡してください。",
-        }])
-        return
+    if closer.get("role") is None:
+        text = message.get("text", "") if message.get("type") == "text" else ""
+        if text in ("クローザー", "アポインター"):
+            role = "closer" if text == "クローザー" else "appointer"
+            sb("PATCH", f"closer_line_users?id=eq.{closer['id']}", {"role": role})
+            if role == "closer":
+                line_reply(reply_token, [{"type": "text", "text": "登録完了しました。以後、商談録音をこのまま送ってください。"}])
+            else:
+                line_reply(reply_token, [{"type": "text", "text": "登録完了しました。毎週、実績をお送りします。"}])
+        else:
+            line_reply(reply_token, [{
+                "type": "text", "text": "クローザーとアポインター、どちらですか？ボタンから選んでください。",
+                "quickReply": quick_reply(["クローザー", "アポインター"]),
+            }])
+        return True
 
-    sb("PATCH", f"closer_line_users?line_user_id=eq.{line_user_id}", {"closer_name": name})
-    line_reply(reply_token, [{
-        "type": "text",
-        "text": f"{name}さん、登録が完了しました。商談の録音（MP3）をこのトークに送ってください。",
-    }])
+    return False
 
 
 def handle_event(event: dict):
@@ -264,15 +334,14 @@ def handle_event(event: dict):
         return  # グループ・複数人トークは対象外（1:1のみの運用）
 
     closer = find_closer(line_user_id)
+    is_first_contact = closer is None
     if closer is None:
-        register_unknown_sender(line_user_id)
-        line_reply(event["replyToken"], [{
-            "type": "text",
-            "text": "はじめまして！ご利用の前に、お名前（苗字）を教えてください（例: 杉浦）",
-        }])
-        return
-    if closer.get("closer_name") is None:
-        handle_registration(event, line_user_id)
+        closer = register_unknown_sender(line_user_id)
+        # KNOWN_CLOSERS/KNOWN_APPOINTERSに一致していればここでcloser_name・roleが
+        # 確定しているので、手動登録やあいさつフローを待たずにこのメッセージ自体
+        # （録音も含む）をそのまま処理する
+
+    if handle_registration(event, closer, is_first_contact):
         return
 
     message_type = event.get("message", {}).get("type")

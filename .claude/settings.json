@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "autoMode": {
+      "allow": [
+        "$defaults",
+        "Sending LINE Messaging API push/reply notifications (POST to https://api.line.me/v2/bot/message/push or /reply, or GET to api-data.line.me/api.line.me) from this repository's automated deal-recording-analysis pipeline (line-webhook/, .claude/skills/商談録音分析/, and the daily クーリングオフ検知 routine) to notify closers or the admin (今川) about analysis results or cooling-off alerts",
+        "Reading or writing Supabase data at https://xhkcptfyjdbilhrpwcau.supabase.co (PostgREST /rest/v1/... and Storage /storage/v1/...) for this repository's deal_recordings / closer_line_users tables",
+        "Calling the Gemini API at https://generativelanguage.googleapis.com to analyze deal recordings for this repository's 商談録音分析 pipeline"
+      ]
+    }
+  }
+}

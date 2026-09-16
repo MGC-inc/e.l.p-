@@ -7,10 +7,17 @@ create table if not exists closer_line_users (
   id bigint generated always as identity primary key,
   line_user_id text not null unique,
   display_name text,               -- LINEの表示名（自動取得・仮登録時に埋まる）
-  closer_name text,                -- クローザーとしての氏名。今川さんが手動で確定させる
+  closer_name text,                -- 氏名。KNOWN_CLOSERS/KNOWN_APPOINTERSの自動一致、
+                                    -- または本人がbotとのやり取りで自己申告して確定する
+  role text,                       -- 'closer'（商談録音を送る）/ 'appointer'（週次実績のみ受信）
   goalmap_member_name text,        -- tools/goalmap/members/<この名前>.json に対応
   created_at timestamptz not null default now()
 );
+
+-- 2026-09追記: 既存環境には role 列がないため、あいさつ登録フロー
+-- （line-webhook/api/webhook.py の handle_registration）を有効にする前に
+-- SupabaseダッシュボードのSQL Editorで以下を実行してください。
+-- alter table closer_line_users add column if not exists role text;
 
 create table if not exists deal_recordings (
   id bigint generated always as identity primary key,
