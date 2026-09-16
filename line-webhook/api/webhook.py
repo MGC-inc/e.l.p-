@@ -4,13 +4,14 @@
 
 - 初回メッセージの送信者は、LINE表示名がKNOWN_CLOSERS/KNOWN_APPOINTERSに
   一致すれば即座に本登録される。一致しない場合はあいさつメッセージで
-  お名前（苗字）→クローザー/アポインターの役割、の2問で自己登録してもらう
+  お名前（苗字）→クローザー/アポインター/管理者の役割、の2問で自己登録してもらう
   （closer_line_users.role）。
 - 登録済みのクローザーが録音を送ると、アポインター→お客様名→結果→
   分析する/しない、の4問クイックリプライで必要事項を確定させ、
   Supabase（deal_recordings・Storage）に記録する。
-- アポインターは録音を送らず、週次の実績配信（別途のバッチ処理）の
-  宛先として line_user_id を保持するためだけに登録する。
+- アポインター・管理者は録音を送らず、週次の実績配信（別途のバッチ処理）の
+  宛先として line_user_id を保持するためだけに登録する。管理者は個人の実績
+  ではなく週次のチーム全体の結果だけを受け取る。
 
 標準ライブラリのみで実装（外部SDK不使用）。詳細: 商談分析運用.md セクション3。
 """
@@ -295,8 +296,9 @@ def handle_registration(event: dict, closer: dict, is_first_contact: bool) -> bo
             sb("PATCH", f"closer_line_users?id=eq.{closer['id']}", {"closer_name": name})
             line_reply(reply_token, [{
                 "type": "text",
-                "text": f"{name}さんですね。クローザー（商談録音を送る）とアポインター（週次の実績だけ受け取る）、どちらですか？",
-                "quickReply": quick_reply(["クローザー", "アポインター"]),
+                "text": f"{name}さんですね。クローザー（商談録音を送る）・アポインター（週次の実績だけ受け取る）・"
+                        "管理者（週次のチーム全体の結果だけ受け取る）、どちらですか？",
+                "quickReply": quick_reply(["クローザー", "アポインター", "管理者"]),
             }])
         else:
             line_reply(reply_token, [{"type": "text", "text": "お名前（苗字）をテキストで送ってください。"}])
@@ -304,17 +306,20 @@ def handle_registration(event: dict, closer: dict, is_first_contact: bool) -> bo
 
     if closer.get("role") is None:
         text = message.get("text", "") if message.get("type") == "text" else ""
-        if text in ("クローザー", "アポインター"):
-            role = "closer" if text == "クローザー" else "appointer"
+        role_map = {"クローザー": "closer", "アポインター": "appointer", "管理者": "admin"}
+        if text in role_map:
+            role = role_map[text]
             sb("PATCH", f"closer_line_users?id=eq.{closer['id']}", {"role": role})
             if role == "closer":
                 line_reply(reply_token, [{"type": "text", "text": "登録完了しました。以後、商談録音をこのまま送ってください。"}])
-            else:
+            elif role == "appointer":
                 line_reply(reply_token, [{"type": "text", "text": "登録完了しました。毎週、実績をお送りします。"}])
+            else:
+                line_reply(reply_token, [{"type": "text", "text": "登録完了しました。毎週、チーム全体の実績をお送りします。"}])
         else:
             line_reply(reply_token, [{
-                "type": "text", "text": "クローザーとアポインター、どちらですか？ボタンから選んでください。",
-                "quickReply": quick_reply(["クローザー", "アポインター"]),
+                "type": "text", "text": "クローザー・アポインター・管理者、どちらですか？ボタンから選んでください。",
+                "quickReply": quick_reply(["クローザー", "アポインター", "管理者"]),
             }])
         return True
 

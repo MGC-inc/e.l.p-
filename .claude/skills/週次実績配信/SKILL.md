@@ -16,8 +16,9 @@
 
 ## 対象者とデータソース
 
-- **対象者**: Supabase `closer_line_users` で `role` が `closer` または `appointer` の行
-  （`line_user_id`・`closer_name`・`role`）
+- **対象者**: Supabase `closer_line_users` で `role` が `closer`・`appointer`・`admin` のいずれかの行
+  （`line_user_id`・`closer_name`・`role`）。`admin`は個人の実績ではなく週次のチーム全体の
+  結果だけを受け取る（本人がクローザー・アポインターを兼ねる場合でも、`role`は1人1つのみ）
 - **日次実績の事実**（訪問数・アポ数・契約・契約金額など）:
   Notion データソース `collection://f11afda4-a39d-4139-8e12-817d3f70267b`
   （「📉 営業部 実績DB」。LINEの `/shoudannhoukoku` 等の日報コマンドが書き込む、メンバー×日付の
@@ -82,6 +83,10 @@
    を計算し、`予算と達成率`DBの実行月全行から `予算合計` = SUM(予算（万円）) を計算する。
    達成率 = 実質売上合計 ÷ 予算合計 × 100（%、整数）。
 
+5b. **週次のチーム全体実績を集計する（`role='admin'`向け）**
+   実績DBの対象週（水曜始まり火曜終わり）の**全行**（登録者個人の行ではなく全員分）を合計し、
+   訪問数・アポ数・商談数（生列から合算）・契約数・契約金額（万円）のチーム合計を出す。
+
 6. **1人1通でLINE送信する**
    `DEAL_LINE_CHANNEL_ACCESS_TOKEN` を使い、`https://api.line.me/v2/bot/message/push` に
    POSTする（`scripts/line_richmenu.py` のurllib直叩きパターンを踏襲）。**1人につき1回の
@@ -116,6 +121,21 @@
    訪問数: n件
    アポ数: n件
    商談数: n件
+
+   ---
+   📊 チームMTD予算進捗（YYYY-MM）: n万円 / n万円（達成率n%）
+   ```
+
+   **role='admin' の人**（個人の実績は出さず、手順5bで集計したチーム全体の週次結果のみ）:
+   ```
+   【週次実績】チーム全体（M/D〜M/D）
+
+   ■先週のチーム実績
+   訪問数: n件
+   アポ数: n件
+   商談数: n件
+   契約数: n件
+   契約金額: n万円
 
    ---
    📊 チームMTD予算進捗（YYYY-MM）: n万円 / n万円（達成率n%）
