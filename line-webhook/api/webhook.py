@@ -31,11 +31,6 @@ SUPABASE_URL = os.environ["DEAL_SUPABASE_URL"]
 SUPABASE_SERVICE_ROLE_KEY = os.environ["DEAL_SUPABASE_SERVICE_ROLE_KEY"]
 
 RESULT_OPTIONS = ["契約", "保留", "失注", "クーリングオフ", "審査落ち", "キャンセル"]
-# アポインター（商談を設定した人。自分では録音を送らない役割）。
-# 代理店別の現在の稼働メンバー（2026-09時点。今川さん確認済み）:
-#   ピタサチ=藤江 / wanny=戸田・巻田・林 / TRYGROUP=安達・平井・山川 / VIZZ=田村
-# 要: 今川さんが実際のメンバー構成に合わせて随時更新する（LINEのクイックリプライは最大13件まで）
-APPOINTER_OPTIONS = ["藤江", "戸田", "巻田", "林", "安達", "平井", "山川", "田村"]
 PENDING_STATUSES = "awaiting_appointer,awaiting_customer,awaiting_result,awaiting_confirm"
 
 # クローザー（自分で商談録音をbotに送る役割）。LINEの表示名が一致すれば初回メッセージで

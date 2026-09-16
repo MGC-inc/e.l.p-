@@ -74,6 +74,7 @@ KNOWN_CLOSERS/KNOWN_APPOINTERSに一致する人は即時登録され、この�
 
 - ここで受け取った録音は消さない（分析後も含め、Supabase Storageに保持し続ける方針。商談分析運用.md参照）
 - チャネルシークレット・アクセストークンの値は、Vercelの環境変数以外（このリポジトリ・チャット等）に書かない
-- `APPOINTER_OPTIONS`・`KNOWN_CLOSERS`・`KNOWN_APPOINTERS`（`api/webhook.py`冒頭）はメンバー構成が
-  変わったら手動で更新する（`scripts/add_closer.py` は従業員.md・Notion側の更新を支援するが、
-  この3つのPython定数は別途コード編集が必要）
+- `KNOWN_CLOSERS`・`KNOWN_APPOINTERS`（`api/webhook.py`冒頭）はメンバー構成が変わったら手動で更新する
+  （`scripts/add_closer.py` は従業員.md・Notion側の更新を支援するが、この2つのPython定数は別途コード編集が必要）
+- 商談録音時に聞く「アポインターは誰ですか？」は自由入力（Notion側の「アポインター」選択肢が25名あり、
+  LINEのクイックリプライ上限13個を超えるためボタン化していない）
