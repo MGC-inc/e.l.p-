@@ -25,6 +25,14 @@ SUPABASE_SERVICE_ROLE_KEY = os.environ["DEAL_SUPABASE_SERVICE_ROLE_KEY"]
 RESULT_OPTIONS = ["契約", "保留", "失注", "クーリングオフ", "審査落ち", "キャンセル"]
 PENDING_STATUSES = "awaiting_appointer,awaiting_customer,awaiting_result,awaiting_confirm"
 
+# Notion「DB 商談分析＆アポ分析」の「アポインター」選択肢と同期させる（社内クローザー＋代理店）。
+# 新メンバー追加時はNotion側の選択肢とあわせてここも更新する。
+KNOWN_MEMBER_NAMES = [
+    "宮腰", "岡野", "催事", "鈴木", "三浦", "門田", "山下", "今川",
+    "藤江", "戸田", "林", "樺澤", "福本", "柚木", "安達", "山川", "平井",
+    "松田", "中井", "岩本", "巻田", "下川", "古賀", "田村",
+]
+
 
 # ---- LINE API ----------------------------------------------------------
 
@@ -221,6 +229,33 @@ def handle_text_message(event: dict):
             }])
 
 
+def handle_registration(event: dict, line_user_id: str):
+    reply_token = event["replyToken"]
+    message_type = event.get("message", {}).get("type")
+
+    if message_type != "text":
+        line_reply(reply_token, [{
+            "type": "text",
+            "text": "先にお名前（苗字）を教えてください（例: 杉浦）。録音は登録完了後に送ってください。",
+        }])
+        return
+
+    name = event["message"]["text"].strip()
+    if name not in KNOWN_MEMBER_NAMES:
+        line_reply(reply_token, [{
+            "type": "text",
+            "text": "お名前が確認できませんでした。正しい苗字を入力してください（例: 杉浦）。"
+                    "心当たりがない場合は今川さんに連絡してください。",
+        }])
+        return
+
+    sb("PATCH", f"closer_line_users?line_user_id=eq.{line_user_id}", {"closer_name": name})
+    line_reply(reply_token, [{
+        "type": "text",
+        "text": f"{name}さん、登録が完了しました。商談の録音（MP3）をこのトークに送ってください。",
+    }])
+
+
 def handle_event(event: dict):
     if event.get("type") != "message":
         return  # フォロー/アンフォロー等は今回は無視
@@ -231,10 +266,13 @@ def handle_event(event: dict):
     closer = find_closer(line_user_id)
     if closer is None:
         register_unknown_sender(line_user_id)
-        line_reply(event["replyToken"], [{"type": "text", "text": "担当者名が未登録です。今川さんに連絡してください。"}])
+        line_reply(event["replyToken"], [{
+            "type": "text",
+            "text": "はじめまして！ご利用の前に、お名前（苗字）を教えてください（例: 杉浦）",
+        }])
         return
     if closer.get("closer_name") is None:
-        line_reply(event["replyToken"], [{"type": "text", "text": "担当者名が未登録です。今川さんに連絡してください。"}])
+        handle_registration(event, line_user_id)
         return
 
     message_type = event.get("message", {}).get("type")

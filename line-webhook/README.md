@@ -13,10 +13,12 @@
 
 1. [`supabase/schema.sql`](supabase/schema.sql) の内容を、SupabaseダッシュボードのSQL Editorで実行する
 2. 「Storage」→「New bucket」で `deal-recordings` という名前のバケットを作成する（Publicにしなくてよい）
-3. `closer_line_users` テーブルに、クローザー・アポインター（社内＋代理店）の分だけ行を用意する。
-   最初は `line_user_id` が分からないので空でよい。各自が一度「ユメイク営業分析bot」に何かメッセージを送ると、
-   Webhookが自動で `line_user_id` と `display_name`（LINEの表示名）を仮登録する。
-   その後、Supabase側で該当行の `closer_name`（正式な氏名）を埋めれば、その人はBotを使えるようになる
+3. `closer_line_users` テーブルは空のままでよい。各自が初めて「ユメイク営業分析bot」にメッセージを送ると、
+   Webhookが自動で `line_user_id` と `display_name`（LINEの表示名）を仮登録し、続けて苗字を尋ねる。
+   送られた苗字が `api/webhook.py` の `KNOWN_MEMBER_NAMES`（Notionの「アポインター」選択肢と同期）に
+   一致すれば `closer_name` が自動で確定し、その場でBotを使えるようになる（Supabase側の手動編集は不要）。
+   一致しない場合のみ、今川さんが手動で `closer_name` を埋める（`KNOWN_MEMBER_NAMES` に載っていない
+   新メンバーの可能性があるため、その場合はリストにも追加する）
 
 ### 2. Vercelへのデプロイ
 
@@ -46,9 +48,9 @@
 ### 4. 動作確認
 
 1. 社内クローザーの誰か（またはテスト用のLINEアカウント）から「ユメイク営業分析bot」にテキストを送る
-   → `担当者名が未登録です` と返ってくれば疎通OK
-2. Supabaseの `closer_line_users` にその人の行ができているのを確認し、`closer_name` を埋める
-3. もう一度何か送ると、担当者として認識される
+   → 「お名前（苗字）を教えてください」と返ってくれば疎通OK
+2. `KNOWN_MEMBER_NAMES` に載っている苗字を送ると、「登録が完了しました」と返り、担当者として認識される
+3. Supabaseの `closer_line_users` にその人の行ができ、`closer_name` が自動で埋まっていることを確認する
 4. 実際に音声ファイル（MP3等）を送り、アポインター→お客様名→結果→分析する/しない、の4問に順番に答えて
    `deal_recordings` の行が `ready` または `skipped` になることを確認する
 5. Supabase Storageの `deal-recordings` バケットに音声ファイルが保存されていることを確認する
