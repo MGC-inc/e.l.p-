@@ -17,7 +17,7 @@
 | LINE（@124rnagj） | タスク通知・日報リマインド等（社内限定） | Webhook/push実装は `MGC-inc/elp-goals`（`/api/line/webhook`, `lib/line.ts`） | ローカル `.env` の `ELP_LINE_CHANNEL_SECRET` / `ELP_LINE_CHANNEL_ACCESS_TOKEN`（Vercel環境変数にも同値） | MGC |
 | LINE（ユメイク営業分析bot） | 商談録音の受付（社内クローザー＋代理店）。@124rnagjとは別アカウント（商談分析運用.md セクション0）。Webhook実装は [line-webhook/](./line-webhook/)（今川さん個人のVercelアカウントで運用） | アカウント作成・Messaging API有効化・鍵発行済み。line-webhook/README.mdの手順でデプロイ待ち | 今川さん個人のVercel環境変数の `DEAL_LINE_CHANNEL_SECRET` / `DEAL_LINE_CHANNEL_ACCESS_TOKEN`（値は今川さんが保管） | 今川 |
 | GitHub | このリポジトリ | https://github.com/MGC-inc/e.l.p- | | |
-| Supabase（elp） | 組織データDB（タスク/日報/営業成績/議事録/通話ログ／商談録音の受付台帳 `deal_recordings`・`closer_line_users`・Storageバケット `deal-recordings`。定義: [line-webhook/supabase/schema.sql](./line-webhook/supabase/schema.sql)） | https://supabase.com/dashboard/project/xhkcptfyjdbilhrpwcau | ローカル `.env` の `ELP_SUPABASE_*`（line-webhook/RoutineからはVercel/環境変数側に同値を設定） | MGC |
+| Supabase（elp） | 組織データDB（タスク/日報/営業成績/議事録/通話ログ／商談録音の受付台帳 `deal_recordings`・`closer_line_users`・Storageバケット `deal-recordings`。定義: [line-webhook/supabase/schema.sql](./line-webhook/supabase/schema.sql)） | https://supabase.com/dashboard/project/xhkcptfyjdbilhrpwcau | ローカル `.env` の `ELP_SUPABASE_*`（Routine実行環境も同名）。line-webhookのVercel環境変数は別名 `DEAL_SUPABASE_URL` / `DEAL_SUPABASE_SERVICE_ROLE_KEY`（`ELP_SUPABASE_*`という名前は他事業で使うVercelチーム共有変数と衝突するため、今川さん個人のVercelプロジェクト直下に別名で追加） | MGC |
 | <!-- TODO --> | | | | |
 
 ## イノベラ Web API 技術仕様（仕様書 2024-10-23版より）

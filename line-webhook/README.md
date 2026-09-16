@@ -35,8 +35,12 @@ KNOWN_CLOSERS/KNOWN_APPOINTERSに一致する人は即時登録され、この�
 4. 「Environment Variables」に以下を設定する（値はこのリポジトリやチャットには書かない）:
    - `DEAL_LINE_CHANNEL_SECRET`
    - `DEAL_LINE_CHANNEL_ACCESS_TOKEN`
-   - `ELP_SUPABASE_URL`
-   - `ELP_SUPABASE_SERVICE_ROLE_KEY`
+   - `DEAL_SUPABASE_URL`
+   - `DEAL_SUPABASE_SERVICE_ROLE_KEY`
+
+   （`ELP_SUPABASE_URL`等の名前は使わない。Vercelチーム共有変数として既に別用途で使われており、
+   Vercelの通常デプロイでは共有変数がFile Upload APIデプロイに反映されない問題が確認されたため、
+   このプロジェクト専用の変数名で直接追加する）
 5. Deployをクリックする
 
 ### 3. LINE側の設定
@@ -70,6 +74,7 @@ KNOWN_CLOSERS/KNOWN_APPOINTERSに一致する人は即時登録され、この�
 
 - ここで受け取った録音は消さない（分析後も含め、Supabase Storageに保持し続ける方針。商談分析運用.md参照）
 - チャネルシークレット・アクセストークンの値は、Vercelの環境変数以外（このリポジトリ・チャット等）に書かない
-- `APPOINTER_OPTIONS`・`KNOWN_CLOSERS`・`KNOWN_APPOINTERS`（`api/webhook.py`冒頭）はメンバー構成が
-  変わったら手動で更新する（`scripts/add_closer.py` は従業員.md・Notion側の更新を支援するが、
-  この3つのPython定数は別途コード編集が必要）
+- `KNOWN_CLOSERS`・`KNOWN_APPOINTERS`（`api/webhook.py`冒頭）はメンバー構成が変わったら手動で更新する
+  （`scripts/add_closer.py` は従業員.md・Notion側の更新を支援するが、この2つのPython定数は別途コード編集が必要）
+- 商談録音時に聞く「アポインターは誰ですか？」は自由入力（Notion側の「アポインター」選択肢が25名あり、
+  LINEのクイックリプライ上限13個を超えるためボタン化していない）
