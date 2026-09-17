@@ -2,7 +2,7 @@
 
 「ユメイク営業分析bot」宛てのメッセージを受け付ける。
 
-- 初回メッセージの送信者は、LINE表示名がKNOWN_CLOSERS/KNOWN_APPOINTERSに
+- 初回メッセージの送信者は、LINE表示名がKNOWN_CLOSERS/KNOWN_APPOINTERS/KNOWN_ADMINSに
   一致すれば即座に本登録される。一致しない場合はあいさつメッセージで
   お名前（苗字）→クローザー/アポインター/管理者の役割、の2問で自己登録してもらう
   （closer_line_users.role）。
@@ -65,6 +65,14 @@ KNOWN_APPOINTERS = {
     "山川": "山川",
     "田村": "田村", "田村征大": "田村", "田村 征大": "田村",
 }
+
+# 管理者（週次のチーム全体の結果だけ受け取る役割）。通常は人数が少ないため空でよい。
+# クローザー・アポインターと同様、LINE表示名が一致すれば即座に本登録される（role="admin"）。
+KNOWN_ADMINS = {}
+
+# ---- KNOWN_CLOSERS/KNOWN_APPOINTERS/KNOWN_ADMINSの追加・削除 ----
+# 手で編集せず scripts/add_closer.py・scripts/remove_closer.py を使うこと
+# （Claude操作マニュアル.md セクション9参照）。
 
 
 # ---- LINE API ----------------------------------------------------------
@@ -163,6 +171,9 @@ def register_unknown_sender(line_user_id: str) -> dict:
     if not closer_name:
         closer_name = KNOWN_APPOINTERS.get(key)
         role = "appointer" if closer_name else None
+    if not closer_name:
+        closer_name = KNOWN_ADMINS.get(key)
+        role = "admin" if closer_name else None
 
     row = {"line_user_id": line_user_id, "display_name": display_name, "closer_name": closer_name, "role": role}
     created = sb("POST", "closer_line_users", [row])
