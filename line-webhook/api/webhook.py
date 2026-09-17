@@ -322,7 +322,7 @@ def handle_registration(event: dict, closer: dict, is_first_contact: bool) -> bo
             role = role_map[text]
             sb("PATCH", f"closer_line_users?id=eq.{closer['id']}", {"role": role})
             if role == "closer":
-                line_reply(reply_token, [{"type": "text", "text": "登録完了しました。以後、商談録音をこのまま送ってください。"}])
+                line_reply(reply_token, [{"type": "text", "text": "登録完了しました。以後、商談録音をMP3形式のファイルで送信してください。"}])
             elif role == "appointer":
                 line_reply(reply_token, [{"type": "text", "text": "登録完了しました。毎週、実績をお送りします。"}])
             else:
