@@ -25,6 +25,7 @@
 | 「マニュアルを作って」 | `マニュアル/_template.md` をコピーし `マニュアル/業務名.md` で作成 |
 | 「〇〇さんの週次ゴール図解を作って／進捗を反映して」 | `ゴールマップ運用.md` ＋ `tools/goalmap/members/〇〇.json` を更新し `generate_goalmap.py` で出力 |
 | 「営業マンを追加して」「〇〇さんを商談分析に登録して」 | `Claude操作マニュアル.md` セクション9（`scripts/add_closer.py`）の手順で登録。全社共通の従業員登録（内線・タスク等）が目的なら `elp-goals` の `/staff` を案内する |
+| 「〇〇さんが退社した」「商談分析から削除して」 | `Claude操作マニュアル.md` セクション9（`scripts/remove_closer.py`）の手順で削除 |
 | 「週次配信して」「今週の実績を配信して」 | スキル `週次実績配信`（`.claude/skills/週次実績配信/SKILL.md`）を実行。毎週月曜9:00 JSTのRoutineでも自動実行される |
 
 ## ルール
