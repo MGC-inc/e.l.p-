@@ -70,6 +70,14 @@ KNOWN_APPOINTERS = {
 # クローザー・アポインターと同様、LINE表示名が一致すれば即座に本登録される（role="admin"）。
 KNOWN_ADMINS = {}
 
+# 役割ごとの登録完了メッセージ。手動登録フロー（handle_registration）と自動一致登録
+# （handle_event、KNOWN_CLOSERS等にLINE表示名が完全一致した場合）の両方から参照する。
+ROLE_WELCOME_MESSAGES = {
+    "closer": "登録完了しました。以後、商談録音をMP3形式のファイルで送信してください。",
+    "appointer": "登録完了しました。毎週、実績をお送りします。",
+    "admin": "登録完了しました。毎週、チーム全体の実績をお送りします。",
+}
+
 # ---- KNOWN_CLOSERS/KNOWN_APPOINTERS/KNOWN_ADMINSの追加・削除 ----
 # 手で編集せず scripts/add_closer.py・scripts/remove_closer.py を使うこと
 # （Claude操作マニュアル.md セクション9参照）。
@@ -198,7 +206,7 @@ def to_customer_label(text: str) -> str:
 
 # ---- イベント処理 ---------------------------------------------------------
 
-def handle_audio_message(event: dict, closer: dict):
+def handle_audio_message(event: dict, closer: dict, extra_messages=None):
     message = event["message"]
     message_id = message["id"]
     line_user_id = event["source"]["userId"]
@@ -224,7 +232,7 @@ def handle_audio_message(event: dict, closer: dict):
         "received_at": now.isoformat(),
     }])
 
-    line_reply(reply_token, [{
+    line_reply(reply_token, [*(extra_messages or []), {
         "type": "text",
         "text": "録音を受け取りました。アポインターは誰ですか？（お名前を入力してください）",
     }])
@@ -321,12 +329,7 @@ def handle_registration(event: dict, closer: dict, is_first_contact: bool) -> bo
         if text in role_map:
             role = role_map[text]
             sb("PATCH", f"closer_line_users?id=eq.{closer['id']}", {"role": role})
-            if role == "closer":
-                line_reply(reply_token, [{"type": "text", "text": "登録完了しました。以後、商談録音をMP3形式のファイルで送信してください。"}])
-            elif role == "appointer":
-                line_reply(reply_token, [{"type": "text", "text": "登録完了しました。毎週、実績をお送りします。"}])
-            else:
-                line_reply(reply_token, [{"type": "text", "text": "登録完了しました。毎週、チーム全体の実績をお送りします。"}])
+            line_reply(reply_token, [{"type": "text", "text": ROLE_WELCOME_MESSAGES[role]}])
         else:
             line_reply(reply_token, [{
                 "type": "text", "text": "クローザー・アポインター・管理者、どちらですか？ボタンから選んでください。",
@@ -352,12 +355,22 @@ def handle_event(event: dict):
         # 確定しているので、手動登録やあいさつフローを待たずにこのメッセージ自体
         # （録音も含む）をそのまま処理する
 
+    # 自動一致登録（上記）の場合、あいさつフローを経由しないため本来の登録完了
+    # メッセージが一度も送られない。無言のままだと本人・今川さんから見て「登録
+    # できていない」ように見える（実際に田村さんで発生）ため、初回メッセージへの
+    # 返信として登録完了メッセージを送る。
+    welcome_messages = []
+    if is_first_contact and closer.get("closer_name") and closer.get("role"):
+        welcome_messages = [{"type": "text", "text": ROLE_WELCOME_MESSAGES[closer["role"]]}]
+
     if handle_registration(event, closer, is_first_contact):
         return
 
     message_type = event.get("message", {}).get("type")
     if message_type in ("audio", "file"):
-        handle_audio_message(event, closer)
+        handle_audio_message(event, closer, extra_messages=welcome_messages)
+    elif welcome_messages:
+        line_reply(event["replyToken"], welcome_messages)
     elif message_type == "text":
         handle_text_message(event)
 
