@@ -225,7 +225,7 @@ def main():
     properties["商談日時"] = date
     if args.appointer:
         properties["アポインター"] = args.appointer
-    properties["分析済み"] = True
+    properties["分析済み"] = "__YES__"  # Notionのcheckbox形式（__YES__/__NO__）
 
     result = {"content_markdown": content_markdown, "properties": properties}
     out_text = json.dumps(result, ensure_ascii=False)
