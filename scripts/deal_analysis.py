@@ -116,6 +116,30 @@ def upload_audio(key, path):
     raise RuntimeError("file processing timeout (15min)")
 
 
+def dedupe_repeated_output(text: str, min_fingerprint: int = 80) -> str:
+    """Geminiが低確率で応答本文をまるごと2回（またはそれ以上）生成してしまう
+    既知の繰り返しループ不具合への対処。deal_analysis.py・cooling_off_analysis.py・
+    pending_transition_analysis.pyの全案件で実際に発生を確認済み（本文全体が
+    ほぼそのまま2回連続で出力され、末尾の構造化JSONも2重に出力されることがある）。
+
+    本文冒頭の十分な長さの文字列（フィンガープリント）が、先頭以外の位置に
+    再度そのまま現れたら、そこを重複の開始位置とみなして以降を切り捨てる。
+    """
+    text = text.strip()
+    if len(text) < min_fingerprint * 2:
+        return text
+    fingerprint = text[:min_fingerprint]
+    dup_pos = text.find(fingerprint, min_fingerprint)
+    if dup_pos == -1:
+        return text
+    trimmed = text[:dup_pos].rstrip()
+    if not trimmed:
+        return text
+    log(f"警告: Gemini応答の重複生成を検知し、末尾の重複分（約{len(text) - len(trimmed)}文字）を"
+        f"自動的に切り捨てました（既知の繰り返しループ不具合への対処）")
+    return trimmed
+
+
 def generate(key, model, prompt, file_uri, file_mime, retries=3):
     """商談全体（2〜3時間超）の音声を1リクエストで分析する。
 
@@ -159,7 +183,7 @@ def generate(key, model, prompt, file_uri, file_mime, retries=3):
         raise RuntimeError(f"empty response (finishReason={finish_reason}): {json.dumps(res, ensure_ascii=False)[:300]}")
     if finish_reason not in (None, "STOP"):
         log(f"警告: finishReason={finish_reason}（出力が途中で打ち切られた可能性があります）")
-    return text.strip()
+    return dedupe_repeated_output(text)
 
 
 def split_content_and_properties(text):
