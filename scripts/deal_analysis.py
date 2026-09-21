@@ -206,7 +206,7 @@ def main():
         f"- 商談日時: {date}\n"
         f"- 担当クローザー: {args.closer}\n"
         f"- アポインター: {args.appointer or '未指定（分かれば構造化データのアポインター欄に記入）'}\n"
-        f"- 顧客: {args.customer}\n"
+        f"- お客様: {args.customer}\n"
         f"- 商談結果: {args.result}\n"
     )
 
