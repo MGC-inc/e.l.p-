@@ -23,13 +23,28 @@ import mimetypes
 import os
 import urllib.error
 import urllib.request
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler
 
 LINE_CHANNEL_SECRET = os.environ["DEAL_LINE_CHANNEL_SECRET"]
 LINE_CHANNEL_ACCESS_TOKEN = os.environ["DEAL_LINE_CHANNEL_ACCESS_TOKEN"]
 SUPABASE_URL = os.environ["DEAL_SUPABASE_URL"]
 SUPABASE_SERVICE_ROLE_KEY = os.environ["DEAL_SUPABASE_SERVICE_ROLE_KEY"]
+
+# 「今日の目標を見る」リッチメニュー用（任意設定。未設定でも録音受付フローは動く）。
+# NOTION_TOKENのセットアップ: 商談分析運用.md セクション6-6参照。
+NOTION_TOKEN = os.environ.get("NOTION_TOKEN")
+NOTION_VERSION = "2022-06-28"
+# 「📊 個人別KPI逆算データ（参照用）」DBのdatabase_id（固定値・秘密情報ではない）
+KPI_DATABASE_ID = "5f110c1c-b977-4054-9b00-5b3ce27d3493"
+GOAL_BUTTON_TEXT = "今日の目標を見る"
+# LINEのReply APIは応答メッセージとして扱われ、料金プランのメッセージ配信数には
+# カウントされない（LINE Developers公式ドキュメントで確認済み。2026-09時点）。
+# そのため既定はfalseで、連打時も毎回Notionから最新値を取り直して返す。
+# 仕様変更等でカウント対象になった場合のみ環境変数で true にする
+# （1ユーザー1日1回に制限し、2回目以降は直近の内容を再送する）。
+REPLY_COUNTS_TOWARD_QUOTA = os.environ.get("REPLY_COUNTS_TOWARD_QUOTA", "false").lower() == "true"
+JST = timezone(timedelta(hours=9))
 
 RESULT_OPTIONS = ["契約", "保留", "失注", "クーリングオフ", "審査落ち", "キャンセル"]
 PENDING_STATUSES = "awaiting_appointer,awaiting_customer,awaiting_result,awaiting_confirm"
@@ -204,6 +219,55 @@ def to_customer_label(text: str) -> str:
     return f"{text}邸"
 
 
+# ---- Notion（📊 個人別KPI逆算データ（参照用）） ----------------------------
+# 「通知本文（LINE配信用）」等はNotion側の数式（formula）プロパティで、Notion公式
+# REST APIでしか計算結果の文字列を取得できない（Notion MCP経由では参照URLしか
+# 返らず中身が読めない）。そのためこのbotだけは他の処理と違い、Notion REST APIを
+# 直接叩く（tools/roadmap/sync_notion_to_json.py と同じ方式）。
+
+def notion_query_member(member_name: str) -> dict | None:
+    """「📊 個人別KPI逆算データ（参照用）」DBから、メンバー名が完全一致する1行を取得する。
+    NOTION_TOKEN未設定、または該当行がなければNone。
+    """
+    if not NOTION_TOKEN:
+        return None
+    body = json.dumps({
+        "filter": {"property": "メンバー", "title": {"equals": member_name}},
+        "page_size": 1,
+    }).encode()
+    req = urllib.request.Request(
+        f"https://api.notion.com/v1/databases/{KPI_DATABASE_ID}/query",
+        data=body, method="POST",
+        headers={
+            "Authorization": f"Bearer {NOTION_TOKEN}",
+            "Notion-Version": NOTION_VERSION,
+            "Content-Type": "application/json",
+        },
+    )
+    with urllib.request.urlopen(req, timeout=20) as r:
+        results = json.loads(r.read()).get("results", [])
+    return results[0] if results else None
+
+
+def notion_formula_text(page: dict, prop_name: str) -> str:
+    prop = page.get("properties", {}).get(prop_name) or {}
+    formula = prop.get("formula") or {}
+    return (formula.get("string") or "").strip()
+
+
+def notion_rollup_status(page: dict, prop_name: str) -> str | None:
+    """「在籍状況(名簿参照)」のような show_unique ロールアップ（selectの配列）から
+    先頭の選択肢名を取り出す。未設定・空配列ならNone。
+    """
+    prop = page.get("properties", {}).get(prop_name) or {}
+    rollup = prop.get("rollup") or {}
+    for item in rollup.get("array", []):
+        select = item.get("select")
+        if select and select.get("name"):
+            return select["name"]
+    return None
+
+
 # ---- イベント処理 ---------------------------------------------------------
 
 def handle_audio_message(event: dict, closer: dict, extra_messages=None):
@@ -340,6 +404,78 @@ def handle_registration(event: dict, closer: dict, is_first_contact: bool) -> bo
     return False
 
 
+def handle_goal_request(event: dict, closer: dict):
+    """リッチメニュー「今日の目標を見る」タップへの応答。
+    Notion「📊 個人別KPI逆算データ（参照用）」の役割に応じた通知本文を、その場で
+    Reply APIで返す（Push APIは使わない＝メッセージ配信数を消費しない）。
+    """
+    reply_token = event["replyToken"]
+    member_name = closer.get("closer_name")
+    now = datetime.now(JST)
+
+    # 連打防止（LINEの再送・素早い連打対策）。last_goal_reply_atカラムが未追加の
+    # 環境ではcloser.get()がNoneを返すだけで安全にスキップされる。
+    last_at = closer.get("last_goal_reply_at")
+    if last_at:
+        try:
+            if now - datetime.fromisoformat(last_at) < timedelta(seconds=5):
+                return
+        except ValueError:
+            pass
+
+    if not NOTION_TOKEN:
+        line_reply(reply_token, [{
+            "type": "text",
+            "text": "目標配信の設定が完了していません（NOTION_TOKEN未設定）。今川さんに確認してください。",
+        }])
+        return
+
+    today_iso = now.date().isoformat()
+
+    # REPLY_COUNTS_TOWARD_QUOTA=true の場合のみ、1ユーザー1日1回に制限し
+    # 2回目以降は直近の内容を再送する（既定はfalse。今のLINE仕様ではReply APIは
+    # メッセージ配信数にカウントされないため、既定では毎回最新値を取り直す）。
+    if REPLY_COUNTS_TOWARD_QUOTA and closer.get("last_goal_reply_date") == today_iso:
+        cached = closer.get("last_goal_reply_text") or "本日分は送信済みです。"
+        line_reply(reply_token, [{
+            "type": "text",
+            "text": f"{cached}\n（本日2回目以降のため、直近の内容を再送しています）",
+        }])
+        try:
+            sb("PATCH", f"closer_line_users?id=eq.{closer['id']}", {"last_goal_reply_at": now.isoformat()})
+        except urllib.error.HTTPError:
+            pass  # last_goal_reply_at列未追加の環境では無視する
+        return
+
+    page = notion_query_member(member_name)
+    if page is None:
+        line_reply(reply_token, [{
+            "type": "text",
+            "text": f"「{member_name}」のKPIデータが見つかりませんでした。今川さんに確認してください。",
+        }])
+        return
+
+    status = notion_rollup_status(page, "在籍状況(名簿参照)")
+    if status and status != "稼働中":
+        line_reply(reply_token, [{"type": "text", "text": "現在このアカウントへの配信対象外です。"}])
+        return
+
+    text = notion_formula_text(page, "通知本文（LINE配信用）")
+    if not text:
+        text = "本日分の目標データがまだ準備できていません。しばらくしてから再度お試しください。"
+
+    line_reply(reply_token, [{"type": "text", "text": text}])
+
+    update = {"last_goal_reply_at": now.isoformat()}
+    if REPLY_COUNTS_TOWARD_QUOTA:
+        update["last_goal_reply_date"] = today_iso
+        update["last_goal_reply_text"] = text
+    try:
+        sb("PATCH", f"closer_line_users?id=eq.{closer['id']}", update)
+    except urllib.error.HTTPError:
+        pass  # last_goal_reply_*列未追加の環境では無視する（本文の返信自体は既に成功している）
+
+
 def handle_event(event: dict):
     if event.get("type") != "message":
         return  # フォロー/アンフォロー等は今回は無視
@@ -371,6 +507,10 @@ def handle_event(event: dict):
         handle_audio_message(event, closer, extra_messages=welcome_messages)
     elif welcome_messages:
         line_reply(event["replyToken"], welcome_messages)
+    elif message_type == "text" and event["message"]["text"] == GOAL_BUTTON_TEXT:
+        # 録音登録フローの途中（awaiting_customer等）でタップされた場合も、
+        # 目標確認を優先する（handle_text_messageの状態遷移より先に判定する）
+        handle_goal_request(event, closer)
     elif message_type == "text":
         handle_text_message(event)
 

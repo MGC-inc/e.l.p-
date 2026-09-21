@@ -39,6 +39,10 @@
    - `DEAL_LINE_CHANNEL_ACCESS_TOKEN`
    - `DEAL_SUPABASE_URL`
    - `DEAL_SUPABASE_SERVICE_ROLE_KEY`
+   - `NOTION_TOKEN`（リッチメニュー「今日の目標を見る」用。セットアップ手順は
+     商談分析運用.md セクション6-6参照。未設定でも録音受付フローは通常通り動く）
+   - `REPLY_COUNTS_TOWARD_QUOTA`（任意。既定は未設定＝false扱い。商談分析運用.md
+     セクション6-6参照）
 
    （`ELP_SUPABASE_URL`等の名前は使わない。Vercelチーム共有変数として既に別用途で使われており、
    Vercelの通常デプロイでは共有変数がFile Upload APIデプロイに反映されない問題が確認されたため、
