@@ -226,6 +226,10 @@ def main():
     if args.appointer:
         properties["アポインター"] = args.appointer
     properties["分析済み"] = "__YES__"  # Notionのcheckbox形式（__YES__/__NO__）
+    # 保留から後日「契約」「失注」に結果が書き換わったことを検知できるよう、
+    # 登録時点で保留だった事実を別プロパティに残しておく（「結果」自体は
+    # 後日上書きされるため、上書き後も元が保留だったと判定するのに必要）。
+    properties["初回登録時_保留"] = "__YES__" if args.result == "保留" else "__NO__"
 
     result = {"content_markdown": content_markdown, "properties": properties}
     out_text = json.dumps(result, ensure_ascii=False)
