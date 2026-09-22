@@ -49,30 +49,22 @@ BUTTON_TEXT = "今日の目標を見る"
 # 赤系ファイヤーカラー（固定。プロフィール画像からの抽出はしない）
 TEXT_GLOW = (255, 110, 30)
 
-# 爆発の炎色グラデーション（0=暗い赤黒 → 1=白熱に近い黄）。ノイズベースの爆発背景で使う
+# 爆発の炎色グラデーション（0=明るめの赤 → 1=白熱に近い黄）。ノイズベースの爆発背景で使う
+# ユーザー指示で全体的に明るい赤系に調整（黒に近い暗部を無くす）
 FIRE_STOPS = [
-    (0.00, (16, 2, 2)),
-    (0.22, (74, 6, 5)),
-    (0.45, (176, 32, 12)),
-    (0.66, (230, 82, 18)),
-    (0.85, (255, 176, 70)),
-    (1.00, (255, 240, 200)),
+    (0.00, (74, 10, 10)),
+    (0.22, (140, 16, 14)),
+    (0.45, (214, 46, 18)),
+    (0.66, (255, 104, 28)),
+    (0.85, (255, 196, 96)),
+    (1.00, (255, 248, 214)),
 ]
 
-# 中央の「ボタン」（グロス調の円形ボタン。押せそうな見た目にする）
+# 中央の「ボタン」（グロス調の円形ボタン。押せそうな見た目にする。中は無地）
 BUTTON_RADIUS = 300
-BUTTON_HIGHLIGHT = (255, 214, 150)
-BUTTON_SHADOW_COLOR = (150, 20, 10)
+BUTTON_HIGHLIGHT = (255, 140, 110)
+BUTTON_SHADOW_COLOR = (204, 24, 20)
 BUTTON_RIM = (255, 232, 200)
-
-# ボタン内の小さな炎アイコン（頂点=上、揺らぎを右側に持たせた非対称の輪郭。
-# 単位座標: x=-1..1, y=0(頂点)..1(裾)）
-FLAME_PTS = [
-    (0.00, 1.00), (-0.40, 0.94), (-0.52, 0.74), (-0.40, 0.54),
-    (-0.50, 0.36), (-0.30, 0.16), (-0.08, 0.05), (0.06, -0.03),
-    (0.24, 0.09), (0.32, 0.27), (0.22, 0.42), (0.36, 0.58),
-    (0.30, 0.78), (0.40, 0.95),
-]
 
 
 def load_env() -> dict:
@@ -157,13 +149,9 @@ def make_explosion_bg(width: int, height: int, cx: int, cy: int) -> Image.Image:
     return Image.fromarray(rgb, "RGB")
 
 
-def flame_polygon(cx: float, base_y: float, width: float, height: float) -> list:
-    return [(cx + x * width / 2, base_y - (1 - y) * height) for x, y in FLAME_PTS]
-
-
 def draw_button(img: Image.Image, cx: int, cy: int) -> None:
-    """押せそうな見た目のグロス調の円形ボタン。ドロップシャドウ→本体→縁取り→
-    ハイライト→内側の小さな炎アイコンの順に重ねる。"""
+    """押せそうな見た目のグロス調の円形ボタン（無地）。
+    ドロップシャドウ→本体→縁取り→光沢ハイライトの順に重ねる。"""
     r = BUTTON_RADIUS
 
     # ドロップシャドウ
@@ -197,12 +185,6 @@ def draw_button(img: Image.Image, cx: int, cy: int) -> None:
         fill=(255, 255, 255, 110))
     hl = hl.filter(ImageFilter.GaussianBlur(24))
     img.paste(Image.alpha_composite(img.convert("RGBA"), hl).convert("RGB"), (0, 0))
-
-    # ボタン内の小さな炎アイコン
-    d = ImageDraw.Draw(img)
-    d.polygon(flame_polygon(cx, cy + r * 0.42, r * 0.85, r * 1.05), fill=(150, 14, 10))
-    d.polygon(flame_polygon(cx, cy + r * 0.34, r * 0.62, r * 0.82), fill=(255, 90, 20))
-    d.polygon(flame_polygon(cx, cy + r * 0.24, r * 0.36, r * 0.5), fill=(255, 214, 110))
 
 
 def draw_glow_text(img: Image.Image, text: str, font: ImageFont.FreeTypeFont,
