@@ -32,20 +32,28 @@ from PIL import Image, ImageDraw, ImageFilter, ImageFont
 HERE = Path(__file__).resolve().parent
 ENV_PATH = HERE / ".." / ".env"
 IMG_PATH = "/tmp/deal_bot_richmenu.png"
-FONT_PATH = "/usr/share/fonts/truetype/fonts-japanese-gothic.ttf"
+# 太字の方がロゴらしく見えるため、Noto Sans CJK Boldがあれば優先する
+# （なければ従来のIPAGothic Regularにフォールバック。TTCの0番目がJP面）
+FONT_PATH = "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc"
+FONT_INDEX = 0
 if not Path(FONT_PATH).exists():
-    FONT_PATH = "/usr/share/fonts/opentype/ipafont-gothic/ipag.ttf"
+    FONT_PATH = "/usr/share/fonts/truetype/fonts-japanese-gothic.ttf"
+    FONT_INDEX = 0
+    if not Path(FONT_PATH).exists():
+        FONT_PATH = "/usr/share/fonts/opentype/ipafont-gothic/ipag.ttf"
 
 W, H = 2500, 1686
 BUTTON_TEXT = "今日の目標を見る"
 
-# 赤系ファイヤーカラー（固定。プロフィール画像からの抽出はしない）
-BG_CENTER = (176, 24, 24)     # 中心の明るい赤（グローの発光源）
-BG_EDGE = (26, 2, 4)          # 外周の暗い赤黒
-FLAME_OUTER = (120, 8, 8)     # 炎の外側（暗い赤）
-FLAME_MID = (214, 48, 14)     # 炎の中間（赤〜オレンジ）
-FLAME_CORE = (255, 179, 71)   # 炎の芯（明るいオレンジ〜黄）
-TEXT_GLOW = (255, 90, 30)
+# 赤系ファイヤーカラー（固定。プロフィール画像からの抽出はしない。ユーザー指示で
+# より明るい赤・爆発するような光り方に調整）
+BG_CENTER = (232, 40, 24)     # 中心の明るい赤（グローの発光源）
+BG_EDGE = (54, 4, 4)          # 外周の赤黒（暗すぎないよう底上げ）
+FLAME_OUTER = (150, 14, 10)   # 炎の外側（赤）
+FLAME_MID = (255, 90, 20)     # 炎の中間（赤〜オレンジ）
+FLAME_CORE = (255, 214, 110)  # 炎の芯（明るい黄）
+RAY_COLOR = (255, 150, 40)    # 爆発の光条
+TEXT_GLOW = (255, 110, 30)
 
 # 炎シルエット（頂点=上、揺らぎを右側に持たせた非対称の輪郭。単位座標: x=-1..1, y=0(頂点)..1(裾)）
 FLAME_PTS = [
@@ -107,18 +115,39 @@ def flame_polygon(cx: int, base_y: int, width: int, height: int) -> list:
     return [(cx + x * width / 2, base_y - (1 - y) * height) for x, y in FLAME_PTS]
 
 
+def draw_burst_rays(img: Image.Image, cx: int, cy: int, n: int = 16,
+                     r_short: int = 300, r_long: int = 720) -> None:
+    """爆発のような光条（スターバースト）。長短の三角形を交互に放射状に配置する。"""
+    layer = Image.new("RGBA", img.size, (0, 0, 0, 0))
+    ld = ImageDraw.Draw(layer)
+    half_w = math.radians(5)
+    for i in range(n):
+        angle = 2 * math.pi * i / n
+        length = r_long if i % 2 == 0 else r_short
+        p1 = (cx, cy)
+        p2 = (cx + length * math.cos(angle - half_w), cy + length * math.sin(angle - half_w))
+        p3 = (cx + length * math.cos(angle + half_w), cy + length * math.sin(angle + half_w))
+        ld.polygon([p1, p2, p3], fill=(*RAY_COLOR, 165))
+    layer = layer.filter(ImageFilter.GaussianBlur(8))
+    img.paste(Image.alpha_composite(img.convert("RGBA"), layer).convert("RGB"), (0, 0))
+
+
 def draw_flame(img: Image.Image, cx: int, base_y: int) -> None:
-    # 後ろにぼかしたグロー（発光）レイヤーを重ねてから、3層の炎本体を描く
+    burst_cy = base_y - 260
+
+    # 爆発のような光条を先に敷き、その上に大きくぼかしたグロー（発光）を重ねる
+    draw_burst_rays(img, cx, burst_cy)
+
     glow = Image.new("RGBA", img.size, (0, 0, 0, 0))
     gd = ImageDraw.Draw(glow)
-    gd.polygon(flame_polygon(cx, base_y + 20, 640, 760), fill=(255, 110, 30, 220))
-    glow = glow.filter(ImageFilter.GaussianBlur(70))
+    gd.polygon(flame_polygon(cx, base_y + 30, 780, 900), fill=(255, 140, 30, 235))
+    glow = glow.filter(ImageFilter.GaussianBlur(95))
     img.paste(Image.alpha_composite(img.convert("RGBA"), glow).convert("RGB"), (0, 0))
 
     d = ImageDraw.Draw(img)
-    d.polygon(flame_polygon(cx, base_y, 460, 560), fill=FLAME_OUTER)
-    d.polygon(flame_polygon(cx, base_y - 40, 330, 440), fill=FLAME_MID)
-    d.polygon(flame_polygon(cx, base_y - 90, 190, 280), fill=FLAME_CORE)
+    d.polygon(flame_polygon(cx, base_y, 520, 620), fill=FLAME_OUTER)
+    d.polygon(flame_polygon(cx, base_y - 40, 380, 490), fill=FLAME_MID)
+    d.polygon(flame_polygon(cx, base_y - 95, 220, 310), fill=FLAME_CORE)
 
 
 def draw_glow_text(img: Image.Image, text: str, font: ImageFont.FreeTypeFont,
@@ -139,8 +168,8 @@ def make_image() -> None:
     cx = W // 2
     draw_flame(img, cx, base_y=1020)
 
-    f_label = ImageFont.truetype(FONT_PATH, 132)
-    f_sub = ImageFont.truetype(FONT_PATH, 46)
+    f_label = ImageFont.truetype(FONT_PATH, 132, index=FONT_INDEX)
+    f_sub = ImageFont.truetype(FONT_PATH, 46, index=FONT_INDEX)
 
     draw_glow_text(img, BUTTON_TEXT, f_label, cx, 1120, fill=(255, 255, 255), glow=TEXT_GLOW, blur=18)
 
