@@ -27,6 +27,7 @@ import os
 import urllib.request
 from pathlib import Path
 
+import numpy as np
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 HERE = Path(__file__).resolve().parent
@@ -45,17 +46,27 @@ if not Path(FONT_PATH).exists():
 W, H = 2500, 1686
 BUTTON_TEXT = "今日の目標を見る"
 
-# 赤系ファイヤーカラー（固定。プロフィール画像からの抽出はしない。ユーザー指示で
-# より明るい赤・爆発するような光り方に調整）
-BG_CENTER = (232, 40, 24)     # 中心の明るい赤（グローの発光源）
-BG_EDGE = (54, 4, 4)          # 外周の赤黒（暗すぎないよう底上げ）
-FLAME_OUTER = (150, 14, 10)   # 炎の外側（赤）
-FLAME_MID = (255, 90, 20)     # 炎の中間（赤〜オレンジ）
-FLAME_CORE = (255, 214, 110)  # 炎の芯（明るい黄）
-RAY_COLOR = (255, 150, 40)    # 爆発の光条
+# 赤系ファイヤーカラー（固定。プロフィール画像からの抽出はしない）
 TEXT_GLOW = (255, 110, 30)
 
-# 炎シルエット（頂点=上、揺らぎを右側に持たせた非対称の輪郭。単位座標: x=-1..1, y=0(頂点)..1(裾)）
+# 爆発の炎色グラデーション（0=暗い赤黒 → 1=白熱に近い黄）。ノイズベースの爆発背景で使う
+FIRE_STOPS = [
+    (0.00, (16, 2, 2)),
+    (0.22, (74, 6, 5)),
+    (0.45, (176, 32, 12)),
+    (0.66, (230, 82, 18)),
+    (0.85, (255, 176, 70)),
+    (1.00, (255, 240, 200)),
+]
+
+# 中央の「ボタン」（グロス調の円形ボタン。押せそうな見た目にする）
+BUTTON_RADIUS = 300
+BUTTON_HIGHLIGHT = (255, 214, 150)
+BUTTON_SHADOW_COLOR = (150, 20, 10)
+BUTTON_RIM = (255, 232, 200)
+
+# ボタン内の小さな炎アイコン（頂点=上、揺らぎを右側に持たせた非対称の輪郭。
+# 単位座標: x=-1..1, y=0(頂点)..1(裾)）
 FLAME_PTS = [
     (0.00, 1.00), (-0.40, 0.94), (-0.52, 0.74), (-0.40, 0.54),
     (-0.50, 0.36), (-0.30, 0.16), (-0.08, 0.05), (0.06, -0.03),
@@ -95,59 +106,103 @@ def api_data_upload(token: str, richmenu_id: str, img_bytes: bytes):
         return r.status
 
 
-def radial_gradient(size: tuple, center_color: tuple, edge_color: tuple,
-                     small: tuple = (250, 169)) -> Image.Image:
-    """中心が明るく外周が暗い放射グラデーション（グロー演出の土台）。
-    フル解像度でピクセル毎に計算すると遅いため、小さい画像で作ってから拡大する。
+def _value_noise(width: int, height: int, octaves: int = 5, seed: int = 7) -> np.ndarray:
+    """複数解像度のランダムグリッドを重ねた乱流ノイズ（0..1）。
+    フラットなベクター感を消し、爆発らしい不規則さを出すために使う。
     """
-    small_img = Image.new("RGB", small)
-    px = small_img.load()
-    cx, cy = small[0] / 2, small[1] / 2
-    maxd = math.hypot(cx, cy)
-    for y in range(small[1]):
-        for x in range(small[0]):
-            t = min(1.0, math.hypot(x - cx, y - cy) / maxd)
-            px[x, y] = tuple(int(center_color[i] * (1 - t) + edge_color[i] * t) for i in range(3))
-    return small_img.resize(size, Image.BICUBIC)
+    rng = np.random.default_rng(seed)
+    acc = np.zeros((height, width), dtype=np.float32)
+    amp, total, res = 1.0, 0.0, 5
+    for _ in range(octaves):
+        small = (rng.random((res, res)) * 255).astype(np.uint8)
+        big = np.asarray(
+            Image.fromarray(small, "L").resize((width, height), Image.BICUBIC),
+            dtype=np.float32,
+        ) / 255.0
+        acc += amp * big
+        total += amp
+        amp *= 0.55
+        res *= 2
+    return acc / total
 
 
-def flame_polygon(cx: int, base_y: int, width: int, height: int) -> list:
+def _fire_colormap(intensity: np.ndarray) -> np.ndarray:
+    h, w = intensity.shape
+    out = np.zeros((h, w, 3), dtype=np.float32)
+    for (t0, c0), (t1, c1) in zip(FIRE_STOPS, FIRE_STOPS[1:]):
+        mask = (intensity >= t0) & (intensity <= t1)
+        local_t = np.clip((intensity - t0) / (t1 - t0), 0, 1)
+        for ch in range(3):
+            out[..., ch] = np.where(mask, c0[ch] + (c1[ch] - c0[ch]) * local_t, out[..., ch])
+    return out
+
+
+def make_explosion_bg(width: int, height: int, cx: int, cy: int) -> Image.Image:
+    """写真のような質感の爆発（フォトリアル寄り）を、放射状の距離場に乱流ノイズを
+    重ねて生成する。ポリゴンの光条は使わず、輪郭・濃淡ともに不規則にする。
+    """
+    yy, xx = np.mgrid[0:height, 0:width].astype(np.float32)
+    dx = (xx - cx) / (width * 0.62)
+    dy = (yy - cy) / (height * 0.62)
+    r = np.sqrt(dx * dx + dy * dy)
+
+    detail = _value_noise(width, height, octaves=5, seed=11)
+    turbulence = _value_noise(width, height, octaves=3, seed=29)
+
+    # 中心ほど明るく、ノイズで輪郭を不規則にゆらす（きれいな円にしない）
+    intensity = 1.05 - r + (detail - 0.5) * 0.6 + (turbulence - 0.5) * 0.25
+    intensity = np.clip(intensity, 0, 1) ** 1.5
+
+    rgb = np.clip(_fire_colormap(intensity), 0, 255).astype(np.uint8)
+    return Image.fromarray(rgb, "RGB")
+
+
+def flame_polygon(cx: float, base_y: float, width: float, height: float) -> list:
     return [(cx + x * width / 2, base_y - (1 - y) * height) for x, y in FLAME_PTS]
 
 
-def draw_burst_rays(img: Image.Image, cx: int, cy: int, n: int = 16,
-                     r_short: int = 300, r_long: int = 720) -> None:
-    """爆発のような光条（スターバースト）。長短の三角形を交互に放射状に配置する。"""
-    layer = Image.new("RGBA", img.size, (0, 0, 0, 0))
-    ld = ImageDraw.Draw(layer)
-    half_w = math.radians(5)
-    for i in range(n):
-        angle = 2 * math.pi * i / n
-        length = r_long if i % 2 == 0 else r_short
-        p1 = (cx, cy)
-        p2 = (cx + length * math.cos(angle - half_w), cy + length * math.sin(angle - half_w))
-        p3 = (cx + length * math.cos(angle + half_w), cy + length * math.sin(angle + half_w))
-        ld.polygon([p1, p2, p3], fill=(*RAY_COLOR, 165))
-    layer = layer.filter(ImageFilter.GaussianBlur(8))
-    img.paste(Image.alpha_composite(img.convert("RGBA"), layer).convert("RGB"), (0, 0))
+def draw_button(img: Image.Image, cx: int, cy: int) -> None:
+    """押せそうな見た目のグロス調の円形ボタン。ドロップシャドウ→本体→縁取り→
+    ハイライト→内側の小さな炎アイコンの順に重ねる。"""
+    r = BUTTON_RADIUS
 
+    # ドロップシャドウ
+    shadow = Image.new("RGBA", img.size, (0, 0, 0, 0))
+    ImageDraw.Draw(shadow).ellipse(
+        [cx - r - 10, cy - r + 22, cx + r + 10, cy + r + 34], fill=(0, 0, 0, 150))
+    shadow = shadow.filter(ImageFilter.GaussianBlur(30))
+    img.paste(Image.alpha_composite(img.convert("RGBA"), shadow).convert("RGB"), (0, 0))
 
-def draw_flame(img: Image.Image, cx: int, base_y: int) -> None:
-    burst_cy = base_y - 260
+    # 本体（左上が明るく右下が暗いグラデーションで立体感を出す）
+    body = Image.new("RGB", (r * 2, r * 2))
+    bx = np.linspace(-1, 1, r * 2, dtype=np.float32)
+    gx, gy = np.meshgrid(bx, bx)
+    t = np.clip((gx * -0.7 + gy * -0.7 + 1) / 2, 0, 1) ** 1.3
+    body_arr = np.zeros((r * 2, r * 2, 3), dtype=np.float32)
+    for ch in range(3):
+        body_arr[..., ch] = BUTTON_HIGHLIGHT[ch] * t + BUTTON_SHADOW_COLOR[ch] * (1 - t)
+    body = Image.fromarray(np.clip(body_arr, 0, 255).astype(np.uint8), "RGB")
+    mask = Image.new("L", (r * 2, r * 2), 0)
+    ImageDraw.Draw(mask).ellipse([2, 2, r * 2 - 2, r * 2 - 2], fill=255)
+    img.paste(body, (cx - r, cy - r), mask)
 
-    # 爆発のような光条を先に敷き、その上に大きくぼかしたグロー（発光）を重ねる
-    draw_burst_rays(img, cx, burst_cy)
+    # 縁取り
+    ImageDraw.Draw(img).ellipse([cx - r, cy - r, cx + r, cy + r], outline=BUTTON_RIM, width=8)
 
-    glow = Image.new("RGBA", img.size, (0, 0, 0, 0))
-    gd = ImageDraw.Draw(glow)
-    gd.polygon(flame_polygon(cx, base_y + 30, 780, 900), fill=(255, 140, 30, 235))
-    glow = glow.filter(ImageFilter.GaussianBlur(95))
-    img.paste(Image.alpha_composite(img.convert("RGBA"), glow).convert("RGB"), (0, 0))
+    # 光沢ハイライト（左上）
+    hl = Image.new("RGBA", img.size, (0, 0, 0, 0))
+    hr = r * 0.5
+    ImageDraw.Draw(hl).ellipse(
+        [cx - r * 0.45 - hr, cy - r * 0.5 - hr * 0.6, cx - r * 0.45 + hr, cy - r * 0.5 + hr * 0.6],
+        fill=(255, 255, 255, 110))
+    hl = hl.filter(ImageFilter.GaussianBlur(24))
+    img.paste(Image.alpha_composite(img.convert("RGBA"), hl).convert("RGB"), (0, 0))
 
+    # ボタン内の小さな炎アイコン
     d = ImageDraw.Draw(img)
-    d.polygon(flame_polygon(cx, base_y, 520, 620), fill=FLAME_OUTER)
-    d.polygon(flame_polygon(cx, base_y - 40, 380, 490), fill=FLAME_MID)
-    d.polygon(flame_polygon(cx, base_y - 95, 220, 310), fill=FLAME_CORE)
+    d.polygon(flame_polygon(cx, cy + r * 0.42, r * 0.85, r * 1.05), fill=(150, 14, 10))
+    d.polygon(flame_polygon(cx, cy + r * 0.34, r * 0.62, r * 0.82), fill=(255, 90, 20))
+    d.polygon(flame_polygon(cx, cy + r * 0.24, r * 0.36, r * 0.5), fill=(255, 214, 110))
 
 
 def draw_glow_text(img: Image.Image, text: str, font: ImageFont.FreeTypeFont,
@@ -163,20 +218,19 @@ def draw_glow_text(img: Image.Image, text: str, font: ImageFont.FreeTypeFont,
 
 
 def make_image() -> None:
-    img = radial_gradient((W, H), BG_CENTER, BG_EDGE)
-
-    cx = W // 2
-    draw_flame(img, cx, base_y=1020)
+    cx, cy = W // 2, 760
+    img = make_explosion_bg(W, H, cx, cy)
+    draw_button(img, cx, cy)
 
     f_label = ImageFont.truetype(FONT_PATH, 132, index=FONT_INDEX)
     f_sub = ImageFont.truetype(FONT_PATH, 46, index=FONT_INDEX)
 
-    draw_glow_text(img, BUTTON_TEXT, f_label, cx, 1120, fill=(255, 255, 255), glow=TEXT_GLOW, blur=18)
+    draw_glow_text(img, BUTTON_TEXT, f_label, cx, 1190, fill=(255, 255, 255), glow=TEXT_GLOW, blur=18)
 
     sub = "TAP & FIRE UP YOUR DAY"
     d = ImageDraw.Draw(img)
     sb = d.textbbox((0, 0), sub, font=f_sub)
-    d.text((cx - (sb[2] - sb[0]) / 2, 1290), sub, font=f_sub, fill=(255, 176, 110))
+    d.text((cx - (sb[2] - sb[0]) / 2, 1360), sub, font=f_sub, fill=(255, 176, 110))
 
     img.save(IMG_PATH, "PNG")
     print(f"image saved: {IMG_PATH} ({os.path.getsize(IMG_PATH)} bytes)")
