@@ -1,28 +1,35 @@
 #!/usr/bin/env python3
-"""「ユメイク営業分析bot」（DEAL_LINE_CHANNEL_ACCESS_TOKEN）に、
-リッチメニュー「今日の目標を見る」（メッセージアクション）を1枚だけ登録する。
+"""「ユメイク営業分析bot」（DEAL_LINE_CHANNEL_ACCESS_TOKEN）に、役割別の
+リッチメニューを2種類登録する。
 
-このbotが元々持っていた4問クイックリプライ（録音受付）フローとは独立した機能。
-タップされたテキストはline-webhook/api/webhook.py側のhandle_goal_requestが処理する。
+- 全員向け（デフォルト）: 「今日の目標を見る」1ボタン
+- クローザー用: 「今日の目標を見る」＋「直近の商談分析結果を見る」の2ボタン
+  （アポインターは商談分析の対象外のため、こちらは表示しない）
 
-デザイン（ユーザー指示）: 気合い・勢いを感じるファイヤー（炎）モチーフ、光るグロー
-演出、イメージカラーは赤。botのプロフィール画像から配色を抽出する方式はやめ、
-この赤系ファイヤーカラーで固定する。
+タップされたテキストはline-webhook/api/webhook.py側のhandle_goal_request /
+handle_analysis_requestが処理する。役割ごとの出し分けは、Supabase
+closer_line_usersのroleが確定したタイミングでwebhook.py側が
+`linkRichMenuToUser`を呼んで個別に切り替える（このスクリプトは初期登録と
+既存クローザーへのバックフィルのみ担当）。
+
+デザイン: 気合い・勢いを感じるファイヤー（爆発）モチーフ、イメージカラーは赤。
+ノイズベースの爆発背景＋グロス調の円形ボタン（無地）。
 
 処理:
-  1. 赤系ファイヤーカラーで2500x1686の1枚絵（全面1ボタン）を生成する
-  2. 既存リッチメニューを全削除（idempotent。このbotに他のリッチメニューがある
-     前提はない＝録音受付は元々クイックリプライのみで運用されている）
-  3. リッチメニュー作成→画像アップロード→全ユーザーのデフォルトに設定
+  1. 2種類のメニュー画像を生成する
+  2. 既存リッチメニューを全削除（idempotent）
+  3. 2種類とも作成→画像アップロード。デフォルト用のみ全ユーザーの
+     デフォルトに設定する
+  4. --backfill 指定時、Supabase closer_line_usersのrole='closer'全員に
+     クローザー用メニューを個別リンクする（既存登録者向けの一括反映）
 
-.env の DEAL_LINE_CHANNEL_ACCESS_TOKEN を使用。
+.env の DEAL_LINE_CHANNEL_ACCESS_TOKEN・ELP_SUPABASE_URL・
+ELP_SUPABASE_SERVICE_ROLE_KEY を使用（--backfillのみSupabaseが必要）。
 """
 from __future__ import annotations
 
 import argparse
-import io
 import json
-import math
 import os
 import urllib.request
 from pathlib import Path
@@ -32,25 +39,29 @@ from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 HERE = Path(__file__).resolve().parent
 ENV_PATH = HERE / ".." / ".env"
-IMG_PATH = "/tmp/deal_bot_richmenu.png"
+DEFAULT_IMG_PATH = "/tmp/deal_bot_richmenu_default.png"
+CLOSER_IMG_PATH = "/tmp/deal_bot_richmenu_closer.png"
+
 # 太字の方がロゴらしく見えるため、Noto Sans CJK Boldがあれば優先する
 # （なければ従来のIPAGothic Regularにフォールバック。TTCの0番目がJP面）
 FONT_PATH = "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc"
 FONT_INDEX = 0
 if not Path(FONT_PATH).exists():
     FONT_PATH = "/usr/share/fonts/truetype/fonts-japanese-gothic.ttf"
-    FONT_INDEX = 0
     if not Path(FONT_PATH).exists():
         FONT_PATH = "/usr/share/fonts/opentype/ipafont-gothic/ipag.ttf"
 
 W, H = 2500, 1686
-BUTTON_TEXT = "今日の目標を見る"
+GOAL_TEXT = "今日の目標を見る"
+ANALYSIS_TEXT = "直近の商談分析結果を見る"
+
+DEFAULT_MENU_NAME = "営業分析BOT 今日の目標"
+CLOSER_MENU_NAME = "営業分析BOT クローザー用"
 
 # 赤系ファイヤーカラー（固定。プロフィール画像からの抽出はしない）
 TEXT_GLOW = (255, 110, 30)
 
 # 爆発の炎色グラデーション（0=明るめの赤 → 1=白熱に近い黄）。ノイズベースの爆発背景で使う
-# ユーザー指示で全体的に明るい赤系に調整（黒に近い暗部を無くす）
 FIRE_STOPS = [
     (0.00, (74, 10, 10)),
     (0.22, (140, 16, 14)),
@@ -61,7 +72,6 @@ FIRE_STOPS = [
 ]
 
 # 中央の「ボタン」（グロス調の円形ボタン。押せそうな見た目にする。中は無地）
-BUTTON_RADIUS = 300
 BUTTON_HIGHLIGHT = (255, 140, 110)
 BUTTON_SHADOW_COLOR = (204, 24, 20)
 BUTTON_RIM = (255, 232, 200)
@@ -98,6 +108,16 @@ def api_data_upload(token: str, richmenu_id: str, img_bytes: bytes):
         return r.status
 
 
+def sb_get(env: dict, path: str) -> list:
+    url = f"{env['ELP_SUPABASE_URL']}/rest/v1/{path}"
+    req = urllib.request.Request(url, headers={
+        "apikey": env["ELP_SUPABASE_SERVICE_ROLE_KEY"],
+        "Authorization": f"Bearer {env['ELP_SUPABASE_SERVICE_ROLE_KEY']}",
+    })
+    with urllib.request.urlopen(req, timeout=20) as r:
+        return json.loads(r.read())
+
+
 def _value_noise(width: int, height: int, octaves: int = 5, seed: int = 7) -> np.ndarray:
     """複数解像度のランダムグリッドを重ねた乱流ノイズ（0..1）。
     フラットなベクター感を消し、爆発らしい不規則さを出すために使う。
@@ -129,7 +149,7 @@ def _fire_colormap(intensity: np.ndarray) -> np.ndarray:
     return out
 
 
-def make_explosion_bg(width: int, height: int, cx: int, cy: int) -> Image.Image:
+def make_explosion_bg(width: int, height: int, cx: int, cy: int, seed_offset: int = 0) -> Image.Image:
     """写真のような質感の爆発（フォトリアル寄り）を、放射状の距離場に乱流ノイズを
     重ねて生成する。ポリゴンの光条は使わず、輪郭・濃淡ともに不規則にする。
     """
@@ -138,8 +158,8 @@ def make_explosion_bg(width: int, height: int, cx: int, cy: int) -> Image.Image:
     dy = (yy - cy) / (height * 0.62)
     r = np.sqrt(dx * dx + dy * dy)
 
-    detail = _value_noise(width, height, octaves=5, seed=11)
-    turbulence = _value_noise(width, height, octaves=3, seed=29)
+    detail = _value_noise(width, height, octaves=5, seed=11 + seed_offset)
+    turbulence = _value_noise(width, height, octaves=3, seed=29 + seed_offset)
 
     # 中心ほど明るく、ノイズで輪郭を不規則にゆらす（きれいな円にしない）
     intensity = 1.05 - r + (detail - 0.5) * 0.6 + (turbulence - 0.5) * 0.25
@@ -149,11 +169,9 @@ def make_explosion_bg(width: int, height: int, cx: int, cy: int) -> Image.Image:
     return Image.fromarray(rgb, "RGB")
 
 
-def draw_button(img: Image.Image, cx: int, cy: int) -> None:
+def draw_button(img: Image.Image, cx: int, cy: int, r: int) -> None:
     """押せそうな見た目のグロス調の円形ボタン（無地）。
     ドロップシャドウ→本体→縁取り→光沢ハイライトの順に重ねる。"""
-    r = BUTTON_RADIUS
-
     # ドロップシャドウ
     shadow = Image.new("RGBA", img.size, (0, 0, 0, 0))
     ImageDraw.Draw(shadow).ellipse(
@@ -162,7 +180,6 @@ def draw_button(img: Image.Image, cx: int, cy: int) -> None:
     img.paste(Image.alpha_composite(img.convert("RGBA"), shadow).convert("RGB"), (0, 0))
 
     # 本体（左上が明るく右下が暗いグラデーションで立体感を出す）
-    body = Image.new("RGB", (r * 2, r * 2))
     bx = np.linspace(-1, 1, r * 2, dtype=np.float32)
     gx, gy = np.meshgrid(bx, bx)
     t = np.clip((gx * -0.7 + gy * -0.7 + 1) / 2, 0, 1) ** 1.3
@@ -199,29 +216,82 @@ def draw_glow_text(img: Image.Image, text: str, font: ImageFont.FreeTypeFont,
     ImageDraw.Draw(img).text((x, y), text, font=font, fill=fill)
 
 
-def make_image() -> None:
+def make_default_image() -> None:
+    """全員向けデフォルト: 「今日の目標を見る」1ボタン。"""
     cx, cy = W // 2, 760
     img = make_explosion_bg(W, H, cx, cy)
-    draw_button(img, cx, cy)
+    draw_button(img, cx, cy, r=300)
 
     f_label = ImageFont.truetype(FONT_PATH, 132, index=FONT_INDEX)
     f_sub = ImageFont.truetype(FONT_PATH, 46, index=FONT_INDEX)
 
-    draw_glow_text(img, BUTTON_TEXT, f_label, cx, 1190, fill=(255, 255, 255), glow=TEXT_GLOW, blur=18)
+    draw_glow_text(img, GOAL_TEXT, f_label, cx, 1190, fill=(255, 255, 255), glow=TEXT_GLOW, blur=18)
 
     sub = "TAP & FIRE UP YOUR DAY"
     d = ImageDraw.Draw(img)
     sb = d.textbbox((0, 0), sub, font=f_sub)
     d.text((cx - (sb[2] - sb[0]) / 2, 1360), sub, font=f_sub, fill=(255, 176, 110))
 
-    img.save(IMG_PATH, "PNG")
-    print(f"image saved: {IMG_PATH} ({os.path.getsize(IMG_PATH)} bytes)")
+    img.save(DEFAULT_IMG_PATH, "PNG")
+    print(f"image saved: {DEFAULT_IMG_PATH} ({os.path.getsize(DEFAULT_IMG_PATH)} bytes)")
+
+
+def make_closer_image() -> None:
+    """クローザー用: 左右2分割で「今日の目標を見る」「直近の商談分析結果を見る」。"""
+    half = W // 2
+    left = make_explosion_bg(half, H, half // 2, 760, seed_offset=0)
+    right = make_explosion_bg(half, H, half // 2, 760, seed_offset=100)
+    img = Image.new("RGB", (W, H))
+    img.paste(left, (0, 0))
+    img.paste(right, (half, 0))
+
+    # 中央の区切り線（うっすら）
+    ImageDraw.Draw(img).line([(half, 0), (half, H)], fill=(40, 4, 4), width=4)
+
+    cy = 760
+    draw_button(img, half // 2, cy, r=230)
+    draw_button(img, half + half // 2, cy, r=230)
+
+    f_label = ImageFont.truetype(FONT_PATH, 78, index=FONT_INDEX)
+
+    for cx, text in ((half // 2, GOAL_TEXT), (half + half // 2, ANALYSIS_TEXT)):
+        d = ImageDraw.Draw(img)
+        tb = d.textbbox((0, 0), text, font=f_label)
+        tw = tb[2] - tb[0]
+        if tw > half - 80:
+            # 収まらない場合は少し小さいフォントで再計測する
+            f_label2 = ImageFont.truetype(FONT_PATH, 62, index=FONT_INDEX)
+            draw_glow_text(img, text, f_label2, cx, 1130, fill=(255, 255, 255), glow=TEXT_GLOW, blur=14)
+        else:
+            draw_glow_text(img, text, f_label, cx, 1100, fill=(255, 255, 255), glow=TEXT_GLOW, blur=14)
+
+    img.save(CLOSER_IMG_PATH, "PNG")
+    print(f"image saved: {CLOSER_IMG_PATH} ({os.path.getsize(CLOSER_IMG_PATH)} bytes)")
+
+
+def register_menu(token: str, name: str, chat_bar_text: str, areas: list, image_path: str) -> str:
+    menu = {
+        "size": {"width": W, "height": H},
+        "selected": True,
+        "name": name,
+        "chatBarText": chat_bar_text,
+        "areas": areas,
+    }
+    res = api(token, "POST", "richmenu", menu)
+    rid = res["richMenuId"]
+    print(f"created richmenu: {name} -> {rid}")
+    status = api_data_upload(token, rid, open(image_path, "rb").read())
+    print(f"  image upload status: {status}")
+    return rid
 
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--image-only", action="store_true",
                      help="画像生成のみ行い、LINEへの登録は行わない（確認用）")
+    ap.add_argument("--backfill", action="store_true",
+                     help="登録後、Supabase closer_line_usersのrole='closer'全員に"
+                          "クローザー用メニューを個別リンクする")
     args = ap.parse_args()
 
     env = load_env()
@@ -229,7 +299,8 @@ def main():
     if not token:
         raise SystemExit("環境変数 DEAL_LINE_CHANNEL_ACCESS_TOKEN が未設定です。")
 
-    make_image()
+    make_default_image()
+    make_closer_image()
 
     if args.image_only:
         print("--image-only のためLINEへの登録は行いません。")
@@ -240,25 +311,43 @@ def main():
         api(token, "DELETE", f"richmenu/{rm['richMenuId']}")
         print(f"deleted old richmenu {rm['richMenuId']}")
 
-    menu = {
-        "size": {"width": W, "height": H},
-        "selected": True,
-        "name": "営業分析BOT 今日の目標",
-        "chatBarText": "今日の目標",
-        "areas": [{
-            "bounds": {"x": 0, "y": 0, "width": W, "height": H},
-            "action": {"type": "message", "text": BUTTON_TEXT},
-        }],
-    }
-    res = api(token, "POST", "richmenu", menu)
-    rid = res["richMenuId"]
-    print(f"created richmenu: {rid}")
+    default_id = register_menu(
+        token, DEFAULT_MENU_NAME, "今日の目標",
+        [{"bounds": {"x": 0, "y": 0, "width": W, "height": H},
+          "action": {"type": "message", "text": GOAL_TEXT}}],
+        DEFAULT_IMG_PATH,
+    )
+    closer_id = register_menu(
+        token, CLOSER_MENU_NAME, "メニュー",
+        [
+            {"bounds": {"x": 0, "y": 0, "width": W // 2, "height": H},
+             "action": {"type": "message", "text": GOAL_TEXT}},
+            {"bounds": {"x": W // 2, "y": 0, "width": W - W // 2, "height": H},
+             "action": {"type": "message", "text": ANALYSIS_TEXT}},
+        ],
+        CLOSER_IMG_PATH,
+    )
 
-    status = api_data_upload(token, rid, open(IMG_PATH, "rb").read())
-    print(f"image upload status: {status}")
+    api(token, "POST", f"user/all/richmenu/{default_id}")
+    print("set as default richmenu ✅ (全員)")
+    print(f"クローザー用メニューID: {closer_id}（webhook.py がrole確定時に個別リンクする）")
 
-    api(token, "POST", f"user/all/richmenu/{rid}")
-    print("set as default richmenu ✅")
+    if args.backfill:
+        if not env.get("ELP_SUPABASE_URL") or not env.get("ELP_SUPABASE_SERVICE_ROLE_KEY"):
+            print("ELP_SUPABASE_URL/ELP_SUPABASE_SERVICE_ROLE_KEY が未設定のためbackfillをスキップします。")
+            return
+        closers = sb_get(env, "closer_line_users?role=eq.closer&select=line_user_id,closer_name")
+        ok, ng = [], []
+        for row in closers:
+            uid = row.get("line_user_id")
+            try:
+                api(token, "POST", f"user/{uid}/richmenu/{closer_id}")
+                ok.append(row.get("closer_name"))
+            except Exception as e:  # noqa: BLE001 - 1人の失敗で他を止めない
+                ng.append((row.get("closer_name"), str(e)))
+        print(f"バックフィル完了: 成功{len(ok)}人 {ok}")
+        if ng:
+            print(f"失敗: {ng}")
 
 
 if __name__ == "__main__":

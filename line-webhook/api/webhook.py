@@ -37,7 +37,13 @@ NOTION_TOKEN = os.environ.get("NOTION_TOKEN")
 NOTION_VERSION = "2022-06-28"
 # 「📊 個人別KPI逆算データ（参照用）」DBのdatabase_id（固定値・秘密情報ではない）
 KPI_DATABASE_ID = "5f110c1c-b977-4054-9b00-5b3ce27d3493"
+# 「DB 商談分析＆アポ分析（契約案件一覧）」DBのdatabase_id（固定値・秘密情報ではない）
+DEAL_DATABASE_ID = "aa496718-e62f-4a70-818d-953492cad435"
 GOAL_BUTTON_TEXT = "今日の目標を見る"
+ANALYSIS_BUTTON_TEXT = "直近の商談分析結果を見る"
+# scripts/deal_bot_richmenu.py が作成するクローザー専用メニューの名前（IDで固定せず
+# 名前で引くことで、デザインを作り直してIDが変わっても追従できるようにする）
+CLOSER_RICHMENU_NAME = "営業分析BOT クローザー用"
 # LINEのReply APIは応答メッセージとして扱われ、料金プランのメッセージ配信数には
 # カウントされない（LINE Developers公式ドキュメントで確認済み。2026-09時点）。
 # そのため既定はfalseで、連打時も毎回Notionから最新値を取り直して返す。
@@ -140,6 +146,23 @@ def quick_reply(labels: list) -> dict:
     ]}
 
 
+def link_closer_richmenu(line_user_id: str) -> None:
+    """役割がクローザーに確定したユーザーに、2ボタン（今日の目標＋直近の商談分析結果）の
+    専用リッチメニューを個別リンクする。アポインター・管理者は全員向けデフォルト
+    （今日の目標を見るのみ）のままでよいため、ここは呼ばない。
+    scripts/deal_bot_richmenu.py が未実行・メニュー未作成の場合は何もしない
+    （登録フロー自体は失敗させない）。
+    """
+    try:
+        menus = json.loads(_line_request("https://api.line.me/v2/bot/richmenu/list", "GET")).get("richmenus", [])
+        target = next((m for m in menus if m.get("name") == CLOSER_RICHMENU_NAME), None)
+        if not target:
+            return
+        _line_request(f"https://api.line.me/v2/bot/user/{line_user_id}/richmenu/{target['richMenuId']}", "POST")
+    except (urllib.error.HTTPError, urllib.error.URLError, json.JSONDecodeError):
+        pass  # メニュー未作成・API一時エラー等。登録フロー自体は継続させる
+
+
 # ---- Supabase (PostgREST + Storage) ------------------------------------
 
 def sb(method: str, path: str, data=None):
@@ -200,6 +223,8 @@ def register_unknown_sender(line_user_id: str) -> dict:
 
     row = {"line_user_id": line_user_id, "display_name": display_name, "closer_name": closer_name, "role": role}
     created = sb("POST", "closer_line_users", [row])
+    if role == "closer":
+        link_closer_richmenu(line_user_id)
     return created[0] if created else row
 
 
@@ -253,6 +278,42 @@ def notion_formula_text(page: dict, prop_name: str) -> str:
     prop = page.get("properties", {}).get(prop_name) or {}
     formula = prop.get("formula") or {}
     return (formula.get("string") or "").strip()
+
+
+def notion_query_latest_deal(closer_name: str) -> dict | None:
+    """「DB 商談分析＆アポ分析（契約案件一覧）」DBから、指定クローザーの
+    直近の商談日時1件を取得する。NOTION_TOKEN未設定、または該当行がなければNone。
+    """
+    if not NOTION_TOKEN:
+        return None
+    body = json.dumps({
+        "filter": {"property": "クローザー", "select": {"equals": closer_name}},
+        "sorts": [{"property": "商談日時", "direction": "descending"}],
+        "page_size": 1,
+    }).encode()
+    req = urllib.request.Request(
+        f"https://api.notion.com/v1/databases/{DEAL_DATABASE_ID}/query",
+        data=body, method="POST",
+        headers={
+            "Authorization": f"Bearer {NOTION_TOKEN}",
+            "Notion-Version": NOTION_VERSION,
+            "Content-Type": "application/json",
+        },
+    )
+    with urllib.request.urlopen(req, timeout=20) as r:
+        results = json.loads(r.read()).get("results", [])
+    return results[0] if results else None
+
+
+def notion_title_text(page: dict, prop_name: str) -> str:
+    prop = page.get("properties", {}).get(prop_name) or {}
+    return "".join(t.get("plain_text", "") for t in prop.get("title", []))
+
+
+def notion_status_name(page: dict, prop_name: str) -> str:
+    prop = page.get("properties", {}).get(prop_name) or {}
+    status = prop.get("status")
+    return status.get("name", "") if status else ""
 
 
 def notion_rollup_status(page: dict, prop_name: str) -> str | None:
@@ -393,6 +454,8 @@ def handle_registration(event: dict, closer: dict, is_first_contact: bool) -> bo
         if text in role_map:
             role = role_map[text]
             sb("PATCH", f"closer_line_users?id=eq.{closer['id']}", {"role": role})
+            if role == "closer":
+                link_closer_richmenu(closer["line_user_id"])
             line_reply(reply_token, [{"type": "text", "text": ROLE_WELCOME_MESSAGES[role]}])
         else:
             line_reply(reply_token, [{
@@ -476,6 +539,37 @@ def handle_goal_request(event: dict, closer: dict):
         pass  # last_goal_reply_*列未追加の環境では無視する（本文の返信自体は既に成功している）
 
 
+def handle_analysis_request(event: dict, closer: dict):
+    """リッチメニュー「直近の商談分析結果を見る」タップへの応答（クローザー専用）。
+    Notion「DB 商談分析＆アポ分析」から自分の最新1件を検索し、Reply APIで返す。
+    """
+    reply_token = event["replyToken"]
+    if closer.get("role") != "closer":
+        # クローザー用メニューからしか出現しないボタンだが、念のためサーバー側でも守る
+        line_reply(reply_token, [{"type": "text", "text": "この機能はクローザー限定です。"}])
+        return
+
+    if not NOTION_TOKEN:
+        line_reply(reply_token, [{
+            "type": "text",
+            "text": "商談分析結果の照会設定が完了していません（NOTION_TOKEN未設定）。今川さんに確認してください。",
+        }])
+        return
+
+    page = notion_query_latest_deal(closer.get("closer_name"))
+    if page is None:
+        line_reply(reply_token, [{"type": "text", "text": "まだ商談分析の記録が見つかりませんでした。"}])
+        return
+
+    customer = notion_title_text(page, "お客様名") or "（お客様名未設定）"
+    result = notion_status_name(page, "結果") or "-"
+    score = page.get("properties", {}).get("採点", {}).get("number")
+    score_line = f"採点: {score}点" if score is not None else "採点: 未算出"
+    text = f"📋 直近の商談分析結果\n\n{customer}（{result}）\n{score_line}\n\n{page.get('url', '')}"
+
+    line_reply(reply_token, [{"type": "text", "text": text}])
+
+
 def handle_event(event: dict):
     if event.get("type") != "message":
         return  # フォロー/アンフォロー等は今回は無視
@@ -511,6 +605,8 @@ def handle_event(event: dict):
         # 録音登録フローの途中（awaiting_customer等）でタップされた場合も、
         # 目標確認を優先する（handle_text_messageの状態遷移より先に判定する）
         handle_goal_request(event, closer)
+    elif message_type == "text" and event["message"]["text"] == ANALYSIS_BUTTON_TEXT:
+        handle_analysis_request(event, closer)
     elif message_type == "text":
         handle_text_message(event)
 
