@@ -39,8 +39,10 @@ from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 HERE = Path(__file__).resolve().parent
 ENV_PATH = HERE / ".." / ".env"
-DEFAULT_IMG_PATH = "/tmp/deal_bot_richmenu_default.png"
-CLOSER_IMG_PATH = "/tmp/deal_bot_richmenu_closer.png"
+DEFAULT_IMG_PATH = "/tmp/deal_bot_richmenu_default.jpg"
+CLOSER_IMG_PATH = "/tmp/deal_bot_richmenu_closer.jpg"
+# LINEのリッチメニュー画像は1MB上限。ノイズ主体の写真調画像はPNGだと余裕で超えるため
+# JPEGで保存する（qualityは1MBに収まる範囲で自動的に下げる）
 
 # 太字の方がロゴらしく見えるため、Noto Sans CJK Boldがあれば優先する
 # （なければ従来のIPAGothic Regularにフォールバック。TTCの0番目がJP面）
@@ -103,7 +105,7 @@ def api(token: str, method: str, path: str, data=None):
 def api_data_upload(token: str, richmenu_id: str, img_bytes: bytes):
     url = f"https://api-data.line.me/v2/bot/richmenu/{richmenu_id}/content"
     req = urllib.request.Request(url, data=img_bytes, method="POST", headers={
-        "Authorization": f"Bearer {token}", "Content-Type": "image/png"})
+        "Authorization": f"Bearer {token}", "Content-Type": "image/jpeg"})
     with urllib.request.urlopen(req, timeout=60) as r:
         return r.status
 
@@ -232,8 +234,7 @@ def make_default_image() -> None:
     sb = d.textbbox((0, 0), sub, font=f_sub)
     d.text((cx - (sb[2] - sb[0]) / 2, 1360), sub, font=f_sub, fill=(255, 176, 110))
 
-    img.save(DEFAULT_IMG_PATH, "PNG")
-    print(f"image saved: {DEFAULT_IMG_PATH} ({os.path.getsize(DEFAULT_IMG_PATH)} bytes)")
+    save_under_1mb(img, DEFAULT_IMG_PATH)
 
 
 def make_closer_image() -> None:
@@ -265,8 +266,20 @@ def make_closer_image() -> None:
         else:
             draw_glow_text(img, text, f_label, cx, 1100, fill=(255, 255, 255), glow=TEXT_GLOW, blur=14)
 
-    img.save(CLOSER_IMG_PATH, "PNG")
-    print(f"image saved: {CLOSER_IMG_PATH} ({os.path.getsize(CLOSER_IMG_PATH)} bytes)")
+    save_under_1mb(img, CLOSER_IMG_PATH)
+
+
+def save_under_1mb(img: Image.Image, path: str, limit: int = 950_000) -> None:
+    """LINEのリッチメニュー画像は1MB上限。1MBを切るまでJPEG qualityを下げて保存する。"""
+    quality = 90
+    while quality >= 40:
+        img.save(path, "JPEG", quality=quality, optimize=True)
+        size = os.path.getsize(path)
+        if size <= limit:
+            print(f"image saved: {path} ({size} bytes, quality={quality})")
+            return
+        quality -= 10
+    print(f"image saved: {path} ({os.path.getsize(path)} bytes, quality={quality}) — 1MB超の可能性あり")
 
 
 def register_menu(token: str, name: str, chat_bar_text: str, areas: list, image_path: str) -> str:
