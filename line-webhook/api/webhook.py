@@ -39,6 +39,9 @@ NOTION_VERSION = "2022-06-28"
 KPI_DATABASE_ID = "5f110c1c-b977-4054-9b00-5b3ce27d3493"
 # 「DB 商談分析＆アポ分析（契約案件一覧）」DBのdatabase_id（固定値・秘密情報ではない）
 DEAL_DATABASE_ID = "aa496718-e62f-4a70-818d-953492cad435"
+# 「📉 営業部 実績DB」のdatabase_id（固定値・秘密情報ではない）。日報の「備考」欄から
+# 前日共有した内容を拾うために使う（要Notionインテグレーション共有。他の2DBとは別）
+PERFORMANCE_DATABASE_ID = "f11afda4-a39d-4139-8e12-817d3f70267b"
 GOAL_BUTTON_TEXT = "今日の目標を見る"
 ANALYSIS_BUTTON_TEXT = "直近の商談分析結果を見る"
 # scripts/deal_bot_richmenu.py が作成するクローザー専用メニューの名前（IDで固定せず
@@ -278,6 +281,53 @@ def notion_formula_text(page: dict, prop_name: str) -> str:
     prop = page.get("properties", {}).get(prop_name) or {}
     formula = prop.get("formula") or {}
     return (formula.get("string") or "").strip()
+
+
+def notion_richtext_plain(page: dict, prop_name: str) -> str:
+    prop = page.get("properties", {}).get(prop_name) or {}
+    return "".join(t.get("plain_text", "") for t in prop.get("rich_text", []))
+
+
+def notion_query_yesterday_remark(member_name: str, before_date_iso: str) -> str | None:
+    """「📉 営業部 実績DB」から、指定メンバーの指定日より前で直近1件の「備考」を取得する。
+    実績日がちょうど前日（before_date_isoの1日前）でなければNone（数日前の古い内容を
+    「前日共有した内容」として誤って見せないため）。NOTION_TOKEN未設定・DB未共有・
+    該当行なしもNone（この場合は呼び出し側で静かにスキップする）。
+    """
+    if not NOTION_TOKEN:
+        return None
+    body = json.dumps({
+        "filter": {
+            "and": [
+                {"property": "メンバー", "select": {"equals": member_name}},
+                {"property": "備考", "rich_text": {"is_not_empty": True}},
+                {"property": "実績日", "date": {"before": before_date_iso}},
+            ]
+        },
+        "sorts": [{"property": "実績日", "direction": "descending"}],
+        "page_size": 1,
+    }).encode()
+    req = urllib.request.Request(
+        f"https://api.notion.com/v1/databases/{PERFORMANCE_DATABASE_ID}/query",
+        data=body, method="POST",
+        headers={
+            "Authorization": f"Bearer {NOTION_TOKEN}",
+            "Notion-Version": NOTION_VERSION,
+            "Content-Type": "application/json",
+        },
+    )
+    with urllib.request.urlopen(req, timeout=20) as r:
+        results = json.loads(r.read()).get("results", [])
+    if not results:
+        return None
+    page = results[0]
+    date_prop = (page.get("properties", {}).get("実績日") or {}).get("date") or {}
+    remark_date = (date_prop.get("start") or "")[:10]
+    yesterday_iso = (date.fromisoformat(before_date_iso) - timedelta(days=1)).isoformat()
+    if remark_date != yesterday_iso:
+        return None
+    remark = notion_richtext_plain(page, "備考")
+    return remark or None
 
 
 def notion_query_latest_deal(closer_name: str) -> dict | None:
@@ -526,6 +576,16 @@ def handle_goal_request(event: dict, closer: dict):
     text = notion_formula_text(page, "通知本文（LINE配信用）")
     if not text:
         text = "本日分の目標データがまだ準備できていません。しばらくしてから再度お試しください。"
+
+    # 平日のみ：前日のLINE日報（/shoudannhoukoku等）の「備考」欄に書かれた共有事項・
+    # 意識するポイントを、翌日再確認できるようメッセージ冒頭に添える（ユーザー指示）
+    if now.weekday() < 5:
+        try:
+            remark = notion_query_yesterday_remark(member_name, today_iso)
+        except (urllib.error.HTTPError, urllib.error.URLError, json.JSONDecodeError):
+            remark = None
+        if remark:
+            text = f"📝 前日共有した内容\n{remark}\n\n" + text
 
     line_reply(reply_token, [{"type": "text", "text": text}])
 
