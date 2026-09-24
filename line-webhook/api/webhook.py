@@ -288,24 +288,23 @@ def notion_richtext_plain(page: dict, prop_name: str) -> str:
     return "".join(t.get("plain_text", "") for t in prop.get("rich_text", []))
 
 
-def notion_query_yesterday_remark(member_name: str, before_date_iso: str) -> str | None:
-    """「📉 営業部 実績DB」から、指定メンバーの指定日より前で直近1件の「備考」を取得する。
-    実績日がちょうど前日（before_date_isoの1日前）でなければNone（数日前の古い内容を
-    「前日共有した内容」として誤って見せないため）。NOTION_TOKEN未設定・DB未共有・
-    該当行なしもNone（この場合は呼び出し側で静かにスキップする）。
+def notion_query_recent_performance(member_name: str, before_date_iso: str, limit: int = 30) -> list[dict]:
+    """「📉 営業部 実績DB」から、指定メンバーの指定日より前の実績行を新しい順にlimit件取得する。
+    ⚔️営業ステータス（行動力・アポ力・継続力）と「前回共有した内容」の算出に共用する
+    （1回のクエリにまとめてNotion APIの呼び出し回数を抑える）。NOTION_TOKEN未設定・
+    DB未共有時は空リスト（呼び出し側で静かにスキップされる）。
     """
     if not NOTION_TOKEN:
-        return None
+        return []
     body = json.dumps({
         "filter": {
             "and": [
                 {"property": "メンバー", "select": {"equals": member_name}},
-                {"property": "備考", "rich_text": {"is_not_empty": True}},
                 {"property": "実績日", "date": {"before": before_date_iso}},
             ]
         },
         "sorts": [{"property": "実績日", "direction": "descending"}],
-        "page_size": 1,
+        "page_size": limit,
     }).encode()
     req = urllib.request.Request(
         f"https://api.notion.com/v1/databases/{PERFORMANCE_DATABASE_ID}/query",
@@ -317,17 +316,116 @@ def notion_query_yesterday_remark(member_name: str, before_date_iso: str) -> str
         },
     )
     with urllib.request.urlopen(req, timeout=20) as r:
-        results = json.loads(r.read()).get("results", [])
-    if not results:
-        return None
-    page = results[0]
-    date_prop = (page.get("properties", {}).get("実績日") or {}).get("date") or {}
-    remark_date = (date_prop.get("start") or "")[:10]
-    yesterday_iso = (date.fromisoformat(before_date_iso) - timedelta(days=1)).isoformat()
-    if remark_date != yesterday_iso:
-        return None
-    remark = notion_richtext_plain(page, "備考")
-    return remark or None
+        return json.loads(r.read()).get("results", [])
+
+
+def latest_remark_from_rows(rows: list[dict]) -> str | None:
+    """直近の実績行から、非空の「備考」を持つ最初の1件を返す（＝前回報告時の共有内容。
+    何日前であっても直近のものをそのまま返す。例: 水曜にタップしたら日曜の備考が返る）。
+    """
+    for row in rows:
+        remark = notion_richtext_plain(row, "備考")
+        if remark:
+            return remark
+    return None
+
+
+def formula_number(page: dict, prop_name: str) -> float:
+    prop = page.get("properties", {}).get(prop_name) or {}
+    formula = prop.get("formula") or {}
+    return formula.get("number") or 0
+
+
+def raw_number(page: dict, prop_name: str) -> float:
+    prop = page.get("properties", {}).get(prop_name) or {}
+    return prop.get("number") or 0
+
+
+def row_number(row: dict, prop_name: str) -> float:
+    """実績DBの1行から、数値プロパティ（formula・number どちらでも）を取り出す。"""
+    prop = row.get("properties", {}).get(prop_name) or {}
+    if "formula" in prop:
+        return (prop.get("formula") or {}).get("number") or 0
+    return prop.get("number") or 0
+
+
+def is_working_row(row: dict) -> bool:
+    """「出勤状況」が休みの日は行動量・継続力の計算対象から外す（未入力の過去データは
+    出勤扱いとして残す）。"""
+    select = (row.get("properties", {}).get("出勤状況") or {}).get("select")
+    name = select.get("name") if select else None
+    return name != "休み"
+
+
+def stdev(values: list[float]) -> float:
+    n = len(values)
+    if n < 2:
+        return 0.0
+    mean_v = sum(values) / n
+    return (sum((v - mean_v) ** 2 for v in values) / n) ** 0.5
+
+
+def stars_text(value: float, bands: list[tuple[float, int]]) -> str:
+    """valueがband閾値以上の中で最大のstar数を採用する（bandsは昇順の(閾値, star数)）。
+    どの閾値も満たさなければ最低保証の1つ星にする。"""
+    count = 1
+    for threshold, n in bands:
+        if value >= threshold:
+            count = n
+    return "⭐" * count + "☆" * (5 - count)
+
+
+def build_status_block(page: dict, recent_rows: list[dict], role: str) -> str:
+    """⚔️ 営業ステータス（ユーザー指示によるゲーム性付与）。実績から5項目を0〜5つ星で
+    自動算出する。閾値は初期の目安値であり、実際のばらつきを見て調整する想定。
+    - 行動力: 直近の実績行1件の活動量（クローザーは`商談数`、それ以外は`訪問数`。
+      ユーザー指示: 「毎日の訪問数、クローザーだったら商談数で見てほしい」）
+    - アポ力: 直近`recent_rows`（最大30日）の中で最も多かった1日のアポ数
+      （ユーザー指示: 「1日の最大アポ数で見る」＝瞬間的な地力・ピーク能力を見る）
+    - 商談力: `有効商談化率%(アポ→有効商談)`（KPI DBの実数。ユーザー指示:
+      「アポから商談に繋がった件数の商談作成率」に対応する既存の実測値をそのまま使う）
+    - クロージング: `採用_契約率%`（KPI DBの実数。ユーザー指示通り契約率をそのまま使う）
+    - 継続力: 直近の出勤日における行動力指標（訪問数/商談数）の「波の無さ」
+      （ユーザー指示: 「結果や行動面で波があるかないかで判断」。変動係数
+      ＝標準偏差÷平均が小さいほど「波が無い」として高評価にする。データが3件未満の
+      場合は中間評価にする）
+    """
+    is_closer = role == "closer"
+    activity_prop = "商談数" if is_closer else "訪問数"
+    working_rows = [r for r in recent_rows if is_working_row(r)]
+    activity_values = [row_number(r, activity_prop) for r in working_rows]
+
+    latest_activity = activity_values[0] if activity_values else 0
+    if is_closer:
+        action = stars_text(latest_activity, [(0, 1), (1, 2), (2, 3), (3, 4), (4, 5)])
+    else:
+        action = stars_text(latest_activity, [(0, 1), (20, 2), (40, 3), (60, 4), (80, 5)])
+
+    apo_values = [row_number(r, "アポ数") for r in recent_rows]
+    max_apo = max(apo_values) if apo_values else 0
+    apo = stars_text(max_apo, [(0, 1), (2, 2), (4, 3), (6, 4), (9, 5)])
+
+    deal_rate = formula_number(page, "有効商談化率%(アポ→有効商談)")
+    deal = stars_text(deal_rate, [(0, 1), (25, 2), (35, 3), (50, 4), (70, 5)])
+
+    close_rate = formula_number(page, "採用_契約率%")
+    close = stars_text(close_rate, [(0, 1), (15, 2), (25, 3), (35, 4), (45, 5)])
+
+    if len(activity_values) >= 3:
+        mean_v = sum(activity_values) / len(activity_values)
+        cv = (stdev(activity_values) / mean_v) if mean_v > 0 else 2.0
+    else:
+        cv = 0.5  # データ不足時は中間評価にする（新規登録者を不当に低評価しないため）
+    cont = stars_text(-cv, [(-2.0, 1), (-0.9, 2), (-0.6, 3), (-0.4, 4), (-0.2, 5)])
+
+    return (
+        "⚔️ 営業ステータス\n"
+        f"行動力　{action}\n"
+        f"アポ力　{apo}\n"
+        f"商談力　{deal}\n"
+        f"クロージング　{close}\n"
+        f"継続力　{cont}"
+    )
 
 
 def notion_query_latest_deal(closer_name: str) -> dict | None:
@@ -577,15 +675,26 @@ def handle_goal_request(event: dict, closer: dict):
     if not text:
         text = "本日分の目標データがまだ準備できていません。しばらくしてから再度お試しください。"
 
-    # 平日のみ：前日のLINE日報（/shoudannhoukoku等）の「備考」欄に書かれた共有事項・
-    # 意識するポイントを、翌日再確認できるようメッセージ冒頭に添える（ユーザー指示）
+    # 「📉 営業部 実績DB」の直近実績行をまとめて取得し、⚔️営業ステータスと
+    # 「前回共有した内容」の両方に使い回す（Notion APIの呼び出しを1回にまとめる）
+    try:
+        recent_rows = notion_query_recent_performance(member_name, today_iso)
+    except (urllib.error.HTTPError, urllib.error.URLError, json.JSONDecodeError):
+        recent_rows = []
+
+    # 平日のみ：前回のLINE日報（/shoudannhoukoku等）の「備考」欄に書かれた共有事項・
+    # 意識するポイントを、次にタップした時に再確認できるよう添える（ユーザー指示。
+    # 「前日」固定ではなく、間が空いていても直近の報告内容をそのまま出す＝
+    # 水曜にタップしたら日曜の内容が出る、等）
+    remark_block = ""
     if now.weekday() < 5:
-        try:
-            remark = notion_query_yesterday_remark(member_name, today_iso)
-        except (urllib.error.HTTPError, urllib.error.URLError, json.JSONDecodeError):
-            remark = None
+        remark = latest_remark_from_rows(recent_rows)
         if remark:
-            text = f"📝 前日共有した内容\n{remark}\n\n" + text
+            remark_block = f"📝 前回共有した内容\n{remark}\n\n"
+
+    # メッセージの最上部に⚔️営業ステータス（ゲーム性、ユーザー指示）を置く
+    status_block = build_status_block(page, recent_rows, closer.get("role") or "")
+    text = status_block + "\n\n" + remark_block + text
 
     line_reply(reply_token, [{"type": "text", "text": text}])
 
