@@ -203,6 +203,12 @@ python3 scripts/people_graph_pptx.py     # 人の指示→作業つながり（�
 「全社共通の従業員登録」（内線・タスク割当等）が目的なら、これとは別に elp-goals の
 `/staff` ページ＋一般LINE Bot（@124rnagj）を使う（本人がBotを友だち追加して名前を送るだけ）。
 
+**実行は `営業マン登録管理` スキル（`.claude/skills/営業マン登録管理/SKILL.md`）に一本化済み**
+（ユーザー指示: できるだけ確認回数を減らして効率重視で実行する）。「〇〇さんをクローザーとして
+登録して」「〇〇さんが退社した」等で呼び出すと、下記の各ステップ（スクリプト実行・Notion更新・
+git push・Vercelデプロイ確認）を確認なし（クローザー登録時の予算金額のみ確認）で一気に実行する。
+以下はそのスキルが踏襲する技術的な前提・詳細。
+
 ### 前提: 何もしなくても本人が自分で登録できる
 
 「ユメイク営業分析bot」をQRコードで友だち追加し、聞かれるままに苗字→
@@ -215,25 +221,29 @@ python3 scripts/people_graph_pptx.py     # 人の指示→作業つながり（�
 1. `python3 scripts/add_closer.py <苗字> --full-name "<姓 名>" --role closer|appointer|admin`
    を実行する（`--role` 省略時は `closer`）
    - 代理店所属なら `--agency "<会社名>"`（`従業員.md` の代理店メンバー表に追加）
-   - ゴールマップも使うなら `--goalmap`（`tools/goalmap/members/<苗字>.json` の雛形を作成。
-     テーマ・ゴール・フェーズは追って手動で埋める）
+   - ゴールマップ連携は現状保留中（ユーザー指示）のため `--goalmap` は使わない
    - これで `webhook.py` の `KNOWN_CLOSERS`/`KNOWN_APPOINTERS`/`KNOWN_ADMINS`・`従業員.md`
      が更新される。本人が既にBotへメッセージ済みなら、Supabaseの仮登録行にもその場で反映される
 2. **Notion「DB 商談分析＆アポ分析」のクローザー／アポインター選択肢に名前を追加する**
    （既存の選択肢文字列と完全一致させる運用のため、スクリプトは意図的に自動化していない。
-   Claude Codeセッションで Notion MCP の `notion-update-data-source` を使って追加する）
+   `営業マン登録管理` スキルが Notion MCP の `notion-update-data-source` で、既存options全件＋
+   新しい1件を含めて追加する）
 3. クローザーの場合、Notion「💰 予算と達成率」に今月分の予算行を追加する
-   （週次実績配信のKPI逆算に使う。Claude+Notion MCPで実施）
-4. `webhook.py` の変更をコミット・push（今川さん個人のVercelプロジェクトに自動反映）
+   （週次実績配信のKPI逆算に使う。`営業マン登録管理` スキルがNotion MCPで実施。予算金額は
+   スキル実行時に確認する）
+4. `webhook.py` の変更をコミット・push（このリポジトリ・このブランチが本番Webhookのデプロイ
+   起点。商談分析運用.md参照）。`営業マン登録管理` スキルはpush後にVercelデプロイの追従も確認する
 
 ### 削除（退社時）
 
 1. `python3 scripts/remove_closer.py <苗字>` を実行する
    （`KNOWN_CLOSERS`/`KNOWN_APPOINTERS`/`KNOWN_ADMINS`・Supabaseの行・`従業員.md`の行を削除。
-   過去のNotionデータ・録音・分析結果は意図的に消さない。ゴールマップファイルも既定では残すが、
-   `--remove-goalmap` で削除できる）
-2. `webhook.py` の変更をコミット・push
-3. 必要ならNotion「💰 予算と達成率」の来月以降の予算行を止める（Claude+Notion MCPで実施）
+   過去のNotionデータ・録音・分析結果は意図的に消さない。ゴールマップ連携は保留中でそもそも
+   作られていない前提のため `--remove-goalmap` は使わない）
+2. `webhook.py` の変更をコミット・push（`営業マン登録管理` スキルがpush後にVercelデプロイの
+   追従も確認する）
+3. Notion「💰 予算と達成率」の来月以降の予算行を止める（`営業マン登録管理` スキルがNotion MCPで
+   自動的に該当行をtrashへ移す）
 
 ## 10. 未整備（今後）
 
