@@ -380,8 +380,8 @@ def build_status_block(page: dict, recent_rows: list[dict], role: str) -> str:
     自動算出する。閾値は初期の目安値であり、実際のばらつきを見て調整する想定。
     - 行動力: 直近の実績行1件の活動量（クローザーは`商談数`、それ以外は`訪問数`。
       ユーザー指示: 「毎日の訪問数、クローザーだったら商談数で見てほしい」）
-    - アポ力: 直近`recent_rows`（最大30日）の中で最も多かった1日のアポ数
-      （ユーザー指示: 「1日の最大アポ数で見る」＝瞬間的な地力・ピーク能力を見る）
+    - アポ力: 直近`recent_rows`（最大30日）の合計アポ数 ÷ 合計対象数（%）
+      （ユーザー指示: 「対象者数に対するアポ率で星付けて」）
     - 商談力: `有効商談化率%(アポ→有効商談)`（KPI DBの実数。ユーザー指示:
       「アポから商談に繋がった件数の商談作成率」に対応する既存の実測値をそのまま使う）
     - クロージング: `採用_契約率%`（KPI DBの実数。ユーザー指示通り契約率をそのまま使う）
@@ -401,9 +401,12 @@ def build_status_block(page: dict, recent_rows: list[dict], role: str) -> str:
     else:
         action = stars_text(latest_activity, [(0, 1), (20, 2), (40, 3), (60, 4), (80, 5)])
 
-    apo_values = [row_number(r, "アポ数") for r in recent_rows]
-    max_apo = max(apo_values) if apo_values else 0
-    apo = stars_text(max_apo, [(0, 1), (2, 2), (4, 3), (6, 4), (9, 5)])
+    # アポ力: 対象者数（対象数＝提案対象になり得る世帯数）に対するアポ獲得率
+    # （ユーザー指示: 「対象者数に対するアポ率で星付けて」）
+    total_apo = sum(row_number(r, "アポ数") for r in recent_rows)
+    total_target_pop = sum(row_number(r, "対象数") for r in recent_rows)
+    apo_rate = (100 * total_apo / total_target_pop) if total_target_pop > 0 else 0
+    apo = stars_text(apo_rate, [(0, 1), (1, 2), (2, 3), (4, 4), (7, 5)])
 
     deal_rate = formula_number(page, "有効商談化率%(アポ→有効商談)")
     deal = stars_text(deal_rate, [(0, 1), (25, 2), (35, 3), (50, 4), (70, 5)])
@@ -475,6 +478,95 @@ def notion_rollup_status(page: dict, prop_name: str) -> str | None:
         if select and select.get("name"):
             return select["name"]
     return None
+
+
+def notion_query_month_deals(role_prop: str, name: str, month_start_iso: str) -> list[dict]:
+    """「DB 商談分析＆アポ分析（契約案件一覧）」DBから、今月分（商談日時が月初以降）の
+    本人の行を全件取得する。`role_prop`は"クローザー"または"アポインター"（本人の役割に
+    応じてどちらの列で絞り込むかを切り替える）。契約/成約の集計に使う。
+    """
+    if not NOTION_TOKEN:
+        return []
+    body = json.dumps({
+        "filter": {
+            "and": [
+                {"property": role_prop, "select": {"equals": name}},
+                {"property": "商談日時", "date": {"on_or_after": month_start_iso}},
+            ]
+        },
+        "page_size": 100,
+    }).encode()
+    req = urllib.request.Request(
+        f"https://api.notion.com/v1/databases/{DEAL_DATABASE_ID}/query",
+        data=body, method="POST",
+        headers={
+            "Authorization": f"Bearer {NOTION_TOKEN}",
+            "Notion-Version": NOTION_VERSION,
+            "Content-Type": "application/json",
+        },
+    )
+    with urllib.request.urlopen(req, timeout=20) as r:
+        return json.loads(r.read()).get("results", [])
+
+
+def count_contracts(deal_rows: list[dict]) -> tuple[int, int]:
+    """月間の(契約件数, 成約件数)を返す。ユーザー指示: 「クーリングオフが来た場合、
+    契約数に一旦カウントした上で、契約と成約を分けて出力」。
+    - 契約（gross）: 結果が「契約」または「クーリングオフ」の件数
+      （クーリングオフ発生時は結果が「契約」から「クーリングオフ」に書き換わるため、
+      両方を合算することで「一旦契約になった件数」を保つ）
+    - 成約（net）: 結果が今も「契約」のままの件数（クーリングオフで取り消された分を除く）
+    """
+    gross = sum(1 for r in deal_rows if notion_status_name(r, "結果") in ("契約", "クーリングオフ"))
+    net = sum(1 for r in deal_rows if notion_status_name(r, "結果") == "契約")
+    return gross, net
+
+
+def contract_target(page: dict, role: str) -> int:
+    """契約目標(月)。クローザーは`今月契約目標`の実数、アポインターは
+    `今月予算万円 ÷ 65万円`（契約単価60〜70万円の中間値。ユーザー指示）で概算する。"""
+    if role == "closer":
+        t = raw_number(page, "今月契約目標")
+        return int(round(t)) if t else 0
+    budget = raw_number(page, "今月予算万円")
+    return max(1, round(budget / 65)) if budget > 0 else 0
+
+
+def build_progress_block(page: dict, role: str, gross_contracts: int, net_contracts: int) -> str:
+    """📊 進捗（訪問・アポ・契約/成約の週/月の目標・実績・達成率）。
+    契約行はNotion数式ではなく、その場で「DB 商談分析＆アポ分析」を集計して出す
+    （クーリングオフを契約/成約に分けて出すため。notion_query_month_deals参照）。
+    """
+    visit_w_target = formula_number(page, "今週の必要訪問数")
+    visit_w_actual = raw_number(page, "今週実績訪問数")
+    visit_w_pct = round(100 * visit_w_actual / visit_w_target) if visit_w_target > 0 else 0
+    visit_m_actual = raw_number(page, "今月訪問実績")
+    visit_m_target = visit_m_actual + raw_number(page, "今月残り訪問数概算")
+    visit_m_pct = round(100 * visit_m_actual / visit_m_target) if visit_m_target > 0 else 0
+
+    apo_w_target = formula_number(page, "今週の必要アポ数")
+    apo_w_actual = raw_number(page, "今週実績アポ数")
+    apo_w_pct = round(100 * apo_w_actual / apo_w_target) if apo_w_target > 0 else 0
+    apo_line = f"アポ: 週{int(apo_w_actual)}/{int(apo_w_target)}件({apo_w_pct}%)"
+    if role == "appointer":
+        apo_m_target = raw_number(page, "今月アポ目標概算")
+        apo_m_actual = raw_number(page, "今月アポ実績")
+        apo_m_pct = round(100 * apo_m_actual / apo_m_target) if apo_m_target > 0 else 0
+        apo_line += f"　月{int(apo_m_actual)}/{int(apo_m_target)}件({apo_m_pct}%)"
+
+    target = contract_target(page, role)
+    pct = round(100 * net_contracts / target) if target > 0 else 0
+    cooling = gross_contracts - net_contracts
+    cooling_note = f"（うちクーリングオフ{cooling}件）" if cooling > 0 else ""
+    contract_line = f"契約: 月{gross_contracts}件{cooling_note}／成約{net_contracts}/{target}件({pct}%)"
+
+    return (
+        "📊 進捗\n"
+        f"訪問: 週{int(visit_w_actual)}/{int(visit_w_target)}件({visit_w_pct}%)　"
+        f"月{int(visit_m_actual)}/{int(visit_m_target)}件({visit_m_pct}%)\n"
+        f"{apo_line}\n"
+        f"{contract_line}"
+    )
 
 
 # ---- イベント処理 ---------------------------------------------------------
@@ -692,9 +784,23 @@ def handle_goal_request(event: dict, closer: dict):
         if remark:
             remark_block = f"📝 前回共有した内容\n{remark}\n\n"
 
+    # 平日のみ：📊進捗（契約はクーリングオフを「契約」に含めつつ「成約」で別出しする。
+    # ユーザー指示）。「DB 商談分析＆アポ分析」から今月分を集計する
+    progress_block = ""
+    if now.weekday() < 5:
+        role = closer.get("role") or ""
+        role_prop = "クローザー" if role == "closer" else "アポインター"
+        month_start_iso = now.replace(day=1).date().isoformat()
+        try:
+            month_deals = notion_query_month_deals(role_prop, member_name, month_start_iso)
+        except (urllib.error.HTTPError, urllib.error.URLError, json.JSONDecodeError):
+            month_deals = []
+        gross, net = count_contracts(month_deals)
+        progress_block = build_progress_block(page, role, gross, net) + "\n\n"
+
     # メッセージの最上部に⚔️営業ステータス（ゲーム性、ユーザー指示）を置く
     status_block = build_status_block(page, recent_rows, closer.get("role") or "")
-    text = status_block + "\n\n" + remark_block + text
+    text = status_block + "\n\n" + progress_block + remark_block + text
 
     line_reply(reply_token, [{"type": "text", "text": text}])
 
