@@ -349,6 +349,12 @@ def row_number(row: dict, prop_name: str) -> float:
     return prop.get("number") or 0
 
 
+def row_date_iso(row: dict) -> str | None:
+    date_prop = (row.get("properties", {}).get("実績日") or {}).get("date") or {}
+    start = date_prop.get("start")
+    return start[:10] if start else None
+
+
 def is_working_row(row: dict) -> bool:
     """「出勤状況」が休みの日は行動量・継続力の計算対象から外す（未入力の過去データは
     出勤扱いとして残す）。"""
@@ -375,11 +381,12 @@ def stars_text(value: float, bands: list[tuple[float, int]]) -> str:
     return "⭐" * count + "☆" * (5 - count)
 
 
-def build_status_block(page: dict, recent_rows: list[dict], role: str) -> str:
+def build_status_block(page: dict, recent_rows: list[dict], role: str, now: datetime) -> str:
     """⚔️ 営業ステータス（ユーザー指示によるゲーム性付与）。実績から5項目を0〜5つ星で
     自動算出する。閾値は初期の目安値であり、実際のばらつきを見て調整する想定。
-    - 行動力: 直近の実績行1件の活動量（クローザーは`商談数`、それ以外は`訪問数`。
-      ユーザー指示: 「毎日の訪問数、クローザーだったら商談数で見てほしい」）
+    - 行動力: 過去1週間（直近7日）の活動量（クローザーは`商談数`の週合計、それ以外は
+      `訪問数`の週平均。ユーザー指示: 「訪問数が過去1週間の平均」「商談数は週間n件で
+      ★n」）
     - アポ力: 直近`recent_rows`（最大30日）の合計アポ数 ÷ 合計対象数（%）
       （ユーザー指示: 「対象者数に対するアポ率で星付けて」）。合計対象数が5未満
       （訪問営業以外の経路でアポを取るメンバーは対象数をほぼ記録しないため）の
@@ -387,7 +394,7 @@ def build_status_block(page: dict, recent_rows: list[dict], role: str) -> str:
     - 商談力: `有効商談化率%(アポ→有効商談)`（KPI DBの実数。ユーザー指示:
       「アポから商談に繋がった件数の商談作成率」に対応する既存の実測値をそのまま使う）
     - クロージング: `採用_契約率%`（KPI DBの実数。ユーザー指示通り契約率をそのまま使う）
-    - 継続力: 直近の出勤日における行動力指標（訪問数/商談数）の「波の無さ」
+    - 継続力: 直近の出勤日における行動力指標（訪問数/商談数、最大30日）の「波の無さ」
       （ユーザー指示: 「結果や行動面で波があるかないかで判断」。変動係数
       ＝標準偏差÷平均が小さいほど「波が無い」として高評価にする。データが3件未満の
       場合は中間評価にする）
@@ -397,11 +404,15 @@ def build_status_block(page: dict, recent_rows: list[dict], role: str) -> str:
     working_rows = [r for r in recent_rows if is_working_row(r)]
     activity_values = [row_number(r, activity_prop) for r in working_rows]
 
-    latest_activity = activity_values[0] if activity_values else 0
+    week_ago_iso = (now.date() - timedelta(days=7)).isoformat()
+    week_working_rows = [r for r in working_rows if (row_date_iso(r) or "") >= week_ago_iso]
     if is_closer:
-        action = stars_text(latest_activity, [(0, 1), (1, 2), (2, 3), (3, 4), (4, 5)])
+        weekly_deal_total = sum(row_number(r, "商談数") for r in week_working_rows)
+        action = stars_text(weekly_deal_total, [(0, 1), (2, 2), (3, 3), (4, 4), (5, 5)])
     else:
-        action = stars_text(latest_activity, [(0, 1), (20, 2), (40, 3), (60, 4), (80, 5)])
+        visit_values = [row_number(r, "訪問数") for r in week_working_rows]
+        avg_visit = (sum(visit_values) / len(visit_values)) if visit_values else 0
+        action = stars_text(avg_visit, [(0, 1), (20, 2), (40, 3), (60, 4), (80, 5)])
 
     # アポ力: 対象者数（対象数＝提案対象になり得る世帯数）に対するアポ獲得率
     # （ユーザー指示: 「対象者数に対するアポ率で星付けて」）。訪問営業以外の経路で
@@ -807,7 +818,7 @@ def handle_goal_request(event: dict, closer: dict):
         progress_block = build_progress_block(page, role, gross, net) + "\n\n"
 
     # メッセージの最上部に⚔️営業ステータス（ゲーム性、ユーザー指示）を置く
-    status_block = build_status_block(page, recent_rows, closer.get("role") or "")
+    status_block = build_status_block(page, recent_rows, closer.get("role") or "", now)
     text = status_block + "\n\n" + progress_block + remark_block + text
 
     line_reply(reply_token, [{"type": "text", "text": text}])
