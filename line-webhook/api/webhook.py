@@ -381,7 +381,9 @@ def build_status_block(page: dict, recent_rows: list[dict], role: str) -> str:
     - 行動力: 直近の実績行1件の活動量（クローザーは`商談数`、それ以外は`訪問数`。
       ユーザー指示: 「毎日の訪問数、クローザーだったら商談数で見てほしい」）
     - アポ力: 直近`recent_rows`（最大30日）の合計アポ数 ÷ 合計対象数（%）
-      （ユーザー指示: 「対象者数に対するアポ率で星付けて」）
+      （ユーザー指示: 「対象者数に対するアポ率で星付けて」）。合計対象数が5未満
+      （訪問営業以外の経路でアポを取るメンバーは対象数をほぼ記録しないため）の
+      場合は率を計算せず中間評価（3つ星）にする
     - 商談力: `有効商談化率%(アポ→有効商談)`（KPI DBの実数。ユーザー指示:
       「アポから商談に繋がった件数の商談作成率」に対応する既存の実測値をそのまま使う）
     - クロージング: `採用_契約率%`（KPI DBの実数。ユーザー指示通り契約率をそのまま使う）
@@ -402,11 +404,17 @@ def build_status_block(page: dict, recent_rows: list[dict], role: str) -> str:
         action = stars_text(latest_activity, [(0, 1), (20, 2), (40, 3), (60, 4), (80, 5)])
 
     # アポ力: 対象者数（対象数＝提案対象になり得る世帯数）に対するアポ獲得率
-    # （ユーザー指示: 「対象者数に対するアポ率で星付けて」）
+    # （ユーザー指示: 「対象者数に対するアポ率で星付けて」）。訪問営業以外の経路で
+    # アポを取るメンバー（例: 今川さん）は「対象数」をほぼ記録しないため合計が
+    # 5未満になりがちで、その場合は率を計算せず中間評価にする（ユーザー指示:
+    # データ不足時は中間評価。継続力の欠損データ処理と同じ考え方）
     total_apo = sum(row_number(r, "アポ数") for r in recent_rows)
     total_target_pop = sum(row_number(r, "対象数") for r in recent_rows)
-    apo_rate = (100 * total_apo / total_target_pop) if total_target_pop > 0 else 0
-    apo = stars_text(apo_rate, [(0, 1), (1, 2), (2, 3), (4, 4), (7, 5)])
+    if total_target_pop < 5:
+        apo = stars_text(3, [(0, 1), (1, 2), (2, 3), (4, 4), (7, 5)])  # データ不足時は中間評価(3つ星)
+    else:
+        apo_rate = 100 * total_apo / total_target_pop
+        apo = stars_text(apo_rate, [(0, 1), (1, 2), (2, 3), (4, 4), (7, 5)])
 
     deal_rate = formula_number(page, "有効商談化率%(アポ→有効商談)")
     deal = stars_text(deal_rate, [(0, 1), (25, 2), (35, 3), (50, 4), (70, 5)])
