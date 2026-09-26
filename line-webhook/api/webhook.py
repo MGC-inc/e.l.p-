@@ -394,52 +394,60 @@ def cv_of(values: list[float]) -> float | None:
 
 def build_status_block(page: dict, recent_rows: list[dict], role: str, now: datetime) -> str:
     """⚔️ 営業ステータス（ユーザー指示によるゲーム性付与）。**全項目、直近1週間
-    （過去7日・出勤日のみ）の実績DB生データから算出する**（ユーザー指示で全面刷新。
-    以前の「アポ力」は行動力に統合して廃止した）。閾値は初期の目安値であり、
-    実際のばらつきを見て調整する想定。各行には算出根拠の実数を括弧書きで添える
-    （ユーザー指示: 「何の数字を参照してるか分かるように明記」）。
-    - 行動力: 週間アポ数の合計（15件以下★1・25件以下★2・40件以下★3・60件以下★4・
-      61件以上★5。役割問わず共通）
+    （過去7日・出勤日のみ）の実績DB生データから算出する**。各項目は
+    「項目名（説明）」→改行→「★の数（実数）」の2行形式で表示する
+    （ユーザー指示: 「項目（説明）改行／★★★（〇％OR〇件）の形式」）。
+    - 行動力（週間アポ数）: 週間アポ数の合計（15件以下★1・25件以下★2・40件以下★3・
+      60件以下★4・61件以上★5。役割問わず共通）
     - 商談力:
-      - クローザー: 週間商談数の合計（1件以下★1・2件★2・3件★3・4件★4・5件以上★5）
-      - アポインター: 週間の商談作成率＝Σ有効商談作成数 ÷ Σアポ数（%）
+      - クローザー（週間商談数）: 週間商談数の合計（1件以下★1・2件★2・3件★3・4件★4・
+        5件以上★5）
+      - アポインター（商談作成率）: Σ有効商談作成数 ÷ Σアポ数（%）
         （5%以下★1・15%以下★2・25%以下★3・40%以下★4・41%以上★5）
-    - クロージング: 週間の契約率＝Σ契約 ÷ Σ商談数（%）（10%以下★1・15%以下★2・
-      30%以下★3・40%以下★4・41%以上★5）。**アポインターは非表示**（クローザーの
-      指標であるため。ユーザー指示）
-    - 継続力: 訪問数・商談数・契約（週間・出勤日）それぞれの変動係数（標準偏差÷平均）
-      のうち、データがある指標の平均。値が小さい＝「波が無い」ほど高評価にする
-      （ユーザー指示: 「訪問数や商談数や契約数が総じて安定してるか」）。対象データが
-      1つも無ければ中間評価（3つ星）にする
+    - 「決め切る力」（ユーザー指示: アポインターは`アポ力`・クローザーは`クロージング力`と
+      呼び名を分けるが、どちらも同じ考え方＝直近1週間の転換率で評価する）:
+      - クローザー＝クロージング力（契約率）: Σ契約 ÷ Σ商談数（%）
+      - アポインター＝アポ力（アポ率）: Σアポ数 ÷ Σ対話数（%）
+      - 両方とも同じ閾値を使う（10%以下★1・15%以下★2・30%以下★3・40%以下★4・
+        41%以上★5。まだアポ力側の実データで検証していないため、必要なら調整する）
+    - 継続力（安定度）: 訪問数・商談数・契約（週間・出勤日）それぞれの変動係数
+      （標準偏差÷平均）のうち、データがある指標の平均。値が小さい＝「波が無い」ほど
+      高評価にする。対象データが1つも無ければ中間評価（3つ星）にする
     """
     is_closer = role == "closer"
     week_ago_iso = (now.date() - timedelta(days=7)).isoformat()
     week_rows = [r for r in recent_rows if (row_date_iso(r) or "") >= week_ago_iso]
     week_working_rows = [r for r in week_rows if is_working_row(r)]
 
-    # 行動力: 週間アポ数合計（役割問わず共通。ユーザー指示）
+    # 行動力: 週間アポ数合計（役割問わず共通）
     weekly_apo = sum(row_number(r, "アポ数") for r in week_working_rows)
     action = stars_text(weekly_apo, [(0, 1), (16, 2), (26, 3), (41, 4), (61, 5)])
-    action_note = f"直近1週間のアポ数合計{int(weekly_apo)}件"
+    action_line = f"行動力（週間アポ数）\n{action}（{int(weekly_apo)}件）"
 
     if is_closer:
         weekly_deals = sum(row_number(r, "商談数") for r in week_working_rows)
         deal = stars_text(weekly_deals, [(0, 1), (2, 2), (3, 3), (4, 4), (5, 5)])
-        deal_note = f"直近1週間の商談数合計{int(weekly_deals)}件"
+        deal_line = f"商談力（週間商談数）\n{deal}（{int(weekly_deals)}件）"
     else:
         valid_deals = sum(row_number(r, "有効商談作成数") for r in week_working_rows)
         deal_rate = (100 * valid_deals / weekly_apo) if weekly_apo > 0 else 0
         deal = stars_text(deal_rate, [(0, 1), (6, 2), (16, 3), (26, 4), (41, 5)])
-        deal_note = f"直近1週間の商談作成率{round(deal_rate)}%（有効商談作成{int(valid_deals)}件÷アポ{int(weekly_apo)}件）"
+        deal_line = f"商談力（商談作成率）\n{deal}（{round(deal_rate)}%）"
 
-    close = None
-    close_note = ""
+    # 「決め切る力」: クローザー＝クロージング力（契約率）、アポインター＝アポ力（アポ率）
+    # 呼び名は違うが同じ閾値で評価する（ユーザー指示）
+    close_bands = [(0, 1), (11, 2), (16, 3), (31, 4), (41, 5)]
     if is_closer:
         weekly_contracts = sum(row_number(r, "契約") for r in week_working_rows)
         weekly_deals_for_close = sum(row_number(r, "商談数") for r in week_working_rows)
         close_rate = (100 * weekly_contracts / weekly_deals_for_close) if weekly_deals_for_close > 0 else 0
-        close = stars_text(close_rate, [(0, 1), (11, 2), (16, 3), (31, 4), (41, 5)])
-        close_note = f"直近1週間の契約率{round(close_rate)}%（契約{int(weekly_contracts)}件÷商談{int(weekly_deals_for_close)}件）"
+        close = stars_text(close_rate, close_bands)
+        close_line = f"クロージング力（契約率）\n{close}（{round(close_rate)}%）"
+    else:
+        weekly_taiwa = sum(row_number(r, "対話数") for r in week_working_rows)
+        apo_rate = (100 * weekly_apo / weekly_taiwa) if weekly_taiwa > 0 else 0
+        apo_power = stars_text(apo_rate, close_bands)
+        close_line = f"アポ力（アポ率）\n{apo_power}（{round(apo_rate)}%）"
 
     visit_vals = [row_number(r, "訪問数") for r in week_working_rows]
     deal_vals = [row_number(r, "商談数") for r in week_working_rows]
@@ -448,20 +456,17 @@ def build_status_block(page: dict, recent_rows: list[dict], role: str, now: date
     if cvs:
         avg_cv = sum(cvs) / len(cvs)
         cont = stars_text(-avg_cv, [(-2.0, 1), (-0.9, 2), (-0.6, 3), (-0.4, 4), (-0.2, 5)])
-        cont_note = f"訪問/商談/契約の変動係数平均{round(avg_cv, 2)}（小さいほど安定）"
+        cont_line = f"継続力（安定度）\n{cont}（変動係数{round(avg_cv, 2)}）"
     else:
-        cont = "⭐⭐⭐☆☆"  # データ不足時は中間評価
-        cont_note = "直近1週間のデータ不足のため中間評価"
+        cont_line = "継続力（安定度）\n⭐⭐⭐☆☆（データ不足）"
 
-    lines = [
+    return "\n\n".join([
         "⚔️ 営業ステータス",
-        f"行動力　{action}（{action_note}）",
-        f"商談力　{deal}（{deal_note}）",
-    ]
-    if close is not None:
-        lines.append(f"クロージング　{close}（{close_note}）")
-    lines.append(f"継続力　{cont}（{cont_note}）")
-    return "\n".join(lines)
+        action_line,
+        deal_line,
+        close_line,
+        cont_line,
+    ])
 
 
 def notion_query_latest_deal(closer_name: str) -> dict | None:
