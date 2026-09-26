@@ -44,6 +44,9 @@ DEAL_DATABASE_ID = "aa496718-e62f-4a70-818d-953492cad435"
 PERFORMANCE_DATABASE_ID = "f11afda4-a39d-4139-8e12-817d3f70267b"
 GOAL_BUTTON_TEXT = "今日の目標を見る"
 ANALYSIS_BUTTON_TEXT = "直近の商談分析結果を見る"
+# ⚔️営業ステータスの評価基準を知りたい時にテキストで送ってもらう合言葉（低コスト運用:
+# リッチメニューのボタンは増やさず、この文字列を送るとReply APIで基準一覧を返すだけにする）
+STATUS_DEFINITION_TEXT = "評価基準"
 # scripts/deal_bot_richmenu.py が作成するクローザー専用メニューの名前（IDで固定せず
 # 名前で引くことで、デザインを作り直してIDが変わっても追従できるようにする）
 CLOSER_RICHMENU_NAME = "営業分析BOT クローザー用"
@@ -469,7 +472,39 @@ def build_status_block(page: dict, recent_rows: list[dict], role: str, now: date
         deal_line,
         close_line,
         cont_line,
+        f"※基準の詳細は「{STATUS_DEFINITION_TEXT}」と送ってください",
     ])
+
+
+def build_status_definition_text(role: str) -> str:
+    """「評価基準」と送られた時にReply APIで返す、⚔️営業ステータス各項目の
+    ★の付け方一覧（build_status_blockの閾値と一致させる。低コスト運用: リッチメニューの
+    ボタンを増やす代わりに、この合言葉テキストで確認できるようにした）。
+    """
+    is_closer = role == "closer"
+    if is_closer:
+        deal_def = "商談力（週間商談数）\n1件以下★1・2件★2・3件★3・4件★4・5件以上★5"
+        close_def = "クロージング力（契約率＝契約÷商談数）\n10%以下★1・15%以下★2・30%以下★3・40%以下★4・41%以上★5"
+    else:
+        deal_def = "商談化力（商談作成率＝有効商談作成数÷アポ数）\n5%以下★1・15%以下★2・25%以下★3・40%以下★4・41%以上★5"
+        close_def = "アポ力（アポ率＝アポ数÷対話数）\n10%以下★1・15%以下★2・30%以下★3・40%以下★4・41%以上★5"
+
+    return "\n\n".join([
+        "⚔️ 営業ステータスの評価基準",
+        "行動力（週間アポ数）\n15件以下★1・25件以下★2・40件以下★3・60件以下★4・61件以上★5",
+        deal_def,
+        close_def,
+        "継続力（安定度＝訪問数・商談数・契約の波の無さを0〜100%に変換）\n"
+        "10%未満★1・10〜39%★2・40〜59%★3・60〜79%★4・80%以上★5",
+        "※すべて直近1週間（出勤日のみ）の実績が対象です",
+    ])
+
+
+def handle_status_definition_request(event: dict, closer: dict):
+    """「評価基準」テキストへの応答。Reply APIのみ使用（配信数を消費しない）。"""
+    reply_token = event["replyToken"]
+    role = closer.get("role") or ""
+    line_reply(reply_token, [{"type": "text", "text": build_status_definition_text(role)}])
 
 
 def notion_query_latest_deal(closer_name: str) -> dict | None:
@@ -923,6 +958,8 @@ def handle_event(event: dict):
         handle_goal_request(event, closer)
     elif message_type == "text" and event["message"]["text"] == ANALYSIS_BUTTON_TEXT:
         handle_analysis_request(event, closer)
+    elif message_type == "text" and event["message"]["text"] == STATUS_DEFINITION_TEXT:
+        handle_status_definition_request(event, closer)
     elif message_type == "text":
         handle_text_message(event)
 
