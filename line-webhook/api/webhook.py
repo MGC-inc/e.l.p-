@@ -399,10 +399,10 @@ def build_status_block(page: dict, recent_rows: list[dict], role: str, now: date
     （ユーザー指示: 「項目（説明）改行／★★★（〇％OR〇件）の形式」）。
     - 行動力（週間アポ数）: 週間アポ数の合計（15件以下★1・25件以下★2・40件以下★3・
       60件以下★4・61件以上★5。役割問わず共通）
-    - 商談力:
-      - クローザー（週間商談数）: 週間商談数の合計（1件以下★1・2件★2・3件★3・4件★4・
+    - 商談力・商談化力（ユーザー指示: アポインター側は「商談化力」という名称にする）:
+      - クローザー＝商談力（週間商談数）: 週間商談数の合計（1件以下★1・2件★2・3件★3・4件★4・
         5件以上★5）
-      - アポインター（商談作成率）: Σ有効商談作成数 ÷ Σアポ数（%）
+      - アポインター＝商談化力（商談作成率）: Σ有効商談作成数 ÷ Σアポ数（%）
         （5%以下★1・15%以下★2・25%以下★3・40%以下★4・41%以上★5）
     - 「決め切る力」（ユーザー指示: アポインターは`アポ力`・クローザーは`クロージング力`と
       呼び名を分けるが、どちらも同じ考え方＝直近1週間の転換率で評価する）:
@@ -411,8 +411,10 @@ def build_status_block(page: dict, recent_rows: list[dict], role: str, now: date
       - 両方とも同じ閾値を使う（10%以下★1・15%以下★2・30%以下★3・40%以下★4・
         41%以上★5。まだアポ力側の実データで検証していないため、必要なら調整する）
     - 継続力（安定度）: 訪問数・商談数・契約（週間・出勤日）それぞれの変動係数
-      （標準偏差÷平均）のうち、データがある指標の平均。値が小さい＝「波が無い」ほど
-      高評価にする。対象データが1つも無ければ中間評価（3つ星）にする
+      （標準偏差÷平均）から「安定度%」= (1 - 変動係数の平均) × 100（0〜100にクランプ）
+      に変換して表示する（ユーザー指示: 変動係数は直感的でないため数値化し直す）。
+      安定度10%未満★1・10〜39%★2・40〜59%★3・60〜79%★4・80%以上★5。
+      対象データが1つも無ければ中間評価（3つ星）にする
     """
     is_closer = role == "closer"
     week_ago_iso = (now.date() - timedelta(days=7)).isoformat()
@@ -432,7 +434,7 @@ def build_status_block(page: dict, recent_rows: list[dict], role: str, now: date
         valid_deals = sum(row_number(r, "有効商談作成数") for r in week_working_rows)
         deal_rate = (100 * valid_deals / weekly_apo) if weekly_apo > 0 else 0
         deal = stars_text(deal_rate, [(0, 1), (6, 2), (16, 3), (26, 4), (41, 5)])
-        deal_line = f"商談力（商談作成率）\n{deal}（{round(deal_rate)}%）"
+        deal_line = f"商談化力（商談作成率）\n{deal}（{round(deal_rate)}%）"
 
     # 「決め切る力」: クローザー＝クロージング力（契約率）、アポインター＝アポ力（アポ率）
     # 呼び名は違うが同じ閾値で評価する（ユーザー指示）
@@ -455,8 +457,9 @@ def build_status_block(page: dict, recent_rows: list[dict], role: str, now: date
     cvs = [c for c in (cv_of(visit_vals), cv_of(deal_vals), cv_of(contract_vals)) if c is not None]
     if cvs:
         avg_cv = sum(cvs) / len(cvs)
-        cont = stars_text(-avg_cv, [(-2.0, 1), (-0.9, 2), (-0.6, 3), (-0.4, 4), (-0.2, 5)])
-        cont_line = f"継続力（安定度）\n{cont}（変動係数{round(avg_cv, 2)}）"
+        stability_pct = max(0, min(100, round((1 - avg_cv) * 100)))
+        cont = stars_text(stability_pct, [(0, 1), (10, 2), (40, 3), (60, 4), (80, 5)])
+        cont_line = f"継続力（安定度）\n{cont}（{stability_pct}%）"
     else:
         cont_line = "継続力（安定度）\n⭐⭐⭐☆☆（データ不足）"
 
