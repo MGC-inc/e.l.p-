@@ -19,6 +19,12 @@ create table if not exists closer_line_users (
 -- SupabaseダッシュボードのSQL Editorで以下を実行してください。
 -- alter table closer_line_users add column if not exists role text;
 
+-- 2026-09追記: リッチメニュー「今日の目標を見る」の連打防止（handle_goal_request）用。
+-- REPLY_COUNTS_TOWARD_QUOTA=true時のみ使う「1日1回」判定と、同日2回目以降の再送に使う。
+-- alter table closer_line_users add column if not exists last_goal_reply_date date;
+-- alter table closer_line_users add column if not exists last_goal_reply_text text;
+-- alter table closer_line_users add column if not exists last_goal_reply_at timestamptz;
+
 create table if not exists deal_recordings (
   id bigint generated always as identity primary key,
   line_user_id text not null,

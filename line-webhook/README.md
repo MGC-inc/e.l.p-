@@ -1,9 +1,10 @@
 # line-webhook — 商談録音分析のLINE受信プログラム
 
 「ユメイク営業分析bot」宛てのメッセージを受け付ける。クローザー（商談録音を送る人）・
-アポインター（週次の実績配信を受け取るだけの人）どちらも、初回メッセージで
-あいさつ→お名前（苗字）→役割選択、の自己登録フローに乗る（表示名がwebhook.pyの
-KNOWN_CLOSERS/KNOWN_APPOINTERSに一致する人は即時登録され、この問答は省略される）。
+アポインター（週次の実績配信を受け取るだけの人）・管理者（週次のチーム全体の結果だけ
+受け取る人）いずれも、初回メッセージであいさつ→お名前（苗字）→役割選択、の自己登録フローに
+乗る（表示名がwebhook.pyのKNOWN_CLOSERS/KNOWN_APPOINTERS/KNOWN_ADMINSに一致する人は
+即時登録され、この問答は省略される）。
 登録済みのクローザーが録音を送ると、アポインター→お客様名→結果→分析する/しないの
 4問クイックリプライで必要事項を確定させ、Supabaseに記録する。今川さん個人のVercelアカウントで運用する
 （詳細な設計・全体像は [`../商談分析運用.md`](../商談分析運用.md) を参照）。
@@ -21,11 +22,12 @@ KNOWN_CLOSERS/KNOWN_APPOINTERSに一致する人は即時登録され、この�
 2. 「Storage」→「New bucket」で `deal-recordings` という名前のバケットを作成する（Publicにしなくてよい）
 3. 各自が「ユメイク営業分析bot」を友だち追加して何かメッセージを送ると、`closer_line_users` に
    `line_user_id` と `display_name`（LINEの表示名）が仮登録され、続けてbotからのあいさつに
-   従って苗字→クローザー/アポインターの役割を答えるだけで本登録が完了する。
-   表示名が `api/webhook.py` の `KNOWN_CLOSERS`/`KNOWN_APPOINTERS` に一致する人は
+   従って苗字→クローザー/アポインター/管理者の役割を答えるだけで本登録が完了する。
+   表示名が `api/webhook.py` の `KNOWN_CLOSERS`/`KNOWN_APPOINTERS`/`KNOWN_ADMINS` に一致する人は
    この問答なしで初回メッセージから即登録される（一致しない新規メンバーだけこの問答が出る）。
-   自己登録がうまくいかない場合のみ、Supabase側で該当行の `closer_name`・`role` を
-   手動で埋める（または `scripts/add_closer.py` を使う）
+   新規メンバーの追加・退社時の削除は `scripts/add_closer.py`・`scripts/remove_closer.py`
+   を使う（`Claude操作マニュアル.md` セクション9）。自己登録がうまくいかない場合のみ、
+   Supabase側で該当行の `closer_name`・`role` を手動で埋める
 
 ### 2. Vercelへのデプロイ
 
@@ -37,6 +39,13 @@ KNOWN_CLOSERS/KNOWN_APPOINTERSに一致する人は即時登録され、この�
    - `DEAL_LINE_CHANNEL_ACCESS_TOKEN`
    - `DEAL_SUPABASE_URL`
    - `DEAL_SUPABASE_SERVICE_ROLE_KEY`
+   - `NOTION_TOKEN`（リッチメニュー「今日の目標を見る」用。セットアップ手順は
+     商談分析運用.md セクション6-6参照。未設定でも録音受付フローは通常通り動く。
+     この統合は「📊 個人別KPI逆算データ（参照用）」「DB 商談分析＆アポ分析」に加えて
+     「📉 営業部 実績DB」（前日共有した内容の取得に使う。商談分析運用.md セクション6-7参照）
+     にも「•••」→「Connections」で共有しておく）
+   - `REPLY_COUNTS_TOWARD_QUOTA`（任意。既定は未設定＝false扱い。商談分析運用.md
+     セクション6-6参照）
 
    （`ELP_SUPABASE_URL`等の名前は使わない。Vercelチーム共有変数として既に別用途で使われており、
    Vercelの通常デプロイでは共有変数がFile Upload APIデプロイに反映されない問題が確認されたため、
@@ -54,9 +63,10 @@ KNOWN_CLOSERS/KNOWN_APPOINTERSに一致する人は即時登録され、この�
 
 ### 4. 動作確認
 
-1. テスト用のLINEアカウント（表示名がKNOWN_CLOSERS/KNOWN_APPOINTERSに一致しないもの）から
-   「ユメイク営業分析bot」にテキストを送る → あいさつ＋苗字を尋ねるメッセージが返れば疎通OK
-2. 苗字を送る → クローザー/アポインターの役割を尋ねるクイックリプライが返る
+1. テスト用のLINEアカウント（表示名がKNOWN_CLOSERS/KNOWN_APPOINTERS/KNOWN_ADMINSに
+   一致しないもの）から「ユメイク営業分析bot」にテキストを送る
+   → あいさつ＋苗字を尋ねるメッセージが返れば疎通OK
+2. 苗字を送る → クローザー/アポインター/管理者の役割を尋ねるクイックリプライが返る
 3. 「クローザー」を選ぶ → 登録完了メッセージが返り、Supabaseの `closer_line_users` にその人の行
    （`closer_name`・`role='closer'` 設定済み）ができていることを確認する
 4. 実際に音声ファイル（MP3等）を送り、アポインター→お客様名→結果→分析する/しない、の4問に順番に答えて
@@ -74,7 +84,9 @@ KNOWN_CLOSERS/KNOWN_APPOINTERSに一致する人は即時登録され、この�
 
 - ここで受け取った録音は消さない（分析後も含め、Supabase Storageに保持し続ける方針。商談分析運用.md参照）
 - チャネルシークレット・アクセストークンの値は、Vercelの環境変数以外（このリポジトリ・チャット等）に書かない
-- `KNOWN_CLOSERS`・`KNOWN_APPOINTERS`（`api/webhook.py`冒頭）はメンバー構成が変わったら手動で更新する
-  （`scripts/add_closer.py` は従業員.md・Notion側の更新を支援するが、この2つのPython定数は別途コード編集が必要）
+- `KNOWN_CLOSERS`・`KNOWN_APPOINTERS`・`KNOWN_ADMINS`（`api/webhook.py`冒頭）はメンバー構成が
+  変わったら `scripts/add_closer.py`（追加）・`scripts/remove_closer.py`（削除）で更新する
+  （`従業員.md`・Supabaseの仮登録行の即時反映も一緒に行う。手でこの3つのPython定数を
+  編集する必要はない）
 - 商談録音時に聞く「アポインターは誰ですか？」は自由入力（Notion側の「アポインター」選択肢が25名あり、
   LINEのクイックリプライ上限13個を超えるためボタン化していない）
