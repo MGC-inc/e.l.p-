@@ -39,6 +39,7 @@ NOTION_API = "https://api.notion.com/v1"
 PERFORMANCE_DB = "f11afda4-a39d-4139-8e12-817d3f70267b"  # 📉 営業部 実績DB（data_source_id）
 DEAL_DB = "8958bbaf-2c24-4e94-97b2-4c801e60cb37"          # DB 商談分析＆アポ分析（data_source_id）
 BUDGET_DB = "b1809b1a-e82d-4032-ac86-a32d165d475d"        # 💰 予算と達成率（data_source_id）
+PDCA_DB = "17f23c69-8a24-429a-8957-6b5490a87680"          # 📝 週次PDCA記録DB（data_source_id）
 
 RESULT_CONTRACT = "契約"
 RESULT_COOLING_OFF = "クーリングオフ"
@@ -254,6 +255,26 @@ def build_config(members: dict[str, dict], budget_by_name: dict[str, float], now
     }
 
 
+def build_pdca(members: dict[str, dict], week_start: datetime.date) -> dict[str, str]:
+    """週次PDCA記録DBから、対象週より前の直近1件（＝前回LINE返信で declared された
+    アクションプラン）を氏名ごとに拾う。build_all.pyのreview_page()「先週決めたアクション」
+    に自動転記される。行が無い人は結果から自然に省かれる（build_all.py側で「（記録なし）」表示）。
+    """
+    rows = notion_query_all(PDCA_DB, {
+        "property": "週初日", "date": {"before": week_start.isoformat()},
+    })
+    latest_by_name: dict[str, tuple[str, str]] = {}  # name -> (週初日, アクションプラン)
+    for row in rows:
+        name = prop_select(row, "氏名")
+        if name not in members:
+            continue
+        row_week = prop_date(row, "週初日") or ""
+        action = "".join(t.get("plain_text", "") for t in row["properties"].get("アクションプラン", {}).get("rich_text", []))
+        if name not in latest_by_name or row_week > latest_by_name[name][0]:
+            latest_by_name[name] = (row_week, action)
+    return {name: action for name, (_, action) in latest_by_name.items() if action}
+
+
 def write_csv(path: str, rows: list[dict], fieldnames: list[str]) -> None:
     with open(path, "w", newline="", encoding="utf-8-sig") as f:
         w = csv.DictWriter(f, fieldnames=fieldnames)
@@ -284,6 +305,7 @@ def main(out_dir: str) -> None:
 
     results = build_results(members, last_monday, week_end)
     config = build_config(members, budget_by_name, now, last_monday)
+    pdca = build_pdca(members, last_monday)
 
     write_csv(os.path.join(out_dir, "members.csv"), list(members.values()),
               ["name", "line_user_id", "role", "agency", "is_manager"])
@@ -292,6 +314,9 @@ def main(out_dir: str) -> None:
               ["name", "visits", "home", "face", "target", "talk", "appo",
                "meet_own", "meet_other", "win_own", "win_other", "cooloff", "screen_fail", "sales"])
     write_config_csv(os.path.join(out_dir, "config.csv"), config)
+    write_csv(os.path.join(out_dir, "pdca.csv"),
+              [{"name": name, "action": action} for name, action in pdca.items()],
+              ["name", "action"])
 
     print(f"対象週: {last_monday}〜{week_end} / メンバー{len(members)}名 -> {out_dir}")
 

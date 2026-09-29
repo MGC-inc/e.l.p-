@@ -12,16 +12,31 @@ Notionエージェント（`/shuuji`コマンド、2026-09-29付で廃止）に�
 ## 全体の流れ
 
 ```
-notion_to_csv.py  (Notion 3DB + Supabase → members/results/config の3CSV)
+notion_to_csv.py  (Notion 4DB + Supabase → members/results/config/pdca の4CSV)
         ↓
-build_all.py      (代理店別配信PDF。人数×2ページ＋共通4ページ、ランダムファイル名)
+build_all.py      (代理店別配信PDF。人数×2ページ＋共通4ページ、ランダムファイル名。
+                    ⑤先週の振り返りページに、pdca.csvの前回アクションプランを自動転記)
 build_meeting.py  (全社MT用PDF、16:9×2枚)
         ↓
 publish_supabase.py  (Supabase Storageに公開。バケット名 weekly-pdca)
         ↓
-deliver.py         (代理店の全員へLINE配信。--test-toで今川さんだけにテスト送信可)
+deliver.py         (代理店の全員へPDFリンク＋週次PDCA記入テンプレをLINE配信。
+                    --test-toで今川さんだけにテスト送信可。本番配信時のみSupabaseの
+                    pdca_pending_weekをセットする)
 deliver_meeting.py  (全社MT用PDFを今川さんだけに送信)
+        ↓
+（本人がLINEでテンプレに記入して返信）
+        ↓
+line-webhook/api/webhook.py の handle_pdca_reply が受け取り、
+週次PDCA記録DBに保存 → 翌週のnotion_to_csv.py実行時にpdca.csvへ反映される
 ```
+
+**週次PDCA記入テンプレの仕組み**: PDFと一緒に「①なぜ低いと思うか（原因）／②今週何をするか
+（アクションプラン）」の2問だけのテンプレを送り、本人がコピーして返信する。返信は本番LINE Bot
+（line-webhook）側で受け取り、Notion「📝 週次PDCA記録DB」に保存する。翌週のPDF生成時に
+`notion_to_csv.py`が前回分を拾い、「⑤先週アクションの振り返り」の「先週決めたアクション」欄に
+自動で入る（「やった？」「次にどうする」は当日のMTで手書き。数字の結果はPDF内の他の表に
+既に出ているため、テンプレでは聞かない。ユーザー指示）。
 
 毎週水曜9:00 JSTの無人実行は [`../../.github/workflows/weekly-shuuji.yml`](../../.github/workflows/weekly-shuuji.yml)
 が行う（Claude／LLMを一切経由しない。現時点では安全のため手動実行=`workflow_dispatch`のみ有効。
@@ -55,16 +70,19 @@ python3 deliver.py /tmp/out "https://公開URL" --dry-run
 
 ## ファイル構成
 
-- `notion_to_csv.py` — **新規実装**。Notion（📉営業部実績DB・DB商談分析＆アポ分析・💰予算と達成率）と
-  Supabase（`closer_line_users`）から、キットが読める3CSVを生成する
-- `build_all.py` — 代理店別配信PDF生成（キットそのまま。ランダムファイル名で推測不可に）
+- `notion_to_csv.py` — **新規実装**。Notion（📉営業部実績DB・DB商談分析＆アポ分析・💰予算と達成率・
+  📝週次PDCA記録DB）とSupabase（`closer_line_users`）から、キットが読める4CSVを生成する
+- `build_all.py` — 代理店別配信PDF生成（キットをベースに、⑤振り返りページをpdca.csvで
+  自動転記するよう変更。ランダムファイル名で推測不可に）
 - `build_meeting.py` — 全社MT用PDF生成（キットそのまま）
 - `deliver.py` — LINE配信（キットを元に、環境変数名を`DEAL_LINE_CHANNEL_ACCESS_TOKEN`に統一し、
-  `--test-to <line_user_id>`（1人だけにテスト送信）を追加）
+  `--test-to <line_user_id>`（1人だけにテスト送信）と、週次PDCA記入テンプレの同時送信・
+  Supabase `pdca_pending_week`の更新を追加）
 - `deliver_meeting.py` — **新規実装**。全社MT用PDFを今川さんだけに送る
 - `publish_supabase.py` — **新規実装**。生成したPDFをSupabase Storageに公開する
   （キット原案のVercelではなくSupabase Storageを使う理由は運用.md参照）
-- `sample/` — キット付属のサンプルCSV（動作確認用）
+- `sample/` — キット付属のサンプルCSV（動作確認用。`pdca.csv`は無くてもエラーにならず
+  「（記録なし）」表示になる）
 
 ## 判定ロジックの要点（build_all.py内）
 

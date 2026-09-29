@@ -42,6 +42,12 @@ DEAL_DATABASE_ID = "aa496718-e62f-4a70-818d-953492cad435"
 # 「📉 営業部 実績DB」のdatabase_id（固定値・秘密情報ではない）。日報の「備考」欄から
 # 前日共有した内容を拾うために使う（要Notionインテグレーション共有。他の2DBとは別）
 PERFORMANCE_DATABASE_ID = "f11afda4-a39d-4139-8e12-817d3f70267b"
+# 「📝 週次PDCA記録DB」のdata_source_id（固定値・秘密情報ではない）。週次MT用PDF
+# （tools/shuuji）のLINE返信から書き込む。要Notionインテグレーション共有（他の3DBとは別）。
+# PERFORMANCE_DATABASE_IDと同じく複数データソース対応版のため、両方とも
+# /v1/data_sources/{id}/query・Notion-Version 2025-09-03を使う（他の2DBとは形式が違う）
+PDCA_DATABASE_ID = "17f23c69-8a24-429a-8957-6b5490a87680"
+NOTION_VERSION_V2 = "2025-09-03"
 GOAL_BUTTON_TEXT = "今日の目標を見る"
 ANALYSIS_BUTTON_TEXT = "直近の商談分析結果を見る"
 # ⚔️営業ステータスの評価基準を知りたい時にテキストで送ってもらう合言葉（低コスト運用:
@@ -320,7 +326,7 @@ def notion_query_recent_performance(member_name: str, before_date_iso: str, limi
         data=body, method="POST",
         headers={
             "Authorization": f"Bearer {NOTION_TOKEN}",
-            "Notion-Version": "2025-09-03",
+            "Notion-Version": NOTION_VERSION_V2,
             "Content-Type": "application/json",
         },
     )
@@ -511,6 +517,100 @@ def handle_status_definition_request(event: dict, closer: dict):
     reply_token = event["replyToken"]
     role = closer.get("role") or ""
     line_reply(reply_token, [{"type": "text", "text": build_status_definition_text(role)}])
+
+
+def parse_pdca_reply(text: str) -> tuple[str, str]:
+    """週次PDCAテンプレ返信（①原因／②アクションプラン）を解析する。
+    「①」「②」の行を目印に、その後ろの文字を各項目とする。書式が多少崩れても
+    （行が増える・数字と全角/半角が混ざる等）壊れず動くよう、大まかな目印判定に留める。
+    ①が見つからなければ原因は空、②が見つからなければアクションプラン全体を
+    残りのテキストとして拾う（本人の入力を極力活かし、無言で捨てない）。
+    """
+    lines = text.splitlines()
+    cause_lines: list[str] = []
+    action_lines: list[str] = []
+    section = None
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith(("①", "1)", "1.", "1、")):
+            section = "cause"
+            rest = stripped.lstrip("①123456789).、. ").strip()
+            if rest:
+                cause_lines.append(rest)
+            continue
+        if stripped.startswith(("②", "2)", "2.", "2、")):
+            section = "action"
+            rest = stripped.lstrip("②123456789).、. ").strip()
+            if rest:
+                action_lines.append(rest)
+            continue
+        if section == "cause" and stripped:
+            cause_lines.append(stripped)
+        elif section == "action" and stripped:
+            action_lines.append(stripped)
+    cause = "\n".join(cause_lines).strip()
+    action = "\n".join(action_lines).strip()
+    if not cause and not action:
+        # ①②の目印が見つからなかった場合、全文をアクションプランとして残す
+        # （本人が書いた内容を消さない。原因欄は空のまま）
+        action = text.strip()
+    return cause, action
+
+
+def notion_create_pdca_page(member_name: str, week_start_iso: str, cause: str, action: str, raw_text: str) -> None:
+    """「📝 週次PDCA記録DB」に1行作成する。NOTION_TOKEN未設定時は何もしない。"""
+    if not NOTION_TOKEN:
+        return
+    title = f"{member_name}_{week_start_iso}"
+    body = json.dumps({
+        "parent": {"type": "data_source_id", "data_source_id": PDCA_DATABASE_ID},
+        "properties": {
+            "タイトル": {"title": [{"text": {"content": title}}]},
+            "氏名": {"select": {"name": member_name}},
+            "週初日": {"date": {"start": week_start_iso}},
+            "原因": {"rich_text": [{"text": {"content": cause[:2000]}}]},
+            "アクションプラン": {"rich_text": [{"text": {"content": action[:2000]}}]},
+            "元メッセージ": {"rich_text": [{"text": {"content": raw_text[:2000]}}]},
+        },
+    }).encode()
+    req = urllib.request.Request(
+        "https://api.notion.com/v1/pages", data=body, method="POST",
+        headers={
+            "Authorization": f"Bearer {NOTION_TOKEN}",
+            "Notion-Version": NOTION_VERSION_V2,
+            "Content-Type": "application/json",
+        },
+    )
+    with urllib.request.urlopen(req, timeout=20):
+        pass
+
+
+def handle_pdca_reply(event: dict, closer: dict):
+    """週次PDCAテンプレへの返信を受け取り、Notionに保存する。
+    tools/shuuji/deliver.pyが配信時にSupabase closer_line_users.pdca_pending_weekへ
+    対象週の月曜日をセットしており、ここではそれが立っている間だけテンプレ返信として扱う
+    （通常の録音受付フロー等より先に判定する。handle_eventの分岐順に注意）。
+    """
+    reply_token = event["replyToken"]
+    text = event["message"]["text"]
+    member_name = closer.get("closer_name") or ""
+    week_start_iso = closer["pdca_pending_week"]
+
+    cause, action = parse_pdca_reply(text)
+    try:
+        notion_create_pdca_page(member_name, week_start_iso, cause, action, text)
+    except (urllib.error.HTTPError, urllib.error.URLError, json.JSONDecodeError):
+        line_reply(reply_token, [{
+            "type": "text",
+            "text": "記入内容の保存に失敗しました。お手数ですが、今川さんに一言伝えてください。",
+        }])
+        return
+
+    sb("PATCH", f"closer_line_users?id=eq.{closer['id']}", {"pdca_pending_week": None})
+    line_reply(reply_token, [{
+        "type": "text",
+        "text": "ありがとうございます、記録しました！来週のMTで振り返ります。",
+    }])
 
 
 def notion_query_latest_deal(closer_name: str) -> dict | None:
@@ -966,6 +1066,11 @@ def handle_event(event: dict):
         handle_analysis_request(event, closer)
     elif message_type == "text" and event["message"]["text"] == STATUS_DEFINITION_TEXT:
         handle_status_definition_request(event, closer)
+    elif message_type == "text" and closer.get("pdca_pending_week"):
+        # 週次PDCAテンプレの返信待ち中は、通常の録音受付フロー等より優先して処理する
+        # （pdca_pending_week列が未追加の環境ではcloser.get()がNoneを返すだけで
+        # 安全にスキップされる）
+        handle_pdca_reply(event, closer)
     elif message_type == "text":
         handle_text_message(event)
 

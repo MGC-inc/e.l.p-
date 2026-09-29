@@ -25,6 +25,11 @@ create table if not exists closer_line_users (
 -- alter table closer_line_users add column if not exists last_goal_reply_text text;
 -- alter table closer_line_users add column if not exists last_goal_reply_at timestamptz;
 
+-- 2026-09追記: 週次PDCA記録（週次MT用PDF・tools/shuuji）用。GitHub Actionsの配信時
+-- （tools/shuuji/deliver.py）に対象週の月曜日をセットし、本人からの次のテキスト返信を
+-- 「PDCAテンプレへの返信」として扱う目印（handle_pdca_reply）。書き込み後にNULLへ戻す。
+-- alter table closer_line_users add column if not exists pdca_pending_week date;
+
 create table if not exists deal_recordings (
   id bigint generated always as identity primary key,
   line_user_id text not null,
