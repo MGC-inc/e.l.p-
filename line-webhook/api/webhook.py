@@ -309,12 +309,18 @@ def notion_query_recent_performance(member_name: str, before_date_iso: str, limi
         "sorts": [{"property": "実績日", "direction": "descending"}],
         "page_size": limit,
     }).encode()
+    # 「📉 営業部 実績DB」は複数データソース対応版に移行済みのため、他DBと違い
+    # 旧来の /v1/databases/{id}/query + Notion-Version 2022-06-28 では404になる
+    # （tools/shuuji/notion_to_csv.py実装時に実データで発見）。
+    # /v1/data_sources/{id}/query + 新しいNotion-Versionを使う
+    # （PERFORMANCE_DATABASE_IDの値そのものがdatabase_idではなくdata_source_idだったため、
+    # IDはそのまま使い、エンドポイントとバージョンだけ変える）
     req = urllib.request.Request(
-        f"https://api.notion.com/v1/databases/{PERFORMANCE_DATABASE_ID}/query",
+        f"https://api.notion.com/v1/data_sources/{PERFORMANCE_DATABASE_ID}/query",
         data=body, method="POST",
         headers={
             "Authorization": f"Bearer {NOTION_TOKEN}",
-            "Notion-Version": NOTION_VERSION,
+            "Notion-Version": "2025-09-03",
             "Content-Type": "application/json",
         },
     )
