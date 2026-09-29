@@ -3,12 +3,11 @@ name: weekly-shuuji
 # 週次MT用PDF（代理店別配信PDF＋全社MT用PDF）の生成・公開・LINE配信。
 # 商談分析運用.md 8章参照。Claude／LLMを一切経由しない決定的コード（tools/shuuji/）。
 #
-# 安全のため、現時点では手動実行（workflow_dispatch）のみ有効にしている。
+# 2026-09-29 今川さんがテスト送信の内容を確認し、本番運用に切り替え済み。
+# 毎週水曜9:00 JSTに自動実行され、代理店の全員へ本番配信する（scheduleトリガーは
+# 常にproduction扱い。send_mode入力はworkflow_dispatchで手動実行する時だけ効く）。
 # send_mode=test（既定）: 今川さんのLINEにだけ、全員分の内容をテスト送信する
 # send_mode=production: 各代理店の全員に本番配信する
-#
-# 毎週水曜9:00 JSTの自動実行にする場合は、下のscheduleのコメントを外す
-# （今川さんがsend_mode=testで内容を確認し、Notionの3DB共有設定が済んでから有効化する）。
 on:
   workflow_dispatch:
     inputs:
@@ -17,8 +16,8 @@ on:
         type: choice
         options: [test, production]
         default: test
-  # schedule:
-  #   - cron: "0 0 * * 3"  # 水曜 00:00 UTC = 水曜 09:00 JST
+  schedule:
+    - cron: "0 0 * * 3"  # 水曜 00:00 UTC = 水曜 09:00 JST
 
 jobs:
   run:
@@ -70,7 +69,9 @@ jobs:
           ELP_SUPABASE_URL: ${{ secrets.ELP_SUPABASE_URL }}
           ELP_SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.ELP_SUPABASE_SERVICE_ROLE_KEY }}
         run: |
-          if [ "${{ inputs.send_mode }}" = "production" ]; then
+          # scheduleトリガー（毎週水曜の自動実行）にはinputsが存在しないため、
+          # github.event_name==scheduleの場合は常に本番配信として扱う
+          if [ "${{ github.event_name }}" = "schedule" ] || [ "${{ inputs.send_mode }}" = "production" ]; then
             python3 tools/shuuji/deliver.py out "${{ steps.publish.outputs.base_url }}"
           else
             python3 tools/shuuji/deliver.py out "${{ steps.publish.outputs.base_url }}" --test-to "$IMAGAWA_LINE_USER_ID"
