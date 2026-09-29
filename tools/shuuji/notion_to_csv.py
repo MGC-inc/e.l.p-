@@ -232,11 +232,13 @@ def build_config(members: dict[str, dict], budget_by_name: dict[str, float], now
     perf_rows_month = notion_query_all(PERFORMANCE_DB, {
         "property": "実績日", "date": {"on_or_after": month_start.isoformat()},
     })
-    actual_sales = 0.0
-    for row in perf_rows_month:
-        if prop_select(row, "メンバー") not in members:
-            continue
-        actual_sales += prop_number(row, "契約金額（万円）") - prop_number(row, "キャンセル金額（万円）")
+    # 月実績（実質売上）は「登録済みメンバーだけの合計」ではなく会社全体の実績（Notion上の
+    # 実質売上合計と一致させる）。予算・LINE未登録の人（例: 催事）の実績もここには含める
+    # （ユーザー指摘で発覚。以前はmembersで絞ってしまい、Notion上の値より少なく出ていた）
+    actual_sales = sum(
+        prop_number(row, "契約金額（万円）") - prop_number(row, "キャンセル金額（万円）")
+        for row in perf_rows_month
+    )
 
     target_sales = sum(budget_by_name.get(n, 0.0) for n in members)
     target_contracts = round(target_sales / YEN_PER_CONTRACT_MAN) if target_sales else 0
