@@ -47,12 +47,31 @@ def week_start_and_label(out_dir: str) -> tuple[str, str]:
     return start.isoformat(), label
 
 
-def pdca_template(name: str, week_label: str) -> str:
+def pdca_template(name: str, week_label: str, role: str) -> str:
+    # ③のラベルはwebhook.pyのPDCA_TARGET_LABELSと文言を完全一致させること
+    # （自アポ/他アポの有無で役割ごとにラベルを変える）
+    if role == "closer":
+        target_lines = (
+            "訪問数：\n"
+            "アポ数：\n"
+            "商談数（自アポ）：\n"
+            "商談数（他アポ）：\n"
+            "契約数（自アポ）：\n"
+            "契約数（他アポ）：\n"
+        )
+    else:
+        target_lines = (
+            "訪問数：\n"
+            "アポ数：\n"
+            "商談数：\n"
+            "契約数：\n"
+        )
     return (
         f"📝週次PDCA｜{name}さん（今週：{week_label}）\n\n"
-        "PDFの「最優先の改善項目」を見て、下の2つに答えて、このまま返信してください。\n\n"
+        "PDFの「最優先の改善項目」を見て、下の3つに答えて、このまま返信してください。\n\n"
         "①なぜ低いと思いますか？（原因）\n\n\n"
-        "②良くするために、今週何をしますか？（いつ・誰と・何を）\n"
+        "②良くするために、今週何をしますか？（いつ・誰と・何を）\n\n\n"
+        "③今週の目標（数字で）\n" + target_lines
     )
 
 
@@ -73,7 +92,7 @@ for r in csv.DictReader(open(f"{out}/manifest.csv", encoding="utf-8-sig")):
     if mgr and r["is_manager"] != "yes":
         continue
     pdf_text = f"{r['name']}さん\n今週の{r['agency']}のPDCAシートです。\n{base}/{r['file']}"
-    template_text = pdca_template(r["name"], week_label)
+    template_text = pdca_template(r["name"], week_label, r["role"])
     to = test_to or r["line_user_id"]
     if test_to:
         pdf_text = f"【テスト送信・本来の宛先: {r['name']}さん（{r['agency']}）】\n{pdf_text}"

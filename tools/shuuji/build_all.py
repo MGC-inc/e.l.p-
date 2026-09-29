@@ -202,14 +202,37 @@ def sheet(name, res, mem, cfg):
            band("STEP4｜今週の定量目標（重点項目）"), Spacer(1, 2*mm), goal_table(goals)]
     return [p1, p2]
 
+def _format_pdca_targets(data):
+    """{"訪問数目標":80, "商談数目標_自アポ":5, "商談数目標_他アポ":3, ...} を
+    「訪問80・アポ15・商談5+3・契約2+1」のような1行に圧縮する（アポインターは
+    他アポがNoneなので単一の数字だけになる）。"""
+    parts = []
+    v = data.get("訪問数目標")
+    if v is not None: parts.append(f"訪問{int(v)}")
+    a = data.get("アポ数目標")
+    if a is not None: parts.append(f"アポ{int(a)}")
+    mo, mt = data.get("商談数目標_自アポ"), data.get("商談数目標_他アポ")
+    if mo is not None or mt is not None:
+        parts.append(f"商談{int(mo or 0)}+{int(mt)}" if mt is not None else f"商談{int(mo or 0)}")
+    wo, wt = data.get("契約数目標_自アポ"), data.get("契約数目標_他アポ")
+    if wo is not None or wt is not None:
+        parts.append(f"契約{int(wo or 0)}+{int(wt)}" if wt is not None else f"契約{int(wo or 0)}")
+    return "・".join(parts)
+
 def review_page(members, pdca):
-    """⑤先週アクションの振り返り。pdca（名前→前回のアクションプラン文字列）があれば
-    「先週決めたアクション」列に自動転記する（週次PDCA記録DBからLINE返信を集めた結果。
-    「結果（数字）」列は、数字はPDF内の他の表に既に出ているため置かない。ユーザー指示）"""
+    """⑤先週アクションの振り返り。pdca（名前→前回のアクションプラン・数値目標）があれば
+    「先週決めたアクション」列に、アクション文＋数値目標（【目標】訪問80・アポ15…）を
+    自動転記する（週次PDCA記録DBからLINE返信を集めた結果。「結果（数字）」列は、数字は
+    PDF内の他の表に既に出ているため置かない。ユーザー指示）"""
     rows = [hdr("メンバー", "先週決めたアクション", "やった？", "次にどうする")]
     for name in members:
-        action = (pdca or {}).get(name, "")
-        rows.append([Paragraph(name, TDL), Paragraph(action or "（記録なし）", TDL), "", ""])
+        data = (pdca or {}).get(name)
+        if not data:
+            cell = "（記録なし）"
+        else:
+            targets = _format_pdca_targets(data)
+            cell = data["action"] + (f"\n【目標】{targets}" if targets else "")
+        rows.append([Paragraph(name, TDL), Paragraph(cell, TDL), "", ""])
     return [Paragraph("⑤ 先週アクションの振り返り（今日のMTで記入）", H1), Spacer(1, 3*mm),
             grid(rows, [22*mm, 78*mm, 18*mm, 62*mm]), Spacer(1, 4*mm), blank("気づき・共有したいこと", 3)]
 
@@ -246,14 +269,24 @@ def build_cfg(inp, strict):
             "month_target": {"契約数": float(kv["target_contracts"]), "売上(万円)": float(kv["target_sales"])},
             "month_actual": {"契約数": float(kv["actual_contracts"]), "売上(万円)": float(kv["actual_sales"])}}
 
+PDCA_TARGET_COLS = ["訪問数目標", "アポ数目標", "商談数目標_自アポ", "商談数目標_他アポ",
+                     "契約数目標_自アポ", "契約数目標_他アポ"]
+
 def load_pdca(inp):
-    """pdca.csv（name,action。週次PDCA記録DBの前回分。notion_to_csv.pyが作る）を読む。
-    無ければ空辞書（新規プロジェクトやサンプル実行では「（記録なし）」表示になるだけで、
-    エラーにはしない）"""
+    """pdca.csv（name,action,訪問数目標,...。週次PDCA記録DBの前回分。notion_to_csv.pyが作る）
+    を読む。無ければ空辞書（新規プロジェクトやサンプル実行では「（記録なし）」表示になる
+    だけで、エラーにはしない）"""
     txt = load(inp, "pdca.csv", "")
     if txt is None:
         return {}
-    return {r["name"]: r.get("action", "") for r in csv.DictReader(io.StringIO(txt))}
+    out = {}
+    for r in csv.DictReader(io.StringIO(txt)):
+        data = {"action": r.get("action", "")}
+        for col in PDCA_TARGET_COLS:
+            v = r.get(col, "")
+            data[col] = float(v) if v not in (None, "") else None
+        out[r["name"]] = data
+    return out
 
 def load_all(inp, strict=False):
     mem = {r["name"]: r for r in csv.DictReader(io.StringIO(load(inp, "members.csv", "MEMBERS_URL")))}
@@ -280,10 +313,10 @@ def main(inp, out, strict=False):
         members.sort(key=lambda n: (mem[n]["role"] != "appointer", mem[n]["is_manager"] != "yes"))  # アポインタ→クローザーの順
         pages = common + [pg for n in members for pg in sheet(n, res, mem, cfg)] + [review_page(members, pdca)]
         fn = f"{secrets.token_urlsafe(9)}.pdf"; write_pdf(os.path.join(pub, fn), pages)
-        for n in members: rows.append([agency, n, mem[n]["line_user_id"], mem[n]["is_manager"], fn, len(members)])
+        for n in members: rows.append([agency, n, mem[n]["line_user_id"], mem[n]["role"], mem[n]["is_manager"], fn, len(members)])
         print(f"{agency}: {len(members)}人分 → {fn}")
     with open(os.path.join(out, "manifest.csv"), "w", newline="", encoding="utf-8-sig") as f:
-        w = csv.writer(f); w.writerow(["agency", "name", "line_user_id", "is_manager", "file", "sheets"]); w.writerows(rows)
+        w = csv.writer(f); w.writerow(["agency", "name", "line_user_id", "role", "is_manager", "file", "sheets"]); w.writerows(rows)
     # config.csvを出力フォルダにもコピーしておく（deliver.pyがPDCAテンプレの対象週表示に使う）
     with open(os.path.join(out, "config.csv"), "w", encoding="utf-8-sig") as f:
         f.write(open(os.path.join(inp, "config.csv"), encoding="utf-8-sig").read())

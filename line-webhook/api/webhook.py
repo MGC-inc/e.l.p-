@@ -519,16 +519,33 @@ def handle_status_definition_request(event: dict, closer: dict):
     line_reply(reply_token, [{"type": "text", "text": build_status_definition_text(role)}])
 
 
-def parse_pdca_reply(text: str) -> tuple[str, str]:
-    """週次PDCAテンプレ返信（①原因／②アクションプラン）を解析する。
-    「①」「②」の行を目印に、その後ろの文字を各項目とする。書式が多少崩れても
+# ③の数値目標。ラベルはtools/shuuji/deliver.pyのテンプレ文言と完全一致させる
+# （アポインター向けテンプレは商談数・契約数に自アポ/他アポの区別がなく、その場合は
+# _自アポ列にそのまま入れ、_他アポは0扱いにする＝webhook.py側の役割分岐は不要にしている）
+PDCA_TARGET_LABELS = {
+    "訪問数": "訪問数目標",
+    "アポ数": "アポ数目標",
+    "商談数（自アポ）": "商談数目標_自アポ",
+    "商談数（他アポ）": "商談数目標_他アポ",
+    "契約数（自アポ）": "契約数目標_自アポ",
+    "契約数（他アポ）": "契約数目標_他アポ",
+    "商談数": "商談数目標_自アポ",
+    "契約数": "契約数目標_自アポ",
+}
+
+
+def parse_pdca_reply(text: str) -> tuple[str, str, dict[str, int]]:
+    """週次PDCAテンプレ返信（①原因／②アクションプラン／③今週の数値目標）を解析する。
+    「①」「②」「③」の行を目印に、その後ろの文字を各項目とする。書式が多少崩れても
     （行が増える・数字と全角/半角が混ざる等）壊れず動くよう、大まかな目印判定に留める。
     ①が見つからなければ原因は空、②が見つからなければアクションプラン全体を
-    残りのテキストとして拾う（本人の入力を極力活かし、無言で捨てない）。
+    残りのテキストとして拾う（本人の入力を極力活かし、無言で捨てない）。③は
+    「ラベル：数字」の行だけを拾い、読めない行があってもスキップするだけで処理は止めない。
     """
     lines = text.splitlines()
     cause_lines: list[str] = []
     action_lines: list[str] = []
+    targets: dict[str, int] = {}
     section = None
     for line in lines:
         stripped = line.strip()
@@ -544,34 +561,50 @@ def parse_pdca_reply(text: str) -> tuple[str, str]:
             if rest:
                 action_lines.append(rest)
             continue
+        if stripped.startswith(("③", "3)", "3.", "3、")):
+            section = "targets"
+            continue
         if section == "cause" and stripped:
             cause_lines.append(stripped)
         elif section == "action" and stripped:
             action_lines.append(stripped)
+        elif section == "targets" and stripped:
+            sep = "：" if "：" in stripped else (":" if ":" in stripped else None)
+            if not sep:
+                continue
+            label, _, value = stripped.partition(sep)
+            prop_name = PDCA_TARGET_LABELS.get(label.strip())
+            digits = "".join(c for c in value if c.isdigit())
+            if prop_name and digits:
+                targets[prop_name] = int(digits)
     cause = "\n".join(cause_lines).strip()
     action = "\n".join(action_lines).strip()
-    if not cause and not action:
-        # ①②の目印が見つからなかった場合、全文をアクションプランとして残す
+    if not cause and not action and not targets:
+        # ①②③の目印が見つからなかった場合、全文をアクションプランとして残す
         # （本人が書いた内容を消さない。原因欄は空のまま）
         action = text.strip()
-    return cause, action
+    return cause, action, targets
 
 
-def notion_create_pdca_page(member_name: str, week_start_iso: str, cause: str, action: str, raw_text: str) -> None:
+def notion_create_pdca_page(member_name: str, week_start_iso: str, cause: str, action: str,
+                             targets: dict[str, int], raw_text: str) -> None:
     """「📝 週次PDCA記録DB」に1行作成する。NOTION_TOKEN未設定時は何もしない。"""
     if not NOTION_TOKEN:
         return
     title = f"{member_name}_{week_start_iso}"
+    properties = {
+        "タイトル": {"title": [{"text": {"content": title}}]},
+        "氏名": {"select": {"name": member_name}},
+        "週初日": {"date": {"start": week_start_iso}},
+        "原因": {"rich_text": [{"text": {"content": cause[:2000]}}]},
+        "アクションプラン": {"rich_text": [{"text": {"content": action[:2000]}}]},
+        "元メッセージ": {"rich_text": [{"text": {"content": raw_text[:2000]}}]},
+    }
+    for prop_name, value in targets.items():
+        properties[prop_name] = {"number": value}
     body = json.dumps({
         "parent": {"type": "data_source_id", "data_source_id": PDCA_DATABASE_ID},
-        "properties": {
-            "タイトル": {"title": [{"text": {"content": title}}]},
-            "氏名": {"select": {"name": member_name}},
-            "週初日": {"date": {"start": week_start_iso}},
-            "原因": {"rich_text": [{"text": {"content": cause[:2000]}}]},
-            "アクションプラン": {"rich_text": [{"text": {"content": action[:2000]}}]},
-            "元メッセージ": {"rich_text": [{"text": {"content": raw_text[:2000]}}]},
-        },
+        "properties": properties,
     }).encode()
     req = urllib.request.Request(
         "https://api.notion.com/v1/pages", data=body, method="POST",
@@ -596,9 +629,9 @@ def handle_pdca_reply(event: dict, closer: dict):
     member_name = closer.get("closer_name") or ""
     week_start_iso = closer["pdca_pending_week"]
 
-    cause, action = parse_pdca_reply(text)
+    cause, action, targets = parse_pdca_reply(text)
     try:
-        notion_create_pdca_page(member_name, week_start_iso, cause, action, text)
+        notion_create_pdca_page(member_name, week_start_iso, cause, action, targets, text)
     except (urllib.error.HTTPError, urllib.error.URLError, json.JSONDecodeError):
         line_reply(reply_token, [{
             "type": "text",

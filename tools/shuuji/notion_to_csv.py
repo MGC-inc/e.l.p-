@@ -255,24 +255,38 @@ def build_config(members: dict[str, dict], budget_by_name: dict[str, float], now
     }
 
 
-def build_pdca(members: dict[str, dict], week_start: datetime.date) -> dict[str, str]:
+PDCA_TARGET_PROPS = [
+    "訪問数目標", "アポ数目標", "商談数目標_自アポ", "商談数目標_他アポ",
+    "契約数目標_自アポ", "契約数目標_他アポ",
+]
+
+
+def _rich_text_plain(row: dict, prop_name: str) -> str:
+    return "".join(t.get("plain_text", "") for t in row["properties"].get(prop_name, {}).get("rich_text", []))
+
+
+def build_pdca(members: dict[str, dict], week_start: datetime.date) -> dict[str, dict]:
     """週次PDCA記録DBから、対象週より前の直近1件（＝前回LINE返信で declared された
-    アクションプラン）を氏名ごとに拾う。build_all.pyのreview_page()「先週決めたアクション」
-    に自動転記される。行が無い人は結果から自然に省かれる（build_all.py側で「（記録なし）」表示）。
+    アクションプラン・今週の数値目標）を氏名ごとに拾う。build_all.pyのreview_page()
+    「先週決めたアクション」に自動転記される。行が無い人は結果から自然に省かれる
+    （build_all.py側で「（記録なし）」表示）。
     """
     rows = notion_query_all(PDCA_DB, {
         "property": "週初日", "date": {"before": week_start.isoformat()},
     })
-    latest_by_name: dict[str, tuple[str, str]] = {}  # name -> (週初日, アクションプラン)
+    latest_by_name: dict[str, tuple[str, dict]] = {}  # name -> (週初日, {action, targets...})
     for row in rows:
         name = prop_select(row, "氏名")
         if name not in members:
             continue
         row_week = prop_date(row, "週初日") or ""
-        action = "".join(t.get("plain_text", "") for t in row["properties"].get("アクションプラン", {}).get("rich_text", []))
-        if name not in latest_by_name or row_week > latest_by_name[name][0]:
-            latest_by_name[name] = (row_week, action)
-    return {name: action for name, (_, action) in latest_by_name.items() if action}
+        if name in latest_by_name and row_week <= latest_by_name[name][0]:
+            continue
+        data = {"action": _rich_text_plain(row, "アクションプラン")}
+        for prop_name in PDCA_TARGET_PROPS:
+            data[prop_name] = row["properties"].get(prop_name, {}).get("number")
+        latest_by_name[name] = (row_week, data)
+    return {name: data for name, (_, data) in latest_by_name.items() if data["action"]}
 
 
 def write_csv(path: str, rows: list[dict], fieldnames: list[str]) -> None:
@@ -315,8 +329,8 @@ def main(out_dir: str) -> None:
                "meet_own", "meet_other", "win_own", "win_other", "cooloff", "screen_fail", "sales"])
     write_config_csv(os.path.join(out_dir, "config.csv"), config)
     write_csv(os.path.join(out_dir, "pdca.csv"),
-              [{"name": name, "action": action} for name, action in pdca.items()],
-              ["name", "action"])
+              [{"name": name, **data} for name, data in pdca.items()],
+              ["name", "action", *PDCA_TARGET_PROPS])
 
     print(f"対象週: {last_monday}〜{week_end} / メンバー{len(members)}名 -> {out_dir}")
 
