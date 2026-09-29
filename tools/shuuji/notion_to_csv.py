@@ -28,12 +28,17 @@ import urllib.error
 import urllib.request
 from zoneinfo import ZoneInfo
 
-NOTION_VERSION = "2022-06-28"
+# このワークスペースの3DBは複数データソース対応版に移行済みで、旧来の
+# `/v1/databases/{database_id}/query` + Notion-Version 2022-06-28 では404になる
+# （実データで確認済み。共有設定の問題ではない）。`/v1/data_sources/{data_source_id}/query` +
+# 新しいNotion-Versionを使う。IDは database_id ではなく data_source_id（Notion MCPの
+# collection://<id> 表記と同じ値）である点に注意
+NOTION_VERSION = "2025-09-03"
 NOTION_API = "https://api.notion.com/v1"
 
-PERFORMANCE_DB = "f11afda4-a39d-4139-8e12-817d3f70267b"  # 📉 営業部 実績DB
-DEAL_DB = "aa496718-e62f-4a70-818d-953492cad435"          # DB 商談分析＆アポ分析
-BUDGET_DB = "b1809b1a-e82d-4032-ac86-a32d165d475d"        # 💰 予算と達成率
+PERFORMANCE_DB = "f11afda4-a39d-4139-8e12-817d3f70267b"  # 📉 営業部 実績DB（data_source_id）
+DEAL_DB = "8958bbaf-2c24-4e94-97b2-4c801e60cb37"          # DB 商談分析＆アポ分析（data_source_id）
+BUDGET_DB = "b1809b1a-e82d-4032-ac86-a32d165d475d"        # 💰 予算と達成率（data_source_id）
 
 RESULT_CONTRACT = "契約"
 RESULT_COOLING_OFF = "クーリングオフ"
@@ -43,7 +48,7 @@ RESULT_REJECTED = "審査落ち"
 YEN_PER_CONTRACT_MAN = 65
 
 
-def notion_query_all(database_id: str, filter_obj: dict | None = None) -> list[dict]:
+def notion_query_all(data_source_id: str, filter_obj: dict | None = None) -> list[dict]:
     token = os.environ["NOTION_TOKEN"]
     headers = {"Authorization": f"Bearer {token}", "Notion-Version": NOTION_VERSION,
                "Content-Type": "application/json"}
@@ -55,7 +60,7 @@ def notion_query_all(database_id: str, filter_obj: dict | None = None) -> list[d
             body["filter"] = filter_obj
         if cursor:
             body["start_cursor"] = cursor
-        req = urllib.request.Request(f"{NOTION_API}/databases/{database_id}/query",
+        req = urllib.request.Request(f"{NOTION_API}/data_sources/{data_source_id}/query",
                                       data=json.dumps(body).encode(), method="POST", headers=headers)
         with urllib.request.urlopen(req, timeout=30) as resp:
             data = json.load(resp)
