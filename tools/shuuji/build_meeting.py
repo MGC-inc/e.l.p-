@@ -18,7 +18,7 @@ def clean(ax):
     for s in ("top", "right"): ax.spines[s].set_visible(False)
 
 def main(inp, outpdf, strict=False):
-    mem, res, cfg = B.load_all(inp, strict)
+    mem, res, cfg, _pdca = B.load_all(inp, strict)
     ag = {}
     for n, r in res.items():
         d = ag.setdefault(mem[n]["agency"], [0]*6)
