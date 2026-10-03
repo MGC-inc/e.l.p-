@@ -1,0 +1,84 @@
+name: weekly-shuuji
+
+# 週次MT用PDF（代理店別配信PDF＋全社MT用PDF）の生成・公開・LINE配信。
+# 商談分析運用.md 8章参照。Claude／LLMを一切経由しない決定的コード（tools/shuuji/）。
+#
+# 2026-09-29 今川さんがテスト送信の内容を確認し、本番運用に切り替え済み。
+# 毎週水曜9:00 JSTに自動実行され、代理店の全員へ本番配信する（scheduleトリガーは
+# 常にproduction扱い。send_mode入力はworkflow_dispatchで手動実行する時だけ効く）。
+# send_mode=test（既定）: 今川さんのLINEにだけ、全員分の内容をテスト送信する
+# send_mode=production: 各代理店の全員に本番配信する
+on:
+  workflow_dispatch:
+    inputs:
+      send_mode:
+        description: "test=今川さんだけにテスト送信 / production=代理店の全員へ本番配信"
+        type: choice
+        options: [test, production]
+        default: test
+  schedule:
+    - cron: "0 0 * * 3"  # 水曜 00:00 UTC = 水曜 09:00 JST
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install reportlab matplotlib
+      - run: sudo apt-get update && sudo apt-get install -y fonts-ipafont-gothic
+
+      - name: Notion/Supabase → CSV変換
+        env:
+          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+          ELP_SUPABASE_URL: ${{ secrets.ELP_SUPABASE_URL }}
+          ELP_SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.ELP_SUPABASE_SERVICE_ROLE_KEY }}
+        run: python3 tools/shuuji/notion_to_csv.py notion_out
+
+      - name: 代理店別配信PDF生成（データが先週分でなければ中止）
+        run: python3 tools/shuuji/build_all.py notion_out out --strict
+
+      - name: 全社MT用PDF生成
+        run: python3 tools/shuuji/build_meeting.py notion_out out/meeting.pdf
+
+      - name: 公開（Supabase Storage）
+        id: publish
+        env:
+          ELP_SUPABASE_URL: ${{ secrets.ELP_SUPABASE_URL }}
+          ELP_SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.ELP_SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          python3 tools/shuuji/publish_supabase.py out | tee publish.log
+          echo "base_url=$(grep -oP '(?<=PUBLIC_BASE_URL=).*' publish.log | tail -1)" >> "$GITHUB_OUTPUT"
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import os, urllib.request
+          url = os.environ["ELP_SUPABASE_URL"].rstrip("/") + "/storage/v1/object/weekly-pdca/meeting.pdf"
+          key = os.environ["ELP_SUPABASE_SERVICE_ROLE_KEY"]
+          data = open("out/meeting.pdf", "rb").read()
+          req = urllib.request.Request(url, data=data, method="POST",
+              headers={"apikey": key, "Authorization": f"Bearer {key}",
+                       "Content-Type": "application/pdf", "x-upsert": "true"})
+          urllib.request.urlopen(req, timeout=60)
+          print("meeting_url=" + os.environ["ELP_SUPABASE_URL"].rstrip("/") + "/storage/v1/object/public/weekly-pdca/meeting.pdf")
+          PY
+
+      - name: LINE配信（代理店別PDF＋週次PDCAテンプレ）
+        env:
+          DEAL_LINE_CHANNEL_ACCESS_TOKEN: ${{ secrets.DEAL_LINE_CHANNEL_ACCESS_TOKEN }}
+          IMAGAWA_LINE_USER_ID: ${{ secrets.IMAGAWA_LINE_USER_ID }}
+          ELP_SUPABASE_URL: ${{ secrets.ELP_SUPABASE_URL }}
+          ELP_SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.ELP_SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          # scheduleトリガー（毎週水曜の自動実行）にはinputsが存在しないため、
+          # github.event_name==scheduleの場合は常に本番配信として扱う
+          if [ "${{ github.event_name }}" = "schedule" ] || [ "${{ inputs.send_mode }}" = "production" ]; then
+            python3 tools/shuuji/deliver.py out "${{ steps.publish.outputs.base_url }}"
+          else
+            python3 tools/shuuji/deliver.py out "${{ steps.publish.outputs.base_url }}" --test-to "$IMAGAWA_LINE_USER_ID"
+          fi
+
+      - name: LINE配信（全社MT用・今川さんのみ）
+        env:
+          DEAL_LINE_CHANNEL_ACCESS_TOKEN: ${{ secrets.DEAL_LINE_CHANNEL_ACCESS_TOKEN }}
+          IMAGAWA_LINE_USER_ID: ${{ secrets.IMAGAWA_LINE_USER_ID }}
+        run: python3 tools/shuuji/deliver_meeting.py "${{ steps.publish.outputs.meeting_url }}" "$IMAGAWA_LINE_USER_ID"
