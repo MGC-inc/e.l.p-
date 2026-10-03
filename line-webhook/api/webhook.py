@@ -249,11 +249,49 @@ def latest_pending_recording(line_user_id: str):
     return rows[0] if rows else None
 
 
+def _strip_spaces(text: str) -> str:
+    return text.replace(" ", "").replace("　", "")
+
+
+def match_known_name(text: str, *name_dicts: dict) -> str | None:
+    """お客様名・アポインター名等の自由記入テキストから、既知の氏名表記（姓のみ・
+    姓名・スペースあり/なし等）を正規化した姓（KNOWN_CLOSERS/KNOWN_APPOINTERS等の
+    値）に変換する。LINE表示名の自動一致登録（register_unknown_sender）と同じ
+    辞書を使い、フルネームで返信されても苗字を特定できるようにする。
+    一致しなければNoneを返す（呼び出し側で元のテキストにフォールバックする）。
+    """
+    key = text.strip()
+    combined: dict[str, str] = {}
+    for d in name_dicts:
+        combined.update(d)
+
+    if key in combined:
+        return combined[key]
+
+    stripped_key = _strip_spaces(key)
+    stripped_lookup = {_strip_spaces(k): v for k, v in combined.items()}
+    if stripped_key in stripped_lookup:
+        return stripped_lookup[stripped_key]
+
+    # 辞書に無い氏名表記（例: 新しいメンバーのフルネーム）でも、既知の姓で始まって
+    # いれば姓を特定できる（姓名の間にスペースが無いケースの救済）
+    known_surnames = sorted(set(combined.values()), key=len, reverse=True)
+    for surname in known_surnames:
+        if stripped_key.startswith(surname):
+            return surname
+
+    return None
+
+
 def to_customer_label(text: str) -> str:
     text = text.strip()
-    if not text or text.endswith("邸"):
-        return text
-    return f"{text}邸"
+    # フルネームで返信された場合（スペース区切り）は姓部分だけを使う
+    # （例: 「小川 太郎」→「小川邸」。スペース無しの「小川太郎」は姓名の境目が
+    # 判別できないため、従来どおりそのまま使う）
+    first_token = _strip_spaces(text.split(" ")[0].split("　")[0]) if (" " in text or "　" in text) else text
+    if not first_token or first_token.endswith("邸"):
+        return first_token
+    return f"{first_token}邸"
 
 
 # ---- Notion（📊 個人別KPI逆算データ（参照用）） ----------------------------
@@ -831,8 +869,11 @@ def handle_text_message(event: dict):
     row_id = row["id"]
 
     if status == "awaiting_appointer":
+        # フルネーム（スペースあり/なし）で返信されても、既知のクローザー・
+        # アポインター名簿から苗字を特定して保存する（一致しなければ元のテキストのまま）
+        appointer_name = match_known_name(text, KNOWN_CLOSERS, KNOWN_APPOINTERS) or text.strip()
         sb("PATCH", f"deal_recordings?id=eq.{row_id}",
-           {"appointer": text, "status": "awaiting_customer"})
+           {"appointer": appointer_name, "status": "awaiting_customer"})
         line_reply(reply_token, [{"type": "text", "text": "お客様の苗字を教えてください（例: 杉浦）"}])
 
     elif status == "awaiting_customer":
