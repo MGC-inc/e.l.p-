@@ -1345,10 +1345,14 @@ def handle_event(event: dict):
         handle_analysis_request(event, closer)
     elif message_type == "text" and event["message"]["text"] == STATUS_DEFINITION_TEXT:
         handle_status_definition_request(event, closer)
-    elif message_type == "text" and closer.get("pdca_pending_week"):
-        # 週次PDCAテンプレの返信待ち中は、通常の録音受付フロー等より優先して処理する
-        # （pdca_pending_week列が未追加の環境ではcloser.get()がNoneを返すだけで
-        # 安全にスキップされる）
+    elif (message_type == "text" and closer.get("pdca_pending_week")
+          and latest_pending_recording(line_user_id) is None):
+        # 週次PDCAテンプレの返信待ち中は、通常の録音受付フローより優先して処理する。
+        # ただし「商談録音の確認フローが今まさに進行中（アポインター/お客様名/結果待ち等）」
+        # の場合は、その回答（お客様の苗字・結果ボタン・分析する/しないボタン等）まで
+        # PDCA返信として横取りしてしまうバグがあったため、録音確認フローが進行中では
+        # ないことを必ず確認してから初めてPDCA返信として扱う（ユーザー報告で修正。
+        # pdca_pending_week列が未追加の環境ではcloser.get()がNoneを返すだけで安全にスキップ）
         handle_pdca_reply(event, closer)
     elif message_type == "text":
         handle_text_message(event)
