@@ -285,15 +285,37 @@ def resume_status(row: dict) -> str:
     return "awaiting_confirm"
 
 
-def prompt_messages_for_status(status: str) -> list:
+def recording_label(row: dict) -> str:
+    """質問文の先頭に付ける「どの録音についての質問か」のラベル。
+    お客様名が確定していればそれを使い（最も分かりやすいため）、まだ分からない
+    段階（アポインター回答前）は受信時刻を使う（録音ごとに一意で、本人が
+    「さっき送った録音」を思い出す手がかりにもなる。複数録音が同時進行していても
+    取り違えないようにするためのユーザー指示への対応）。
+    """
+    customer_name = row.get("customer_name")
+    if customer_name:
+        return customer_name
+    try:
+        ts = datetime.fromisoformat(row["received_at"]).astimezone(JST)
+        return f"{ts:%H:%M}の録音"
+    except (KeyError, ValueError, TypeError):
+        return "この録音"
+
+
+def labeled_text(row: dict, question: str) -> str:
+    return f"【{recording_label(row)}】{question}"
+
+
+def prompt_messages_for_status(status: str, row: dict) -> list:
     if status == "awaiting_appointer":
-        return [{"type": "text", "text": "アポインターは誰ですか？（お名前を入力してください）"}]
+        return [{"type": "text", "text": labeled_text(row, "アポインターは誰ですか？（お名前を入力してください）")}]
     if status == "awaiting_customer":
-        return [{"type": "text", "text": "お客様の苗字を教えてください（例: 杉浦）"}]
+        return [{"type": "text", "text": labeled_text(row, "お客様の苗字を教えてください（例: 杉浦）")}]
     if status == "awaiting_result":
-        return [{"type": "text", "text": "商談の結果は？", "quickReply": quick_reply(RESULT_OPTIONS)}]
+        return [{"type": "text", "text": labeled_text(row, "商談の結果は？"),
+                 "quickReply": quick_reply(RESULT_OPTIONS)}]
     if status == "awaiting_confirm":
-        return [{"type": "text", "text": "この商談を分析しますか？",
+        return [{"type": "text", "text": labeled_text(row, "この商談を分析しますか？"),
                  "quickReply": quick_reply(["分析する", "分析しない"])}]
     return []
 
@@ -900,6 +922,8 @@ def handle_audio_message(event: dict, closer: dict, extra_messages=None):
     already_queued = sb(
         "GET", f"deal_recordings?line_user_id=eq.{line_user_id}&status=eq.queued&select=id",
     ) or []
+    new_row = {"received_at": now.isoformat()}
+    label = recording_label(new_row)  # この時点ではお客様名未確定なので受信時刻ラベル
     if in_progress or already_queued:
         ordinal = 1 + len(already_queued) + 1  # 確認中の1件 + 既にqueued済みの件数 + 今回
         sb("POST", "deal_recordings", [{
@@ -911,7 +935,7 @@ def handle_audio_message(event: dict, closer: dict, extra_messages=None):
         }])
         line_reply(reply_token, [*(extra_messages or []), {
             "type": "text",
-            "text": f"録音を受け取りました（{ordinal}件目として予約しました）。"
+            "text": f"【{label}】を受け取りました（{ordinal}件目として予約しました）。"
                     f"先の録音の確認が終わったら、続けてこちらについてお聞きします。",
         }])
         return
@@ -926,7 +950,7 @@ def handle_audio_message(event: dict, closer: dict, extra_messages=None):
 
     line_reply(reply_token, [*(extra_messages or []), {
         "type": "text",
-        "text": "録音を受け取りました。アポインターは誰ですか？（お名前を入力してください）",
+        "text": f"【{label}】を受け取りました。アポインターは誰ですか？（お名前を入力してください）",
     }])
 
 
@@ -939,7 +963,8 @@ def start_next_queued_recording(line_user_id: str) -> list:
     sb("PATCH", f"deal_recordings?id=eq.{nxt['id']}", {"status": "awaiting_appointer"})
     return [{
         "type": "text",
-        "text": "続いて次の録音について確認します。アポインターは誰ですか？（お名前を入力してください）",
+        "text": f"続いて【{recording_label(nxt)}】について確認します。"
+                f"アポインターは誰ですか？（お名前を入力してください）",
     }]
 
 
@@ -965,7 +990,7 @@ def handle_text_message(event: dict):
             return  # まだ何も確定していない（アポインター回答前）ので修正対象なし
         sb("PATCH", f"deal_recordings?id=eq.{row_id}", {"status": "correcting_choose_field"})
         line_reply(reply_token, [{
-            "type": "text", "text": "どの項目を修正しますか？",
+            "type": "text", "text": labeled_text(row, "どの項目を修正しますか？"),
             "quickReply": quick_reply(filled_labels),
         }])
         return
@@ -974,7 +999,7 @@ def handle_text_message(event: dict):
         filled_labels = [label for label, col in CORRECTABLE_FIELDS.items() if row.get(col)]
         if text not in CORRECTABLE_FIELDS:
             line_reply(reply_token, [{
-                "type": "text", "text": "ボタンから選んでください。",
+                "type": "text", "text": labeled_text(row, "ボタンから選んでください。"),
                 "quickReply": quick_reply(filled_labels),
             }])
             return
@@ -987,13 +1012,13 @@ def handle_text_message(event: dict):
         sb("PATCH", f"deal_recordings?id=eq.{row_id}", {"status": next_status})
         if next_status == "correcting_result":
             line_reply(reply_token, [{
-                "type": "text", "text": "新しい結果を選んでください。",
+                "type": "text", "text": labeled_text(row, "新しい結果を選んでください。"),
                 "quickReply": quick_reply(RESULT_OPTIONS),
             }])
         elif next_status == "correcting_appointer":
-            line_reply(reply_token, [{"type": "text", "text": "新しいアポインター名を入力してください。"}])
+            line_reply(reply_token, [{"type": "text", "text": labeled_text(row, "新しいアポインター名を入力してください。")}])
         else:
-            line_reply(reply_token, [{"type": "text", "text": "新しいお客様の苗字を入力してください（例: 杉浦）"}])
+            line_reply(reply_token, [{"type": "text", "text": labeled_text(row, "新しいお客様の苗字を入力してください（例: 杉浦）")}])
         return
 
     if status == "correcting_appointer":
@@ -1002,8 +1027,8 @@ def handle_text_message(event: dict):
         new_status = resume_status(updated_row)
         sb("PATCH", f"deal_recordings?id=eq.{row_id}", {"appointer": appointer_name, "status": new_status})
         line_reply(reply_token, [
-            {"type": "text", "text": f"アポインターを「{appointer_name}」に修正しました。"},
-            *prompt_messages_for_status(new_status),
+            {"type": "text", "text": labeled_text(updated_row, f"アポインターを「{appointer_name}」に修正しました。")},
+            *prompt_messages_for_status(new_status, updated_row),
         ])
         return
 
@@ -1013,15 +1038,15 @@ def handle_text_message(event: dict):
         new_status = resume_status(updated_row)
         sb("PATCH", f"deal_recordings?id=eq.{row_id}", {"customer_name": customer_name, "status": new_status})
         line_reply(reply_token, [
-            {"type": "text", "text": f"お客様名を「{customer_name}」に修正しました。"},
-            *prompt_messages_for_status(new_status),
+            {"type": "text", "text": labeled_text(updated_row, f"お客様名を「{customer_name}」に修正しました。")},
+            *prompt_messages_for_status(new_status, updated_row),
         ])
         return
 
     if status == "correcting_result":
         if text not in RESULT_OPTIONS:
             line_reply(reply_token, [{
-                "type": "text", "text": "ボタンから選んでください。",
+                "type": "text", "text": labeled_text(row, "ボタンから選んでください。"),
                 "quickReply": quick_reply(RESULT_OPTIONS),
             }])
             return
@@ -1029,39 +1054,44 @@ def handle_text_message(event: dict):
         new_status = resume_status(updated_row)
         sb("PATCH", f"deal_recordings?id=eq.{row_id}", {"result": text, "status": new_status})
         line_reply(reply_token, [
-            {"type": "text", "text": f"結果を「{text}」に修正しました。"},
-            *prompt_messages_for_status(new_status),
+            {"type": "text", "text": labeled_text(updated_row, f"結果を「{text}」に修正しました。")},
+            *prompt_messages_for_status(new_status, updated_row),
         ])
         return
 
     # ---- 通常フロー（アポインター→お客様名→結果→分析する/しない）。
     # 各回答の直後に「〇〇: 回答内容 で承知しました」と必ずオウム返しで確認し、
-    # 本人が送った内容と記録された内容がズレていないかその場で分かるようにする ----
+    # どの録音についての質問・確認かを【】で必ず明示する
+    # （本人が送った内容と記録された内容がズレていないか、複数録音が同時進行
+    # していてもどちらの件かが、その場で分かるようにする） ----
     if status == "awaiting_appointer":
         # フルネーム（スペースあり/なし）で返信されても、既知のクローザー・
         # アポインター名簿から苗字を特定して保存する（一致しなければ元のテキストのまま）
         appointer_name = match_known_name(text, KNOWN_CLOSERS, KNOWN_APPOINTERS) or text.strip()
+        updated_row = {**row, "appointer": appointer_name}
         sb("PATCH", f"deal_recordings?id=eq.{row_id}",
            {"appointer": appointer_name, "status": "awaiting_customer"})
         line_reply(reply_token, [{
             "type": "text",
-            "text": f"アポインター: {appointer_name} で承知しました。\n\nお客様の苗字を教えてください（例: 杉浦）",
+            "text": labeled_text(updated_row,
+                                  f"アポインター: {appointer_name} で承知しました。\n\nお客様の苗字を教えてください（例: 杉浦）"),
         }])
 
     elif status == "awaiting_customer":
         customer_name = to_customer_label(text)
+        updated_row = {**row, "customer_name": customer_name}
         sb("PATCH", f"deal_recordings?id=eq.{row_id}",
            {"customer_name": customer_name, "status": "awaiting_result"})
         line_reply(reply_token, [{
             "type": "text",
-            "text": f"お客様名: {customer_name} で承知しました。\n\n商談の結果は？",
+            "text": labeled_text(updated_row, f"お客様名: {customer_name} で承知しました。\n\n商談の結果は？"),
             "quickReply": quick_reply(RESULT_OPTIONS),
         }])
 
     elif status == "awaiting_result":
         if text not in RESULT_OPTIONS:
             line_reply(reply_token, [{
-                "type": "text", "text": "ボタンから選んでください。",
+                "type": "text", "text": labeled_text(row, "ボタンから選んでください。"),
                 "quickReply": quick_reply(RESULT_OPTIONS),
             }])
             return
@@ -1069,7 +1099,7 @@ def handle_text_message(event: dict):
            {"result": text, "status": "awaiting_confirm"})
         line_reply(reply_token, [{
             "type": "text",
-            "text": f"結果: {text} で承知しました。\n\nこの商談を分析しますか？",
+            "text": labeled_text(row, f"結果: {text} で承知しました。\n\nこの商談を分析しますか？"),
             "quickReply": quick_reply(["分析する", "分析しない"]),
         }])
 
@@ -1078,16 +1108,16 @@ def handle_text_message(event: dict):
             sb("PATCH", f"deal_recordings?id=eq.{row_id}", {"status": "ready"})
             line_reply(reply_token, [{
                 "type": "text",
-                "text": f"受け付けました。{row.get('customer_name', '')}は次回の分析対象です。",
+                "text": labeled_text(row, f"受け付けました。{row.get('customer_name', '')}は次回の分析対象です。"),
             }, *start_next_queued_recording(line_user_id)])
         elif text == "分析しない":
             sb("PATCH", f"deal_recordings?id=eq.{row_id}", {"status": "skipped"})
             line_reply(reply_token, [{
-                "type": "text", "text": "承知しました。分析対象外として記録しました。",
+                "type": "text", "text": labeled_text(row, "承知しました。分析対象外として記録しました。"),
             }, *start_next_queued_recording(line_user_id)])
         else:
             line_reply(reply_token, [{
-                "type": "text", "text": "ボタンから選んでください。",
+                "type": "text", "text": labeled_text(row, "ボタンから選んでください。"),
                 "quickReply": quick_reply(["分析する", "分析しない"]),
             }])
 
