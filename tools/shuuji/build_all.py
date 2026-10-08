@@ -99,29 +99,38 @@ def common_pages(res, mem, cfg, tmp):
           grid([hdr(*METRICS), [Paragraph(f"{x:,}", S("k", 14, NAVY, alignment=1)) for x in tot]], [36*mm]*5), Spacer(1, 4*mm),
           grid([hdr("訪問→アポ率", "商談→契約率"), [Paragraph(f"{rate(tot[1], tot[0])}%", TD), Paragraph(f"{rate(tot[3], tot[2])}%", TD)]], [90*mm]*2),
           Spacer(1, 5*mm), band("月の進捗と週の進捗（赤破線＝月の現時点の目安）"), Spacer(1, 3*mm), Image(f"{tmp}/month.png", 180*mm, 60*mm), Spacer(1, 4*mm), blank("ひとこと（先週の全体をどう見るか）", 2)]
-    names = list(ag); labels = [f"{n}({ag[n][5]}名)" for n in names]; cols = ["#1F3A5F", "#2E6DA4", "#3B8EA5", "#5B7DB1", "#8C5E9E"]; imgs = []
-    for i, m in enumerate(METRICS):
-        fn = f"{tmp}/r{i}.png"; bar(f"1人当たり{m}", labels, [round(ag[n][i]/ag[n][5], 1) for n in names], fn, cols[i]); imgs.append(Image(fn, 88*mm, 49*mm))
-    imgs.append(Paragraph("※ 金色＝1位　／　( )内は稼働人数", SM))
-    p3 = [Paragraph("② 代理店ランキング（先週・1人当たり）", H1), Paragraph("稼働人数で割って比較", SM), Spacer(1, 2*mm), Table([imgs[0:2], imgs[2:4], imgs[4:6]], colWidths=[90*mm, 90*mm])]
+    # 代理店ランキングは商談数以降（訪問数・アポ数は除く）だけで比較する。管理メインの
+    # メンバー（is_manager=yes）がいる代理店は訪問・アポが恒常的に0近辺になり、その2項目を
+    # 混ぜると不公平な比較になるため（ユーザー指示）。
+    names = list(ag); labels = [f"{n}({ag[n][5]}名)" for n in names]; cols = ["#3B8EA5", "#5B7DB1", "#8C5E9E"]; imgs = []
+    RANK_METRICS = [(2, "商談作成数"), (3, "契約数"), (4, "売上(万円)")]
+    for j, (i, m) in enumerate(RANK_METRICS):
+        fn = f"{tmp}/r{i}.png"; bar(f"1人当たり{m}", labels, [round(ag[n][i]/ag[n][5], 1) for n in names], fn, cols[j]); imgs.append(Image(fn, 88*mm, 49*mm))
+    imgs.append(Paragraph("※ 金色＝1位　／　( )内は稼働人数　／　訪問数・アポ数は管理メインのメンバーが混在するため対象外", SM))
+    p3 = [Paragraph("② 代理店ランキング（先週・1人当たり・商談数以降）", H1), Paragraph("稼働人数で割って比較", SM), Spacer(1, 2*mm), Table([imgs[0:2], imgs[2:4]], colWidths=[90*mm, 90*mm])]
     return [p1, p2, p3]
 
 # ---------- 個人シート ----------
 RED_BG = colors.HexColor("#F8D0D0")
-def rows_spec(role):
-    """(グループ, 表示名, 種類n=実数/r=率, 分子キー, 分母キー, 少ない方が良いか, 評価文の候補にするか)"""
-    R = []; g = "活動量（実数）"
-    for k, l in [("visits", "訪問数"), ("home", "在宅数"), ("face", "対面数"), ("target", "対象数"), ("talk", "対話数"), ("appo", "アポ数")]:
-        R.append((g, l, "n", k, None, False, True))
+def rows_spec(role, is_manager=False):
+    """(グループ, 表示名, 種類n=実数/r=率, 分子キー, 分母キー, 少ない方が良いか, 評価文の候補にするか)
+    is_manager=True（管理メインで訪問・アポの数字が恒常的に0に近い人。ユーザー指示）の場合、
+    訪問・アポなどの活動量・それに関わる通過率の行を出さず、商談以降の数字だけに絞る。"""
+    R = []
+    if not is_manager:
+        g = "活動量（実数）"
+        for k, l in [("visits", "訪問数"), ("home", "在宅数"), ("face", "対面数"), ("target", "対象数"), ("talk", "対話数"), ("appo", "アポ数")]:
+            R.append((g, l, "n", k, None, False, True))
     g = "商談・契約（実数）"
     pairs = [("meet_own", "商談数（自アポ）"), ("meet_other", "商談数（他アポ）"), ("win_own", "契約数（自アポ）"), ("win_other", "契約数（他アポ）")] if role == "closer" else [("meet", "商談数"), ("win", "契約数")]
     for k, l in pairs: R.append((g, l, "n", k, None, False, True))
     g = "結果（実数）"
     R += [(g, "クーリングオフ数", "n", "cooloff", None, True, False), (g, "審査落ち数", "n", "screen_fail", None, True, False), (g, "売上（万円）", "n", "sales", None, False, True)]
     g = "通過率（前の段階からの割合）"
-    for a, b, l in [("home", "visits", "訪問→在宅率"), ("face", "home", "在宅→対面率"), ("target", "face", "対面→対象率"), ("talk", "target", "対象→対話率"), ("appo", "talk", "対話→アポ率")]:
-        R.append((g, l, "r", a, b, False, True))
-    R.append((g, "訪問→アポ率（通算）", "r", "appo", "visits", False, False))
+    if not is_manager:
+        for a, b, l in [("home", "visits", "訪問→在宅率"), ("face", "home", "在宅→対面率"), ("target", "face", "対面→対象率"), ("talk", "target", "対象→対話率"), ("appo", "talk", "対話→アポ率")]:
+            R.append((g, l, "r", a, b, False, True))
+        R.append((g, "訪問→アポ率（通算）", "r", "appo", "visits", False, False))
     if role == "closer":
         R += [(g, "商談→契約率（自アポ）", "r", "win_own", "meet_own", False, True), (g, "商談→契約率（他アポ）", "r", "win_other", "meet_other", False, True), (g, "商談→契約率（計）", "r", "win", "meet", False, False)]
     else:
@@ -156,13 +165,19 @@ def judge(v, avg, sp):
 def sheet(name, res, mem, cfg):
     """1人分 = 2ページ(①数字の比較と定量評価 / ②原因・アクション・目標)"""
     r, role, agency = res[name], mem[name]["role"], mem[name]["agency"]
-    grp = [res[n] for n in res if mem[n]["role"] == role]
+    is_manager = mem[name].get("is_manager") == "yes"
+    grp_all = [res[n] for n in res if mem[n]["role"] == role]
+    # 管理メインの人（訪問・アポが恒常的に0近辺）を活動量系の平均から外す。
+    # 混ぜたままだと残りの現場メンバーの平均が不当に下がり、好調判定が甘くなるため（ユーザー指示の副作用対応）。
+    grp_active = [res[n] for n in res if mem[n]["role"] == role and mem[n].get("is_manager") != "yes"] or grp_all
+    funnel_rate_labels = ("訪問→在宅率", "在宅→対面率", "対面→対象率", "対象→対話率", "対話→アポ率", "訪問→アポ率（通算）")
     tname = "アポインタ" if role == "appointer" else "クローザー"
     data = [hdr("項目", "自分", "全体平均", "平均比", "判定")]; style = []; found = []; last_g = None; TDs = S("tds", 8.5, alignment=1); TDLs = S("tdls", 8.5)
-    for sp in rows_spec(role):
+    for sp in rows_spec(role, is_manager):
         if sp[0] != last_g:
             data.append([Paragraph(f"<b>{sp[0]}</b>", TDLs), "", "", "", ""]); i = len(data)-1
             style += [("SPAN", (0, i), (-1, i)), ("BACKGROUND", (0, i), (-1, i), LGRAY)]; last_g = sp[0]
+        grp = grp_active if sp[0] == "活動量（実数）" or sp[1] in funnel_rate_labels else grp_all
         v, av = _val(r, sp), _avg(grp, sp); ratio, lv, lab = judge(v, av, sp)
         if sp[2] == "r" and r[sp[4]] < 3: ratio, lv, lab = None, "na", "母数少（参考）"
         data.append([Paragraph(sp[1], TDLs), Paragraph(_fmt(v, sp), TDs), Paragraph(_fmt(av, sp), TDs), Paragraph(f"<b>{ratio*100:.0f}%</b>" if ratio is not None else "-", TDs), Paragraph(lab, TDs)])
@@ -191,7 +206,8 @@ def sheet(name, res, mem, cfg):
     # ---- 2ページ目 ----
     goals = [(x[2][1], _fmt(x[3], x[2])) for x in (sev or mild)[:3]]
     if not goals:
-        goals = [(sp[1], _fmt(_val(r, sp), sp)) for sp in rows_spec(role) if sp[1] in ("訪問数", "アポ数", "契約数（自アポ）", "契約数")][:3]
+        fallback_labels = ("商談数（自アポ）", "商談数（他アポ）", "契約数（自アポ）", "契約数（他アポ）", "契約数") if is_manager else ("訪問数", "アポ数", "契約数（自アポ）", "契約数")
+        goals = [(sp[1], _fmt(_val(r, sp), sp)) for sp in rows_spec(role, is_manager) if sp[1] in fallback_labels][:3]
     p2 = [Paragraph(f"③ {tname}個人シート（2/2）　改善アクション", H1), Paragraph(f"氏名：{name}　／　{agency}　／　{cfg['week']}", B), Spacer(1, 3*mm)]
     if role == "closer":
         p2 += [band("STEP1｜失注した商談の振り返り（商談反省報告から転記）"), Spacer(1, 2*mm), grid([hdr("お客様/案件", "決まらなかった理由", "契約にするには何をすべきだったか")] + [[""]*3]*3, [40*mm, 65*mm, 75*mm]),

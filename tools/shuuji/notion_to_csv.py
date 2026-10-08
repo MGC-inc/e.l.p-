@@ -110,6 +110,13 @@ def sb_get(path: str) -> list[dict]:
         return json.load(resp)
 
 
+# 仮置き: 代理店ごとの管理者フラグに相当するデータがNotion/Supabaseに無いため、
+# ここにハードコードする（ユーザー指示: 今川・岡野・門田・柚木は管理メインで訪問・アポに
+# 回る数字が恒常的に0に近くなるため、個人シートを商談以降の数字のみに絞り、代理店ランキングの
+# 平均算出からも外す）。正式な管理者フラグが予算DB等に追加されたら、ここは不要になる。
+MANAGER_NAMES = {"今川", "岡野", "門田", "柚木"}
+
+
 def build_members(now: datetime.date) -> dict[str, dict]:
     """予算DB当月行×Supabase closer_line_usersの積集合をメンバーロースターにする。"""
     month = now.strftime("%Y-%m")
@@ -142,7 +149,7 @@ def build_members(now: datetime.date) -> dict[str, dict]:
             continue
         members[name] = {
             "name": name, "line_user_id": line_id, "role": role, "agency": agency,
-            "is_manager": "no",  # 仮置き: 代理店ごとの管理者フラグに相当するデータが無いため一律no
+            "is_manager": "yes" if name in MANAGER_NAMES else "no",
         }
     if skipped:
         print(f"[notion_to_csv] 予算はあるがLINE未登録／役割未設定のため対象外: {', '.join(skipped)}",
