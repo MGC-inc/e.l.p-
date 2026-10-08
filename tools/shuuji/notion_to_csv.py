@@ -222,6 +222,37 @@ def build_results(members: dict[str, dict], week_start: datetime.date, week_end:
     return res
 
 
+def check_week_completeness(week_start: datetime.date, week_end: datetime.date) -> None:
+    """対象週の実績DB反映漏れを検知する（ユーザー報告で発覚: 配信日時点で対象週の一部の
+    日がまるごと未反映のまま、その不完全なデータでPDCAが配信されてしまった実例があった。
+    日次反映に数日のラグがあるのは正常な運用だが、水曜配信時点で対象週（先週）の一部の日が
+    丸ごと未反映なのは異常）。対象週の各日の行数を、同じ週の最多日と比べて極端に少ない日が
+    あれば、配信全体を中止する（誤った数字でのPDCA配信を未然に防ぐのが目的なので、
+    build_all.pyの--strict「週がズレていないか」より手前の、ここで止める）。
+    """
+    perf_rows = notion_query_all(PERFORMANCE_DB, {
+        "and": [
+            {"property": "実績日", "date": {"on_or_after": week_start.isoformat()}},
+            {"property": "実績日", "date": {"on_or_before": week_end.isoformat()}},
+        ]
+    })
+    counts: dict[str, int] = {}
+    for row in perf_rows:
+        d = prop_date(row, "実績日")
+        if d:
+            counts[d] = counts.get(d, 0) + 1
+    all_days = [(week_start + datetime.timedelta(days=i)).isoformat() for i in range(7)]
+    max_count = max(counts.values(), default=0)
+    sparse = [(d, counts.get(d, 0)) for d in all_days if max_count and counts.get(d, 0) < max_count * 0.5]
+    if sparse:
+        detail = ", ".join(f"{d}（{c}件）" for d, c in sparse)
+        sys.exit(
+            f"中止: 対象週（{week_start}〜{week_end}）の実績DB反映が不完全です。"
+            f"反映が薄い日: {detail}（同じ週の最多日は{max_count}件）。"
+            f"日次実績の入力漏れを確認・反映してから再実行してください。送信していません。"
+        )
+
+
 def build_config(members: dict[str, dict], budget_by_name: dict[str, float], now: datetime.date,
                   week_start: datetime.date) -> dict[str, str]:
     month_start = now.replace(day=1)
@@ -317,6 +348,7 @@ def main(out_dir: str) -> None:
     if not members:
         sys.exit("対象メンバーが0人です（予算DB・Supabase双方に存在する人がいません）。")
 
+    check_week_completeness(last_monday, week_end)
     results = build_results(members, last_monday, week_end)
     config = build_config(members, budget_by_name, now, last_monday)
     pdca = build_pdca(members, last_monday)
