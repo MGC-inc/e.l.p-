@@ -30,6 +30,11 @@ create table if not exists closer_line_users (
 -- 「PDCAテンプレへの返信」として扱う目印（handle_pdca_reply）。書き込み後にNULLへ戻す。
 -- alter table closer_line_users add column if not exists pdca_pending_week date;
 
+-- 2026-10追記: 週次PDCA未回答者への自動リマインド（tools/shuuji/pdca_reminder.py）用。
+-- リマインドを送った対象週を記録し、同じ週に何度もリマインドを送らないようにする目印。
+-- pdca_pending_weekと同じ値ならリマインド済み、違う値（または空）ならまだ送っていない。
+-- alter table closer_line_users add column if not exists pdca_reminded_week date;
+
 create table if not exists deal_recordings (
   id bigint generated always as identity primary key,
   line_user_id text not null,

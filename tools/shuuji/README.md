@@ -28,8 +28,21 @@ deliver_meeting.py  (全社MT用PDFを今川さんだけに送信)
 （本人がLINEでテンプレに記入して返信）
         ↓
 line-webhook/api/webhook.py の handle_pdca_reply が受け取り、
-週次PDCA記録DBに保存 → 翌週のnotion_to_csv.py実行時にpdca.csvへ反映される
+週次PDCA記録DBに保存 → pdca_pending_weekをNULLに戻す → 翌週のnotion_to_csv.py実行時に
+pdca.csvへ反映される
+        ↓
+（3日後の土曜、まだpdca_pending_weekが残っている＝未回答の人だけに）
+pdca_reminder.py    (記入テンプレのリマインドを1通LINE配信。.github/workflows/
+                    weekly-pdca-reminder.yml が土曜9:00 JSTに自動実行)
 ```
+
+**2026-10追記: 未回答者リマインドを追加した経緯**: 実データで、配信は全員にHTTP 200で
+届いている（LINEのInsight API・プロフィール確認でブロックもなしと確認済み）のに、
+週次PDCA記録DBへの記入は15人中7人程度しか来ていないことが判明。「送られていない」
+ように見えるが実際は「届いているが記入されていない」が主因だったため、記入を促す
+`pdca_reminder.py`を追加した（Notionを見に行かず、`pdca_pending_week`が配信時のまま
+残っているか＝未回答かだけで判定する。line-webhook側が返信を受け取るとこの列をNULLに
+戻す実装のため）。
 
 **週次PDCA記入テンプレの仕組み**: PDFと一緒に「①なぜ低いと思うか（原因）／②今週何をするか
 （アクションプラン）／③今週の目標（数字で。訪問数・アポ数・商談数・契約数。クローザーは
@@ -84,6 +97,8 @@ python3 deliver.py /tmp/out "https://公開URL" --dry-run
 - `deliver_meeting.py` — **新規実装**。全社MT用PDFを今川さんだけに送る
 - `publish_supabase.py` — **新規実装**。生成したPDFをSupabase Storageに公開する
   （キット原案のVercelではなくSupabase Storageを使う理由は運用.md参照）
+- `pdca_reminder.py` — **新規実装**。週次PDCAに未回答のまま数日経った人へ記入テンプレの
+  リマインドを送る（`.github/workflows/weekly-pdca-reminder.yml`が土曜9:00 JSTに自動実行）
 - `sample/` — キット付属のサンプルCSV（動作確認用。`pdca.csv`は無くてもエラーにならず
   「（記録なし）」表示になる）
 
