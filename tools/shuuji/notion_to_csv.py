@@ -28,6 +28,8 @@ import urllib.error
 import urllib.request
 from zoneinfo import ZoneInfo
 
+import jpholiday
+
 # このワークスペースの3DBは複数データソース対応版に移行済みで、旧来の
 # `/v1/databases/{database_id}/query` + Notion-Version 2022-06-28 では404になる
 # （実データで確認済み。共有設定の問題ではない）。`/v1/data_sources/{data_source_id}/query` +
@@ -229,6 +231,10 @@ def check_week_completeness(week_start: datetime.date, week_end: datetime.date) 
     丸ごと未反映なのは異常）。対象週の各日の行数を、同じ週の最多日と比べて極端に少ない日が
     あれば、配信全体を中止する（誤った数字でのPDCA配信を未然に防ぐのが目的なので、
     build_all.pyの--strict「週がズレていないか」より手前の、ここで止める）。
+
+    月・火は基本定休日（ユーザー指示）のため、この2日は未反映でも異常とみなさない。
+    ただし祝日の場合は稼働するため、月・火が祝日の場合は通常の曜日と同様にチェックする
+    （`jpholiday`で判定。内部的に祝日を計算するのみでネットワークアクセスはしない）。
     """
     perf_rows = notion_query_all(PERFORMANCE_DB, {
         "and": [
@@ -241,14 +247,16 @@ def check_week_completeness(week_start: datetime.date, week_end: datetime.date) 
         d = prop_date(row, "実績日")
         if d:
             counts[d] = counts.get(d, 0) + 1
-    all_days = [(week_start + datetime.timedelta(days=i)).isoformat() for i in range(7)]
+    all_days = [week_start + datetime.timedelta(days=i) for i in range(7)]
+    check_days = [d for d in all_days if d.weekday() not in (0, 1) or jpholiday.is_holiday(d)]
     max_count = max(counts.values(), default=0)
-    sparse = [(d, counts.get(d, 0)) for d in all_days if max_count and counts.get(d, 0) < max_count * 0.5]
+    sparse = [(d.isoformat(), counts.get(d.isoformat(), 0)) for d in check_days
+              if max_count and counts.get(d.isoformat(), 0) < max_count * 0.5]
     if sparse:
         detail = ", ".join(f"{d}（{c}件）" for d, c in sparse)
         sys.exit(
             f"中止: 対象週（{week_start}〜{week_end}）の実績DB反映が不完全です。"
-            f"反映が薄い日: {detail}（同じ週の最多日は{max_count}件）。"
+            f"反映が薄い日: {detail}（同じ週の最多日は{max_count}件。月・火の定休日は対象外）。"
             f"日次実績の入力漏れを確認・反映してから再実行してください。送信していません。"
         )
 
