@@ -1214,7 +1214,15 @@ def handle_goal_request(event: dict, closer: dict):
             pass  # last_goal_reply_at列未追加の環境では無視する
         return
 
-    page = notion_query_member(member_name)
+    try:
+        page = notion_query_member(member_name)
+    except (urllib.error.HTTPError, urllib.error.URLError, json.JSONDecodeError) as e:
+        print(f"handle_goal_request: notion_query_member failed: {e}")
+        line_reply(reply_token, [{
+            "type": "text",
+            "text": "一時的にデータの取得に失敗しました。少し待ってからもう一度ボタンを押してください。",
+        }])
+        return
     if page is None:
         line_reply(reply_token, [{
             "type": "text",
@@ -1295,7 +1303,15 @@ def handle_analysis_request(event: dict, closer: dict):
         }])
         return
 
-    page = notion_query_latest_deal(closer.get("closer_name"))
+    try:
+        page = notion_query_latest_deal(closer.get("closer_name"))
+    except (urllib.error.HTTPError, urllib.error.URLError, json.JSONDecodeError) as e:
+        print(f"handle_analysis_request: notion_query_latest_deal failed: {e}")
+        line_reply(reply_token, [{
+            "type": "text",
+            "text": "一時的にデータの取得に失敗しました。少し待ってからもう一度ボタンを押してください。",
+        }])
+        return
     if page is None:
         line_reply(reply_token, [{"type": "text", "text": "まだ商談分析の記録が見つかりませんでした。"}])
         return
