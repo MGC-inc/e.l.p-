@@ -22,6 +22,7 @@ import json
 import mimetypes
 import os
 import urllib.error
+import urllib.parse
 import urllib.request
 from datetime import date, datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler
@@ -50,6 +51,14 @@ PDCA_DATABASE_ID = "17f23c69-8a24-429a-8957-6b5490a87680"
 NOTION_VERSION_V2 = "2025-09-03"
 GOAL_BUTTON_TEXT = "今日の目標を見る"
 ANALYSIS_BUTTON_TEXT = "直近の商談分析結果を見る"
+# 単日KPIダッシュボード（Webページ、line-webhook/api/kpi.py）への入口テキスト。
+# 「今日の目標を見る」（テキスト1通で完結）とは意図的に分離している（ユーザー指示:
+# 見れる内容を切り分けたい）。こちらは行動量（実績/残り）・転換率（本日/基準/差）を
+# 表形式でビジュアルに見せるページへのリンクをReply APIで返す（フェーズ1。週間・月間・
+# ランキング等は未実装）。
+KPI_BUTTON_TEXT = "KPIを見る"
+KPI_TOKEN_TTL_SECONDS = 48 * 3600
+KPI_BASE_URL = os.environ.get("KPI_BASE_URL", "https://e-l-p-iyiyiyi.vercel.app")
 # ⚔️営業ステータスの評価基準を知りたい時にテキストで送ってもらう合言葉（低コスト運用:
 # リッチメニューのボタンは増やさず、この文字列を送るとReply APIで基準一覧を返すだけにする）
 STATUS_DEFINITION_TEXT = "評価基準"
@@ -1171,6 +1180,33 @@ def handle_registration(event: dict, closer: dict, is_first_contact: bool) -> bo
     return False
 
 
+def make_kpi_token(member_name: str) -> str:
+    """kpi.py（単日KPIダッシュボード）用の署名付きトークンを発行する。
+    署名鍵はDEAL_LINE_CHANNEL_SECRETを流用する（kpi.py側のコメント参照。
+    クロスファイルimportを避けるため、同じHMACロジックをここにも複製している）。
+    """
+    exp = int(datetime.now(timezone.utc).timestamp()) + KPI_TOKEN_TTL_SECONDS
+    sig = hmac.new(LINE_CHANNEL_SECRET.encode(), f"kpi:{member_name}:{exp}".encode(), hashlib.sha256).hexdigest()[:32]
+    return f"{urllib.parse.quote(member_name)}.{exp}.{sig}"
+
+
+def handle_kpi_request(event: dict, closer: dict):
+    """「KPIを見る」への応答。本人専用の署名付きURL（48時間有効）をReply APIで返す。
+    ページ自体の描画・Notion照会はkpi.py側で行う（ここではリンクを発行するだけ）。
+    """
+    reply_token = event["replyToken"]
+    member_name = closer.get("closer_name")
+    if not member_name:
+        line_reply(reply_token, [{"type": "text", "text": "お名前が未登録のため表示できません。"}])
+        return
+    token = make_kpi_token(member_name)
+    url = f"{KPI_BASE_URL}/api/kpi?token={token}"
+    line_reply(reply_token, [{
+        "type": "text",
+        "text": f"📊 {member_name}さんの今日のKPIはこちら（48時間有効なリンクです）\n{url}",
+    }])
+
+
 def handle_goal_request(event: dict, closer: dict):
     """リッチメニュー「今日の目標を見る」タップへの応答。
     Notion「📊 個人別KPI逆算データ（参照用）」の役割に応じた通知本文を、その場で
@@ -1360,6 +1396,8 @@ def handle_event(event: dict):
         # 録音登録フローの途中（awaiting_customer等）でタップされた場合も、
         # 目標確認を優先する（handle_text_messageの状態遷移より先に判定する）
         handle_goal_request(event, closer)
+    elif message_type == "text" and event["message"]["text"] == KPI_BUTTON_TEXT:
+        handle_kpi_request(event, closer)
     elif message_type == "text" and event["message"]["text"] == ANALYSIS_BUTTON_TEXT:
         handle_analysis_request(event, closer)
     elif message_type == "text" and event["message"]["text"] == STATUS_DEFINITION_TEXT:
