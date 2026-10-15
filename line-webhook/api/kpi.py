@@ -32,7 +32,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler
 
 LINE_CHANNEL_SECRET = os.environ["DEAL_LINE_CHANNEL_SECRET"]
@@ -104,6 +104,69 @@ def notion_query_today_performance(member_name: str, day_iso: str) -> dict | Non
     with urllib.request.urlopen(req, timeout=20) as r:
         results = json.loads(r.read()).get("results", [])
     return results[0] if results else None
+
+
+def notion_query_performance_range(member_name: str, start_iso: str, end_iso: str) -> list[dict]:
+    """ストリーク計算用。指定メンバーの指定期間（両端含む）の実績DB行を全件取得する。"""
+    if not NOTION_TOKEN:
+        return []
+    body = json.dumps({
+        "filter": {"and": [
+            {"property": "メンバー", "select": {"equals": member_name}},
+            {"property": "実績日", "date": {"on_or_after": start_iso}},
+            {"property": "実績日", "date": {"on_or_before": end_iso}},
+        ]},
+        "page_size": 100,
+    }).encode()
+    req = urllib.request.Request(
+        f"https://api.notion.com/v1/data_sources/{PERFORMANCE_DATABASE_ID}/query", data=body, method="POST",
+        headers={"Authorization": f"Bearer {NOTION_TOKEN}", "Notion-Version": NOTION_VERSION_V2,
+                 "Content-Type": "application/json"},
+    )
+    with urllib.request.urlopen(req, timeout=20) as r:
+        return json.loads(r.read()).get("results", [])
+
+
+def row_date_iso(row: dict) -> str | None:
+    date_prop = (row.get("properties", {}).get("実績日") or {}).get("date") or {}
+    start = date_prop.get("start")
+    return start[:10] if start else None
+
+
+def compute_streak(member_name: str, as_of: date) -> int:
+    """簡易版ストリーク（連続稼働日数）。「目標達成」ではなく「その日に実績の報告があったか」
+    だけで判定する（ユーザー指示: 簡易版でよい）。月・火は定休日として常にスキップする
+    （祝日稼働の例外は見ない。line-webhook側は外部ライブラリ非依存の方針を保つため、
+    tools/shuuji側のjpholiday厳密判定とは別物と割り切っている。実際より過小に出ることは
+    あっても過大に出ることはない安全側の簡略化）。
+    「今日」はまだ日報が入っていないことが多いため含めず、**前日から**遡って数える。
+    直近36日分だけ見る（それ以上遡っても意味が薄く、クエリも重くなるため）。
+    """
+    since = as_of - timedelta(days=36)
+    until = as_of - timedelta(days=1)
+    try:
+        rows = notion_query_performance_range(member_name, since.isoformat(), until.isoformat())
+    except (urllib.error.HTTPError, urllib.error.URLError, json.JSONDecodeError):
+        return 0
+
+    active_days: set[str] = set()
+    for row in rows:
+        d = row_date_iso(row)
+        if d and any(raw_number(row, col) for _, _, col in FUNNEL):
+            active_days.add(d)
+
+    streak = 0
+    d = until
+    while d >= since:
+        if d.weekday() in (0, 1):  # 月・火（定休日）はスキップ（途切れさせない）
+            d -= timedelta(days=1)
+            continue
+        if d.isoformat() in active_days:
+            streak += 1
+            d -= timedelta(days=1)
+        else:
+            break
+    return streak
 
 
 def raw_number(page: dict, prop_name: str) -> float:
@@ -212,12 +275,16 @@ def render_page(member_name: str) -> tuple[int, str]:
     data_note = "" if perf_page else "<p class=\"note\">⚠ 本日分の実績DB反映がまだです（反映後に自動で最新化されます）</p>"
     date_label = f"{now.month}/{now.day}（{'月火水木金土日'[now.weekday()]}）"
 
+    streak = compute_streak(member_name, now.date())
+    streak_html = f'<div class="streak">🔥 {streak}日連続稼働中</div>' if streak >= 2 else ""
+
     body = f"""
 <div class="card">
   <div class="header">
     <div class="name">{html.escape(member_name)}</div>
     <div class="date">{date_label} 単日実績</div>
   </div>
+  {streak_html}
   {data_note}
   <table>
     <thead>
@@ -252,6 +319,7 @@ def page_shell(body: str) -> str:
   .header {{ display: flex; justify-content: space-between; align-items: baseline; border-bottom: 2px solid #1a1a1a; padding-bottom: 10px; margin-bottom: 4px; }}
   .name {{ font-size: 20px; font-weight: 700; }}
   .date {{ font-size: 13px; color: #666; }}
+  .streak {{ font-size: 13px; font-weight: 700; color: #d4380d; margin-top: 8px; }}
   table {{ width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 14px; }}
   th, td {{ padding: 8px 4px; text-align: right; }}
   th.label, td.label {{ text-align: left; font-weight: 600; }}
