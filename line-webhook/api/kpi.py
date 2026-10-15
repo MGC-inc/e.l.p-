@@ -20,8 +20,10 @@ LINEのReply APIでURLとして本人に返す（週次PDFの署名付きURL配�
 「訪問の日次目標 × 基準%」の連鎖で算出する（KPI逆算データ側に各工程の日次目標そのものは
 まだ無いための簡易換算。詳細は商談分析運用.md参照）。
 
-標準ライブラリのみで実装（webhook.pyと同じ方針。cross-fileインポートはVercelのデプロイ単位の
-不確実性を避けるためあえて行わず、必要な関数はこのファイル内に複製する）。
+webhook.py本体と同じ方針で、原則標準ライブラリのみで実装している（cross-fileインポートは
+Vercelのデプロイ単位の不確実性を避けるためあえて行わず、必要な関数はこのファイル内に複製する）。
+唯一の例外がストリーク計算用の`jpholiday`（requirements.txt参照。tools/shuuji側と同じ
+ライブラリで、月・火が祝日の場合は定休日扱いしない判定に使う。ユーザー指示）。
 """
 import hashlib
 import hmac
@@ -34,6 +36,8 @@ import urllib.parse
 import urllib.request
 from datetime import date, datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler
+
+import jpholiday
 
 LINE_CHANNEL_SECRET = os.environ["DEAL_LINE_CHANNEL_SECRET"]
 NOTION_TOKEN = os.environ.get("NOTION_TOKEN")
@@ -135,10 +139,10 @@ def row_date_iso(row: dict) -> str | None:
 
 def compute_streak(member_name: str, as_of: date) -> int:
     """簡易版ストリーク（連続稼働日数）。「目標達成」ではなく「その日に実績の報告があったか」
-    だけで判定する（ユーザー指示: 簡易版でよい）。月・火は定休日として常にスキップする
-    （祝日稼働の例外は見ない。line-webhook側は外部ライブラリ非依存の方針を保つため、
-    tools/shuuji側のjpholiday厳密判定とは別物と割り切っている。実際より過小に出ることは
-    あっても過大に出ることはない安全側の簡略化）。
+    だけで判定する（ユーザー指示: 簡易版でよい）。月・火は基本定休日としてスキップするが、
+    **祝日の場合は稼働日として扱う**（ユーザー指示: 月火が祝日と重なった場合は稼働になる
+    ことが多いため。tools/shuuji/notion_to_csv.pyのcheck_week_completenessと同じ
+    jpholiday判定ルールに揃えている）。
     「今日」はまだ日報が入っていないことが多いため含めず、**前日から**遡って数える。
     直近36日分だけ見る（それ以上遡っても意味が薄く、クエリも重くなるため）。
     """
@@ -158,7 +162,7 @@ def compute_streak(member_name: str, as_of: date) -> int:
     streak = 0
     d = until
     while d >= since:
-        if d.weekday() in (0, 1):  # 月・火（定休日）はスキップ（途切れさせない）
+        if d.weekday() in (0, 1) and not jpholiday.is_holiday(d):  # 月・火の定休日はスキップ（祝日は稼働日扱い）
             d -= timedelta(days=1)
             continue
         if d.isoformat() in active_days:
