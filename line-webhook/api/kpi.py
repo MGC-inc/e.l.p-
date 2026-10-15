@@ -3,9 +3,18 @@
 既存の「今日の目標を見る」（webhook.py handle_goal_request。テキスト1通）とは別物として
 あえて分離した（ユーザー指示: 見れる内容を切り分けたい）。こちらは参考にしたKPIトラッカー
 （訪問→在宅/対面→対象→対話→アポのファネルを「行動量（実績/残り）」「転換率（本日/基準/差）」
-の表で見せる形）に寄せたビジュアルなWebページ。単日ビュー（フェーズ1）に加え、週間ビュー
-（フェーズ2、`?view=week`）を実装済み。月間・全員比較・ランキングは未実装
-（商談分析運用.md参照）。
+の表で見せる形）に寄せたビジュアルなWebページ。単日ビュー（フェーズ1）・週間ビュー
+（フェーズ2、`?view=week`）・月間ビュー（`?view=month`）・全社ランキング
+（`?view=ranking`）を実装済み。週次MTG記録・転換率計算機はまだ未実装（商談分析運用.md参照）。
+
+月間ビューの目標値（訪問・アポ）は、週間/単日ビューのような実績DBからの逆算ではなく
+webhook.pyの「今日の目標を見る」テキスト版と同じ、KPI DB側の手動メンテ値（`今月訪問実績`+
+`今月残り訪問数概算`、`今月アポ目標概算`）を使う（月次の目標はKPI DB側に逆算formulaが
+まだ無いため）。実績（アクチュアル）側はこのページの他ビュー同様、実績DBのライブ集計を使う。
+
+ランキングは全社共通・週次（ユーザー決定: 代理店内に絞らず全社、頻度は週次のまま）。
+役割（クローザー/アポインター）でアポの個数的なノルマが違うため、絶対数ではなく
+「今週の必要アポ数」に対する達成率%で順位付けする（`compute_ranking`）。
 
 アクセス制御: webhook.py側でHMAC署名付きトークン（member名+有効期限48時間）を発行し、
 LINEのReply APIでURLとして本人に返す（週次PDFの署名付きURL配信と同じ考え方）。
@@ -170,6 +179,42 @@ def notion_query_all_performance_range(start_iso: str, end_iso: str) -> list[dic
     return results
 
 
+def notion_query_all_kpi_members() -> list[dict]:
+    """全メンバーの📊個人別KPI逆算データ行を取得する（ランキング用）。"""
+    if not NOTION_TOKEN:
+        return []
+    results: list[dict] = []
+    cursor = None
+    while True:
+        body: dict = {"page_size": 100}
+        if cursor:
+            body["start_cursor"] = cursor
+        req = urllib.request.Request(
+            f"https://api.notion.com/v1/databases/{KPI_DATABASE_ID}/query",
+            data=json.dumps(body).encode(), method="POST",
+            headers={"Authorization": f"Bearer {NOTION_TOKEN}", "Notion-Version": NOTION_VERSION,
+                     "Content-Type": "application/json"},
+        )
+        with urllib.request.urlopen(req, timeout=20) as r:
+            data = json.loads(r.read())
+        results.extend(data.get("results", []))
+        if not data.get("has_more"):
+            break
+        cursor = data.get("next_cursor")
+    return results
+
+
+def title_text(page: dict, prop_name: str) -> str:
+    prop = page.get("properties", {}).get(prop_name) or {}
+    return "".join(t.get("plain_text", "") for t in prop.get("title") or [])
+
+
+def select_name(page: dict, prop_name: str) -> str | None:
+    prop = page.get("properties", {}).get(prop_name) or {}
+    select = prop.get("select")
+    return select.get("name") if select else None
+
+
 def row_date_iso(row: dict) -> str | None:
     date_prop = (row.get("properties", {}).get("実績日") or {}).get("date") or {}
     start = date_prop.get("start")
@@ -268,7 +313,36 @@ def view_tabs_html(token: str, active: str) -> str:
         cls = "tab active" if view == active else "tab"
         href = f"?token={urllib.parse.quote(token)}&view={view}" if view != "day" else f"?token={urllib.parse.quote(token)}"
         return f'<a class="{cls}" href="{href}">{label}</a>'
-    return f'<div class="tabs">{tab("day", "単日")}{tab("week", "週間")}</div>'
+    return (
+        '<div class="tabs">'
+        f'{tab("day", "単日")}{tab("week", "週間")}{tab("month", "月間")}{tab("ranking", "順位")}'
+        "</div>"
+    )
+
+
+def compute_ranking(week_start: date, week_end: date) -> list[dict]:
+    """全社ランキング（ユーザー決定: 代理店内に絞らず全社、頻度は週次のまま）。
+    役割（クローザー/アポインター）でアポのノルマの絶対数が違うため、公平に比べるには
+    絶対数ではなく「今週の必要アポ数」に対する達成率%を使う。
+    """
+    rows = notion_query_all_performance_range(week_start.isoformat(), week_end.isoformat())
+    appo_by_member: dict[str, float] = {}
+    for row in rows:
+        name = select_name(row, "メンバー")
+        if name:
+            appo_by_member[name] = appo_by_member.get(name, 0) + raw_number(row, "アポ数")
+
+    entries = []
+    for page in notion_query_all_kpi_members():
+        name = title_text(page, "メンバー")
+        if not name:
+            continue
+        target = formula_number(page, "今週の必要アポ数")
+        actual = appo_by_member.get(name, 0)
+        entries.append({"name": name, "actual": actual, "target": target, "rate": pct(actual, target)})
+
+    entries.sort(key=lambda e: (e["rate"] if e["rate"] is not None else -1, e["actual"]), reverse=True)
+    return entries
 
 
 def funnel_row_html(label: str, actual: float, target: float | None,
@@ -467,6 +541,142 @@ def render_week_page(member_name: str, token: str) -> tuple[int, str]:
     return 200, page_shell(body)
 
 
+def render_month_page(member_name: str, token: str) -> tuple[int, str]:
+    if not NOTION_TOKEN:
+        return 503, error_page("設定未完了", "NOTION_TOKENが未設定のため表示できません。今川さんに確認してください。")
+
+    now = datetime.now(JST)
+    month_start = now.date().replace(day=1)
+    month_end = now.date()
+
+    try:
+        kpi_page = notion_query_kpi_member(member_name)
+        month_rows = notion_query_performance_range(member_name, month_start.isoformat(), month_end.isoformat())
+    except (urllib.error.HTTPError, urllib.error.URLError, json.JSONDecodeError) as e:
+        print(f"kpi.py render_month_page: Notion取得失敗: {e}")
+        return 502, error_page("一時エラー", "データの取得に失敗しました。少し待ってからもう一度開いてください。")
+
+    if kpi_page is None:
+        return 404, error_page("データ未登録", f"「{member_name}」のKPIデータが見つかりませんでした。今川さんに確認してください。")
+
+    actuals = {key: sum(raw_number(row, col) for row in month_rows) for _, key, col in FUNNEL}
+
+    base_rate = {
+        "home": raw_number(kpi_page, "在宅率%"),
+        "face": raw_number(kpi_page, "対面率%"),
+        "target": raw_number(kpi_page, "対象率%"),
+        "talk": raw_number(kpi_page, "対話率%"),
+        "appo": raw_number(kpi_page, "アポ率%"),
+    }
+    month_rate = {
+        "home": pct(actuals["home"], actuals["visits"]),
+        "face": pct(actuals["face"], actuals["home"]),
+        "target": pct(actuals["target"], actuals["face"]),
+        "talk": pct(actuals["talk"], actuals["target"]),
+        "appo": pct(actuals["appo"], actuals["talk"]),
+    }
+
+    # 月間の目標はKPI DB側の手動メンテ値を使う（webhook.pyの「今日の目標を見る」テキスト版
+    # build_progress_blockと同じフィールド・考え方。月次逆算formulaがまだKPI DB側に無いため）。
+    # アポの月目標はアポインターのみ設定されている（クローザーは常に0のため、targetはNoneにして
+    # funnel_row_htmlの「—」表示に委ねる）
+    visit_target = raw_number(kpi_page, "今月訪問実績") + raw_number(kpi_page, "今月残り訪問数概算")
+    role_name = select_name(kpi_page, "役割")
+    appo_target = raw_number(kpi_page, "今月アポ目標概算") if role_name == "アポインター" else None
+    home_target = visit_target * base_rate["home"] / 100
+    face_target = home_target * base_rate["face"] / 100
+    target_target = face_target * base_rate["target"] / 100
+    talk_target = target_target * base_rate["talk"] / 100
+    targets = {
+        "visits": visit_target, "home": home_target, "face": face_target,
+        "target": target_target, "talk": talk_target, "appo": appo_target,
+    }
+
+    rows_html = "".join(
+        funnel_row_html(
+            label, actuals[key], targets.get(key),
+            month_rate.get(key), base_rate.get(key), is_base_step=(key == "visits"),
+        )
+        for label, key, _ in FUNNEL
+    )
+
+    date_label = f"{month_start.month}月（{month_start.day}〜{month_end.day}日・進行中）"
+
+    body = f"""
+<div class="card">
+  {view_tabs_html(token, "month")}
+  <div class="header">
+    <div class="name">{html.escape(member_name)}</div>
+    <div class="date">{date_label} 月間実績</div>
+  </div>
+  <table>
+    <thead>
+      <tr><th class="label"></th><th colspan="2">行動量</th><th colspan="3">転換率（前工程から）</th></tr>
+      <tr><th class="label">工程</th><th>実績</th><th>残り</th><th>月計</th><th>基準</th><th>差</th></tr>
+    </thead>
+    <tbody>{rows_html}</tbody>
+  </table>
+  <p class="legend">残り＝今月の行動KPIまでの不足数｜基準＝今月の目標設定で使用した転換率｜アポの月目標はアポインターのみ表示</p>
+</div>
+"""
+    return 200, page_shell(body)
+
+
+def render_ranking_page(member_name: str, token: str) -> tuple[int, str]:
+    if not NOTION_TOKEN:
+        return 503, error_page("設定未完了", "NOTION_TOKENが未設定のため表示できません。今川さんに確認してください。")
+
+    now = datetime.now(JST)
+    week_start, week_end = last_wed_tue_week(now.date())
+
+    try:
+        entries = compute_ranking(week_start, week_end)
+    except (urllib.error.HTTPError, urllib.error.URLError, json.JSONDecodeError) as e:
+        print(f"kpi.py render_ranking_page: Notion取得失敗: {e}")
+        return 502, error_page("一時エラー", "データの取得に失敗しました。少し待ってからもう一度開いてください。")
+
+    if not entries:
+        return 404, error_page("データ未登録", "ランキングを計算できるデータがありませんでした。今川さんに確認してください。")
+
+    my_rank = None
+    rows_html = ""
+    for i, e in enumerate(entries, start=1):
+        is_me = e["name"] == member_name
+        if is_me:
+            my_rank = i
+        rate_label = f"{e['rate']:.0f}%" if e["rate"] is not None else "—"
+        row_cls = " class=\"me\"" if is_me else ""
+        rank_label = {1: "🥇", 2: "🥈", 3: "🥉"}.get(i, str(i))
+        rows_html += (
+            f"<tr{row_cls}>"
+            f"<td class=\"rank\">{rank_label}</td>"
+            f"<td class=\"label\">{html.escape(e['name'])}</td>"
+            f"<td class=\"num\">{int(e['actual'])}</td>"
+            f"<td class=\"num\">{rate_label}</td>"
+            "</tr>"
+        )
+
+    date_label = f"{week_start.month}/{week_start.day}〜{week_end.month}/{week_end.day}"
+    rank_note = f'<p class="note info">あなたは{my_rank}位／{len(entries)}人中です</p>' if my_rank else ""
+
+    body = f"""
+<div class="card">
+  {view_tabs_html(token, "ranking")}
+  <div class="header">
+    <div class="name">全社ランキング</div>
+    <div class="date">{date_label}（水〜火） アポ週目標達成率</div>
+  </div>
+  {rank_note}
+  <table>
+    <thead><tr><th class="rank"></th><th class="label">メンバー</th><th>アポ数</th><th>達成率</th></tr></thead>
+    <tbody>{rows_html}</tbody>
+  </table>
+  <p class="legend">達成率＝今週の必要アポ数に対する実績の割合（週間ビューと同じ目標値を使用）｜役割が違っても達成率%で公平に比較</p>
+</div>
+"""
+    return 200, page_shell(body)
+
+
 def error_page(title: str, message: str) -> str:
     body = f'<div class="card"><div class="header"><div class="name">{html.escape(title)}</div></div><p class="note">{html.escape(message)}</p></div>'
     return page_shell(body)
@@ -503,6 +713,10 @@ def page_shell(body: str) -> str:
   .muted {{ color: #bbb; }}
   .legend {{ font-size: 11px; color: #999; margin-top: 14px; line-height: 1.6; }}
   .note {{ font-size: 13px; color: #d4380d; background: #fff2e8; border-radius: 8px; padding: 8px 10px; margin: 8px 0 0; }}
+  .note.info {{ color: #1a5fd4; background: #eef3ff; font-weight: 700; text-align: center; }}
+  td.rank, th.rank {{ width: 28px; text-align: center; font-weight: 700; }}
+  tr.me {{ background: #fff8e1; }}
+  tr.me td.label {{ font-weight: 700; }}
 </style>
 </head>
 <body>
@@ -527,6 +741,10 @@ class handler(BaseHTTPRequestHandler):
             try:
                 if view == "week":
                     status, html_body = render_week_page(member_name, token)
+                elif view == "month":
+                    status, html_body = render_month_page(member_name, token)
+                elif view == "ranking":
+                    status, html_body = render_ranking_page(member_name, token)
                 else:
                     status, html_body = render_page(member_name, token)
             except Exception as e:  # ページ全体が落ちるのを防ぐ
