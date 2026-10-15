@@ -19,6 +19,22 @@ create table if not exists closer_line_users (
 -- SupabaseダッシュボードのSQL Editorで以下を実行してください。
 -- alter table closer_line_users add column if not exists role text;
 
+-- 2026-09追記: リッチメニュー「今日の目標を見る」の連打防止（handle_goal_request）用。
+-- REPLY_COUNTS_TOWARD_QUOTA=true時のみ使う「1日1回」判定と、同日2回目以降の再送に使う。
+-- alter table closer_line_users add column if not exists last_goal_reply_date date;
+-- alter table closer_line_users add column if not exists last_goal_reply_text text;
+-- alter table closer_line_users add column if not exists last_goal_reply_at timestamptz;
+
+-- 2026-09追記: 週次PDCA記録（週次MT用PDF・tools/shuuji）用。GitHub Actionsの配信時
+-- （tools/shuuji/deliver.py）に対象週の月曜日をセットし、本人からの次のテキスト返信を
+-- 「PDCAテンプレへの返信」として扱う目印（handle_pdca_reply）。書き込み後にNULLへ戻す。
+-- alter table closer_line_users add column if not exists pdca_pending_week date;
+
+-- 2026-10追記: 週次PDCA未回答者への自動リマインド（tools/shuuji/pdca_reminder.py）用。
+-- リマインドを送った対象週を記録し、同じ週に何度もリマインドを送らないようにする目印。
+-- pdca_pending_weekと同じ値ならリマインド済み、違う値（または空）ならまだ送っていない。
+-- alter table closer_line_users add column if not exists pdca_reminded_week date;
+
 create table if not exists deal_recordings (
   id bigint generated always as identity primary key,
   line_user_id text not null,
