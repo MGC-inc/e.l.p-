@@ -1,10 +1,11 @@
-"""個人の単日KPIダッシュボード（Webページ）— LINE Bot「KPIを見る」から開く（フェーズ1）。
+"""個人のKPIダッシュボード（Webページ）— LINE Bot「KPIを見る」から開く（フェーズ1+2）。
 
 既存の「今日の目標を見る」（webhook.py handle_goal_request。テキスト1通）とは別物として
 あえて分離した（ユーザー指示: 見れる内容を切り分けたい）。こちらは参考にしたKPIトラッカー
 （訪問→在宅/対面→対象→対話→アポのファネルを「行動量（実績/残り）」「転換率（本日/基準/差）」
-の表で見せる形）に寄せたビジュアルなWebページで、単日のみに絞っている（週間・月間・
-ランキング等は未実装。商談分析運用.mdに追記予定）。
+の表で見せる形）に寄せたビジュアルなWebページ。単日ビュー（フェーズ1）に加え、週間ビュー
+（フェーズ2、`?view=week`）を実装済み。月間・全員比較・ランキングは未実装
+（商談分析運用.md参照）。
 
 アクセス制御: webhook.py側でHMAC署名付きトークン（member名+有効期限48時間）を発行し、
 LINEのReply APIでURLとして本人に返す（週次PDFの署名付きURL配信と同じ考え方）。
@@ -13,17 +14,24 @@ LINEのReply APIでURLとして本人に返す（週次PDFの署名付きURL配�
 追加・Vercel環境変数への反映待ちを避けるための判断）。
 
 データソース:
-- 📉 営業部 実績DB（当日の行動量の実績）
+- 📉 営業部 実績DB（行動量の実績。単日はその日、週間は対象週7日分の合計）
 - 📊 個人別KPI逆算データ（参照用）（基準となる転換率%、および「今日やるべき訪問数」
-  「今日やるべきアポ数」の逆算済み日次目標）
-行動量の「残り」は、訪問・アポは上記の逆算済み日次目標をそのまま使い、在宅・対面・対象・対話は
-「訪問の日次目標 × 基準%」の連鎖で算出する（KPI逆算データ側に各工程の日次目標そのものは
-まだ無いための簡易換算。詳細は商談分析運用.md参照）。
+  「今日やるべきアポ数」「今週の必要訪問数」「今週の必要アポ数」の逆算済み目標）
+行動量の「残り」は、訪問・アポは上記の逆算済み目標をそのまま使い、在宅・対面・対象・対話は
+「訪問の目標 × 基準%」の連鎖で算出する（KPI逆算データ側に各工程の目標そのものはまだ無い
+ための簡易換算。詳細は商談分析運用.md参照）。
 
-webhook.py本体と同じ方針で、原則標準ライブラリのみで実装している（cross-fileインポートは
+週間ビューの対象週は**水曜始まり火曜終わり**の直近の完了週（`last_wed_tue_week`。
+`.claude/skills/週次実績配信/SKILL.md`と同じ週定義。tools/shuuji側の月曜始まりとは別軸、
+ユーザー指示）。
+
+ストリーク（連続稼働日数）の「休みの日」判定は、曜日や祝日カレンダーではなく**会社全体で
+その日に誰か1人でも稼働報告があったか**で決める（`company_active_days`。ユーザー指示:
+月火が祝日なら稼働になることが多い、という以前の暫定ルールより、実データに基づくこちらの
+方が正確で汎用的なため採用。カレンダーライブラリ非依存に戻った）。
+
+webhook.py本体と同じ方針で、標準ライブラリのみで実装している（cross-fileインポートは
 Vercelのデプロイ単位の不確実性を避けるためあえて行わず、必要な関数はこのファイル内に複製する）。
-唯一の例外がストリーク計算用の`jpholiday`（requirements.txt参照。tools/shuuji側と同じ
-ライブラリで、月・火が祝日の場合は定休日扱いしない判定に使う。ユーザー指示）。
 """
 import hashlib
 import hmac
@@ -36,8 +44,6 @@ import urllib.parse
 import urllib.request
 from datetime import date, datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler
-
-import jpholiday
 
 LINE_CHANNEL_SECRET = os.environ["DEAL_LINE_CHANNEL_SECRET"]
 NOTION_TOKEN = os.environ.get("NOTION_TOKEN")
@@ -131,18 +137,69 @@ def notion_query_performance_range(member_name: str, start_iso: str, end_iso: st
         return json.loads(r.read()).get("results", [])
 
 
+def notion_query_all_performance_range(start_iso: str, end_iso: str) -> list[dict]:
+    """会社全体（全メンバー）の実績DB行を期間指定で取得する（休配信日判定用）。
+    複数メンバー分なのでnotion_query_performance_range（1人分）と違いページングが必要。
+    """
+    if not NOTION_TOKEN:
+        return []
+    results: list[dict] = []
+    cursor = None
+    while True:
+        body: dict = {
+            "filter": {"and": [
+                {"property": "実績日", "date": {"on_or_after": start_iso}},
+                {"property": "実績日", "date": {"on_or_before": end_iso}},
+            ]},
+            "page_size": 100,
+        }
+        if cursor:
+            body["start_cursor"] = cursor
+        req = urllib.request.Request(
+            f"https://api.notion.com/v1/data_sources/{PERFORMANCE_DATABASE_ID}/query",
+            data=json.dumps(body).encode(), method="POST",
+            headers={"Authorization": f"Bearer {NOTION_TOKEN}", "Notion-Version": NOTION_VERSION_V2,
+                     "Content-Type": "application/json"},
+        )
+        with urllib.request.urlopen(req, timeout=20) as r:
+            data = json.loads(r.read())
+        results.extend(data.get("results", []))
+        if not data.get("has_more"):
+            break
+        cursor = data.get("next_cursor")
+    return results
+
+
 def row_date_iso(row: dict) -> str | None:
     date_prop = (row.get("properties", {}).get("実績日") or {}).get("date") or {}
     start = date_prop.get("start")
     return start[:10] if start else None
 
 
+def company_active_days(start: date, end: date) -> set[str]:
+    """期間内（両端含む）で、会社全体として誰か1人でも稼働報告があった日付の集合。
+    ストリークの「休みの日」判定に使う（ユーザー指示。会社の定休日だけでなく、実データで
+    「その日は本当に誰も稼働していなかったか」を直接見る方が、曜日や祝日カレンダーに
+    頼るより正確）。
+    """
+    try:
+        rows = notion_query_all_performance_range(start.isoformat(), end.isoformat())
+    except (urllib.error.HTTPError, urllib.error.URLError, json.JSONDecodeError):
+        return set()
+    active: set[str] = set()
+    for row in rows:
+        d = row_date_iso(row)
+        if d and any(raw_number(row, col) for _, _, col in FUNNEL):
+            active.add(d)
+    return active
+
+
 def compute_streak(member_name: str, as_of: date) -> int:
     """簡易版ストリーク（連続稼働日数）。「目標達成」ではなく「その日に実績の報告があったか」
-    だけで判定する（ユーザー指示: 簡易版でよい）。月・火は基本定休日としてスキップするが、
-    **祝日の場合は稼働日として扱う**（ユーザー指示: 月火が祝日と重なった場合は稼働になる
-    ことが多いため。tools/shuuji/notion_to_csv.pyのcheck_week_completenessと同じ
-    jpholiday判定ルールに揃えている）。
+    だけで判定する（ユーザー指示: 簡易版でよい）。「休みの日」（カウントもスキップもしない
+    日）は、会社全体で誰も稼働していなかった日だけとする（`company_active_days`。曜日や
+    祝日カレンダーではなく実データで判定。ユーザー指示）。誰か1人でも稼働していた日は、
+    本人が稼働していなければストリークが途切れる。
     「今日」はまだ日報が入っていないことが多いため含めず、**前日から**遡って数える。
     直近36日分だけ見る（それ以上遡っても意味が薄く、クエリも重くなるため）。
     """
@@ -153,19 +210,21 @@ def compute_streak(member_name: str, as_of: date) -> int:
     except (urllib.error.HTTPError, urllib.error.URLError, json.JSONDecodeError):
         return 0
 
-    active_days: set[str] = set()
+    personal_active: set[str] = set()
     for row in rows:
         d = row_date_iso(row)
         if d and any(raw_number(row, col) for _, _, col in FUNNEL):
-            active_days.add(d)
+            personal_active.add(d)
+
+    company_days = company_active_days(since, until)
 
     streak = 0
     d = until
     while d >= since:
-        if d.weekday() in (0, 1) and not jpholiday.is_holiday(d):  # 月・火の定休日はスキップ（祝日は稼働日扱い）
+        if d.isoformat() not in company_days:  # 会社全体の休配信日はスキップ（途切れさせない）
             d -= timedelta(days=1)
             continue
-        if d.isoformat() in active_days:
+        if d.isoformat() in personal_active:
             streak += 1
             d -= timedelta(days=1)
         else:
@@ -188,6 +247,28 @@ def pct(numerator: float, denominator: float) -> float | None:
     if denominator <= 0:
         return None
     return 100 * numerator / denominator
+
+
+def last_wed_tue_week(today: date) -> tuple[date, date]:
+    """直近の完了週（水曜始まり・火曜終わり）の(開始日, 終了日)を返す。
+    `.claude/skills/週次実績配信/SKILL.md`の対象週定義と同じ（tools/shuuji側の
+    月曜始まりとは別軸。ユーザー指示で「先週水曜から火曜まで」）。
+    例: 今日が木曜なら、直近の水曜は昨日なので、それより前の完了週（先々週水曜〜先週火曜）
+    ではなく、その1つ前＝先週水曜〜火曜を返す。
+    """
+    days_since_wed = (today.weekday() - 2) % 7  # Wed=2
+    this_wed = today - timedelta(days=days_since_wed)
+    last_wed = this_wed - timedelta(days=7)
+    last_tue = this_wed - timedelta(days=1)
+    return last_wed, last_tue
+
+
+def view_tabs_html(token: str, active: str) -> str:
+    def tab(view: str, label: str) -> str:
+        cls = "tab active" if view == active else "tab"
+        href = f"?token={urllib.parse.quote(token)}&view={view}" if view != "day" else f"?token={urllib.parse.quote(token)}"
+        return f'<a class="{cls}" href="{href}">{label}</a>'
+    return f'<div class="tabs">{tab("day", "単日")}{tab("week", "週間")}</div>'
 
 
 def funnel_row_html(label: str, actual: float, target: float | None,
@@ -220,7 +301,7 @@ def funnel_row_html(label: str, actual: float, target: float | None,
     )
 
 
-def render_page(member_name: str) -> tuple[int, str]:
+def render_page(member_name: str, token: str) -> tuple[int, str]:
     if not NOTION_TOKEN:
         return 503, error_page("設定未完了", "NOTION_TOKENが未設定のため表示できません。今川さんに確認してください。")
 
@@ -284,6 +365,7 @@ def render_page(member_name: str) -> tuple[int, str]:
 
     body = f"""
 <div class="card">
+  {view_tabs_html(token, "day")}
   <div class="header">
     <div class="name">{html.escape(member_name)}</div>
     <div class="date">{date_label} 単日実績</div>
@@ -298,6 +380,88 @@ def render_page(member_name: str) -> tuple[int, str]:
     <tbody>{rows_html}</tbody>
   </table>
   <p class="legend">残り＝本日の行動KPIまでの不足数｜基準＝今月の目標設定で使用した転換率</p>
+</div>
+"""
+    return 200, page_shell(body)
+
+
+def render_week_page(member_name: str, token: str) -> tuple[int, str]:
+    if not NOTION_TOKEN:
+        return 503, error_page("設定未完了", "NOTION_TOKENが未設定のため表示できません。今川さんに確認してください。")
+
+    now = datetime.now(JST)
+    week_start, week_end = last_wed_tue_week(now.date())
+
+    try:
+        kpi_page = notion_query_kpi_member(member_name)
+        week_rows = notion_query_performance_range(member_name, week_start.isoformat(), week_end.isoformat())
+    except (urllib.error.HTTPError, urllib.error.URLError, json.JSONDecodeError) as e:
+        print(f"kpi.py render_week_page: Notion取得失敗: {e}")
+        return 502, error_page("一時エラー", "データの取得に失敗しました。少し待ってからもう一度開いてください。")
+
+    if kpi_page is None:
+        return 404, error_page("データ未登録", f"「{member_name}」のKPIデータが見つかりませんでした。今川さんに確認してください。")
+
+    actuals = {key: sum(raw_number(row, col) for row in week_rows) for _, key, col in FUNNEL}
+    reported_days = {row_date_iso(row) for row in week_rows if row_date_iso(row)}
+
+    base_rate = {
+        "home": raw_number(kpi_page, "在宅率%"),
+        "face": raw_number(kpi_page, "対面率%"),
+        "target": raw_number(kpi_page, "対象率%"),
+        "talk": raw_number(kpi_page, "対話率%"),
+        "appo": raw_number(kpi_page, "アポ率%"),
+    }
+    week_rate = {
+        "home": pct(actuals["home"], actuals["visits"]),
+        "face": pct(actuals["face"], actuals["home"]),
+        "target": pct(actuals["target"], actuals["face"]),
+        "talk": pct(actuals["talk"], actuals["target"]),
+        "appo": pct(actuals["appo"], actuals["talk"]),
+    }
+
+    visit_target = formula_number(kpi_page, "今週の必要訪問数")
+    appo_target = formula_number(kpi_page, "今週の必要アポ数")
+    home_target = visit_target * base_rate["home"] / 100
+    face_target = home_target * base_rate["face"] / 100
+    target_target = face_target * base_rate["target"] / 100
+    talk_target = target_target * base_rate["talk"] / 100
+    targets = {
+        "visits": visit_target, "home": home_target, "face": face_target,
+        "target": target_target, "talk": talk_target, "appo": appo_target,
+    }
+
+    rows_html = "".join(
+        funnel_row_html(
+            label, actuals[key], targets.get(key),
+            week_rate.get(key), base_rate.get(key), is_base_step=(key == "visits"),
+        )
+        for label, key, _ in FUNNEL
+    )
+
+    data_note = ""
+    if len(reported_days) < 5:  # 水〜火7日のうち月火(定休)を除くと平日5日。目安の簡易チェック
+        data_note = (f'<p class="note">⚠ 対象週の実績DB反映は{len(reported_days)}日分のみです'
+                     f'（反映が遅れている日があるかもしれません）</p>')
+
+    date_label = f"{week_start.month}/{week_start.day}〜{week_end.month}/{week_end.day}"
+
+    body = f"""
+<div class="card">
+  {view_tabs_html(token, "week")}
+  <div class="header">
+    <div class="name">{html.escape(member_name)}</div>
+    <div class="date">{date_label}（水〜火） 週間実績</div>
+  </div>
+  {data_note}
+  <table>
+    <thead>
+      <tr><th class="label"></th><th colspan="2">行動量</th><th colspan="3">転換率（前工程から）</th></tr>
+      <tr><th class="label">工程</th><th>実績</th><th>残り</th><th>週計</th><th>基準</th><th>差</th></tr>
+    </thead>
+    <tbody>{rows_html}</tbody>
+  </table>
+  <p class="legend">残り＝対象週の行動KPIまでの不足数｜基準＝今月の目標設定で使用した転換率</p>
 </div>
 """
     return 200, page_shell(body)
@@ -324,6 +488,9 @@ def page_shell(body: str) -> str:
   .name {{ font-size: 20px; font-weight: 700; }}
   .date {{ font-size: 13px; color: #666; }}
   .streak {{ font-size: 13px; font-weight: 700; color: #d4380d; margin-top: 8px; }}
+  .tabs {{ display: flex; gap: 6px; margin-bottom: 14px; }}
+  .tab {{ flex: 1; text-align: center; padding: 8px 0; border-radius: 10px; background: #f0f1f3; color: #666; font-size: 13px; font-weight: 700; text-decoration: none; }}
+  .tab.active {{ background: #1a1a1a; color: #fff; }}
   table {{ width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 14px; }}
   th, td {{ padding: 8px 4px; text-align: right; }}
   th.label, td.label {{ text-align: left; font-weight: 600; }}
@@ -352,11 +519,16 @@ class handler(BaseHTTPRequestHandler):
         token = (qs.get("token") or [""])[0]
         member_name = verify_token(token) if token else None
 
+        view = (qs.get("view") or ["day"])[0]
+
         if member_name is None:
             status, html_body = 403, error_page("リンク切れ", "このリンクは無効か期限切れです。Botで「KPIを見る」ともう一度送ってください。")
         else:
             try:
-                status, html_body = render_page(member_name)
+                if view == "week":
+                    status, html_body = render_week_page(member_name, token)
+                else:
+                    status, html_body = render_page(member_name, token)
             except Exception as e:  # ページ全体が落ちるのを防ぐ
                 print(f"kpi.py do_GET error: {e}")
                 status, html_body = 500, error_page("エラー", "表示中にエラーが発生しました。少し待ってからもう一度お試しください。")
