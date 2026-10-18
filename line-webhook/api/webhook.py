@@ -533,8 +533,8 @@ def build_status_block(page: dict, recent_rows: list[dict], role: str, now: date
     （過去7日・出勤日のみ）の実績DB生データから算出する**。各項目は
     「項目名（説明）」→改行→「★の数（実数）」の2行形式で表示する
     （ユーザー指示: 「項目（説明）改行／★★★（〇％OR〇件）の形式」）。
-    - 行動力（週間アポ数）: 週間アポ数の合計（15件以下★1・25件以下★2・40件以下★3・
-      60件以下★4・61件以上★5。役割問わず共通）
+    - 行動力（週間アポ数）: 週間アポ数の合計（2件以下★1・3〜5件★2・6〜9件★3・
+      10〜13件★4・14件以上★5。役割問わず共通）
     - 商談力・商談化力（ユーザー指示: アポインター側は「商談化力」という名称にする）:
       - クローザー＝商談力（週間商談数）: 週間商談数の合計（1件以下★1・2件★2・3件★3・4件★4・
         5件以上★5）
@@ -559,7 +559,7 @@ def build_status_block(page: dict, recent_rows: list[dict], role: str, now: date
 
     # 行動力: 週間アポ数合計（役割問わず共通）
     weekly_apo = sum(row_number(r, "アポ数") for r in week_working_rows)
-    action = stars_text(weekly_apo, [(0, 1), (16, 2), (26, 3), (41, 4), (61, 5)])
+    action = stars_text(weekly_apo, [(0, 1), (3, 2), (6, 3), (10, 4), (14, 5)])
     action_line = f"行動力（週間アポ数）\n{action}（{int(weekly_apo)}件）"
 
     if is_closer:
@@ -624,7 +624,7 @@ def build_status_definition_text(role: str) -> str:
 
     return "\n\n".join([
         "⚔️ 営業ステータスの評価基準",
-        "行動力（週間アポ数）\n15件以下★1・25件以下★2・40件以下★3・60件以下★4・61件以上★5",
+        "行動力（週間アポ数）\n2件以下★1・3〜5件★2・6〜9件★3・10〜13件★4・14件以上★5",
         deal_def,
         close_def,
         "継続力（安定度＝訪問数・商談数・契約の波の無さを0〜100%に変換）\n"
