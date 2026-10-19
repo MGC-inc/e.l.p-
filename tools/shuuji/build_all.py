@@ -175,6 +175,71 @@ def judge(v, avg, sp):
     if ratio < 0.8: return ratio, "good", "▼ 良好"
     return ratio, "ok", "● 平均"
 
+ACTIVITY_RATES = ("訪問→在宅率", "在宅→対面率", "対面→対象率", "対象→対話率", "対話→アポ率")
+
+
+def growth_levers(name, res, mem):
+    """改善項目（平均の90%未満）が無い人向けの「伸ばすならここ」。同じ役割の全員の中で一番高い値
+    （分母3件以上の人だけ）まで上げた場合に、先週の数字で成果が何件増えたかを項目ごとに計算し、
+    増える件数が大きい順に返す。[(項目, 自分, トップ, トップの人, 増える件数, 成果の単位, 説明)]
+      通過率（訪問→…→アポ）: 増えるアポ＝分母×(トップ率−自分の率)×（その段階からアポまでの自分の通過率）
+      ※トップは分母が十分な人だけで決める（訪問系の率は20件以上、商談→契約率は3件以上）
+      商談→契約率: 増える契約＝商談数×(トップ率−自分の率)
+      量（訪問数・商談数）: 同じ役割のトップの量まで増やした場合に、自分の率のまま増える件数
+    すべて全社トップ（または自分がトップ）なら、量を1割増やした場合の件数を返す。"""
+    r, role = res[name], mem[name]["role"]
+    is_mgr = mem[name].get("is_manager") == "yes"
+    peers = [n for n in res if mem[n]["role"] == role]
+    active = [n for n in peers if mem[n].get("is_manager") != "yes"] or peers
+    out = []
+    for sp in rows_spec(role, is_mgr):
+        if sp[2] != "r" or sp[5] or not sp[6] or r[sp[4]] < 3:
+            continue
+        grp = active if sp[1] in ACTIVITY_RATES else peers
+        # 比べる相手（トップ）は分母が十分ある人だけ（訪問系の率は20件以上、商談→契約率は3件以上）
+        min_den = 20 if sp[1] in ACTIVITY_RATES else 3
+        cands = [(_val(res[n], sp), n) for n in grp if res[n][sp[4]] >= min_den]
+        if not cands:
+            continue
+        top, top_name = max(cands)
+        mine = _val(r, sp)
+        if top is None or mine is None or top <= mine:
+            continue
+        extra = r[sp[4]] * (top - mine) / 100  # この段階で増える件数
+        if sp[1] in ACTIVITY_RATES:
+            conv = r["appo"] / r[sp[3]] if r[sp[3]] > 0 else 0
+            gain, unit = extra * conv, "アポ"
+        else:
+            gain, unit = extra, "契約"
+        if gain > 0:
+            out.append((sp[1], mine, top, top_name, gain, unit, "率"))
+    # 量のレバー
+    vols = ([("訪問数", "visits", "appo", "アポ")] if not is_mgr else []) + [("商談数", "meet", "win", "契約")]
+    for label, k, outk, unit in vols:
+        grp = active if k == "visits" else peers
+        top_name = max(grp, key=lambda n: res[n][k])
+        top = res[top_name][k]
+        if r[k] > 0 and r[outk] > 0 and top > r[k]:
+            out.append((label, r[k], top, top_name, (top - r[k]) * r[outk] / r[k], unit, "量"))
+    if not out:  # 率も量も全社トップ
+        for label, k, outk, unit in vols:
+            if r[k] > 0 and r[outk] > 0:
+                out.append((label, r[k], r[k] * 1.1, name, r[outk] * 0.1, unit, "1割増"))
+    # 役割の主な成果（アポインター＝アポ、クローザー＝契約）を優先し、件数の大きい順
+    main = "アポ" if role == "appointer" else "契約"
+    out.sort(key=lambda x: (x[5] != main, -x[4]))
+    return out
+
+
+def lever_text(lv):
+    label, mine, top, top_name, gain, unit, kind = lv
+    if kind == "率":
+        return f"{label}を {mine:.1f}% → {top:.1f}%（全社トップ・{top_name}）にすると、先週の数字で{unit} +{gain:.1f}件"
+    if kind == "量":
+        return f"{label}を {mine:.0f} → {top:.0f}件（全社トップ・{top_name}）にすると、今の率のままで{unit} +{gain:.1f}件"
+    return f"率も量も全社トップ。{label}を1割（{mine:.0f}→{top:.0f}件）増やすと{unit} +{gain:.1f}件"
+
+
 def sheet(name, res, mem, cfg):
     """1人分 = 2ページ(①数字の比較と定量評価 / ②原因・アクション・目標)"""
     r, role, agency = res[name], mem[name]["role"], mem[name]["agency"]
@@ -211,7 +276,15 @@ def sheet(name, res, mem, cfg):
         if mild: lines.append("平均の70%を下回る項目はありません。平均を下回る項目：" + "、".join(f"{x[2][1]}（平均の{x[0]*100:.0f}%）" for x in mild[:3]) + "。")
         else: lines.append("平均の70%を下回る項目も、平均の1.5倍を超える項目もありません。")
     top = (sev or mild)[:3]
-    focus = f"最優先の改善項目：{top[0][2][1]}" if top else "最優先の改善項目：先週の数字を見て、自分で1つ決める"
+    levers = [] if top else growth_levers(name, res, mem)
+    if top:
+        focus = f"最優先の改善項目：{top[0][2][1]}"
+    elif levers:
+        focus = f"伸ばすならここ：{levers[0][0]}"
+        lines = ["改善が必要な項目はありません。さらに上を狙うなら：" + lever_text(levers[0])] + \
+                [("次点：" + lever_text(lv)) for lv in levers[1:2]]
+    else:
+        focus = "最優先の改善項目：先週の数字を見て、自分で1つ決める"
     ev = [[Paragraph("<b>定量評価（自動）</b>", TDLs)], [Paragraph(focus, S("f", 10, NAVY))]] + [[Paragraph("・" + l, S("l", 8.5, lead=13))] for l in lines] + \
          [[Paragraph(f"※比較対象＝{tname}全員の平均。通過率は全員分を合算して計算。平均の70%未満＝極端に低い／90%未満＝やや低い。クーリングオフ・審査落ちは平均の1.5倍超で要注意。分母が3件未満の率は「母数少」として判定しない。", SM)]]
     evt = Table(ev, colWidths=[180*mm]); evt.setStyle(TableStyle([("BOX", (0,0), (-1,-1), 0.8, NAVY), ("BACKGROUND", (0,0), (-1,0), LGRAY), ("TOPPADDING", (0,0), (-1,-1), 3), ("BOTTOMPADDING", (0,0), (-1,-1), 3)]))
@@ -225,7 +298,9 @@ def sheet(name, res, mem, cfg):
     if role == "closer":
         p2 += [band("STEP1｜失注した商談の振り返り（商談反省報告から転記）"), Spacer(1, 2*mm), grid([hdr("お客様/案件", "決まらなかった理由", "契約にするには何をすべきだったか")] + [[""]*3]*3, [40*mm, 65*mm, 75*mm]),
                Spacer(1, 2*mm), Paragraph("理由は「価格」で止めず、「何が不安だったか／誰が決める人か／次の一手は何か」まで掘る。", SM), Spacer(1, 3*mm)]
-    p2 += [blank("STEP2｜" + focus.replace("最優先の改善項目：", "") + " が低い原因（なぜ？）" if top else "STEP2｜一番低い項目とその原因", 2), Spacer(1, 3*mm),
+    step2 = ("STEP2｜" + focus.replace("最優先の改善項目：", "") + " が低い原因（なぜ？）" if top else
+             "STEP2｜" + levers[0][0] + " をトップ水準に上げるには何を変える？" if levers else "STEP2｜一番低い項目とその原因")
+    p2 += [blank(step2, 2), Spacer(1, 3*mm),
            band("STEP3｜今週のアクションプラン（いつ・誰と・何を）"), Spacer(1, 2*mm), plan_table(), Spacer(1, 2*mm),
            Paragraph("例：ロープレ／同行／トークスクリプト見直し／エリア変更／失注先へのフォロー など", SM), Spacer(1, 3*mm),
            band("STEP4｜今週の定量目標（重点項目）"), Spacer(1, 2*mm), goal_table(goals)]

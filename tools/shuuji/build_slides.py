@@ -306,17 +306,32 @@ def person(pdf, name, mem, res, pdca, cfg, n):
         fig.text(x + 0.365 / len(keys) / 2 - 0.004, 0.78, lab, fontsize=12, ha="center", color=SUB)
         fig.text(x + 0.365 / len(keys) / 2 - 0.004, 0.69, f"{r[k]:,.0f}" if k != "sales" else f"{r[k]:,.1f}",
                  fontsize=24, ha="center", fontweight="bold", color=NAVY)
-    # 右中: 最優先の改善項目
+    # 右中: 最優先の改善項目（平均の90%未満が無い人は「伸ばすならここ」）
+    levers = B.growth_levers(name, res, mem) if not (worst and worst[1] / worst[2] < 0.9) else []
     card(fig, 0.6, 0.38, 0.365, 0.24, "#FBE3E3" if worst and worst[1] / worst[2] < 0.9 else "#E3F2EA")
-    fig.text(0.615, 0.575, "最優先の改善項目", fontsize=13, color=SUB)
-    if worst:
+    if levers:
+        lv = levers[0]
+        fig.text(0.615, 0.575, "改善項目なし ▶ 伸ばすならここ", fontsize=13, color=GREEN, fontweight="bold")
+        fig.text(0.615, 0.5, lv[0], fontsize=24, fontweight="bold", color=INK)
+        if lv[6] == "率":
+            fig.text(0.615, 0.45, f"{lv[1]:.1f}% → トップ {lv[2]:.1f}%（{lv[3]}）", fontsize=13, color=INK)
+        elif lv[6] == "量":
+            fig.text(0.615, 0.45, f"{lv[1]:.0f}件 → トップ {lv[2]:.0f}件（{lv[3]}）", fontsize=13, color=INK)
+        else:
+            fig.text(0.615, 0.45, f"率も量も全社トップ。1割増：{lv[1]:.0f}→{lv[2]:.0f}件", fontsize=13, color=INK)
+        fig.text(0.615, 0.405, f"先週の数字なら {lv[5]} +{lv[4]:.1f}件", fontsize=14, fontweight="bold", color=GREEN)
+    elif worst:
+        fig.text(0.615, 0.575, "最優先の改善項目", fontsize=13, color=SUB)
         fig.text(0.615, 0.48, worst[0], fontsize=26, fontweight="bold", color=INK)
         fig.text(0.615, 0.415, f"自分 {worst[1]:.1f}%　／　平均 {worst[2]:.1f}%（平均の{worst[1]/worst[2]*100:.0f}%）", fontsize=13, color=INK)
     else:
+        fig.text(0.615, 0.575, "最優先の改善項目", fontsize=13, color=SUB)
         fig.text(0.615, 0.47, "数字を見て、自分で1つ決める", fontsize=18, fontweight="bold", color=INK)
     # 右下: リーダーの4つの質問
     card(fig, 0.6, 0.08, 0.365, 0.27, "white", LINE, 1.2)
-    qs = ["1. 一番低い項目はどれ？", "2. なぜ低いと思う？（価格で止めない）", "3. 今週、何を変える？（いつ・誰と・何を）", "4. 数字の目標は？"]
+    qs = (["1. 平均より高い項目は、何が効いている？", "2. 「伸ばすならここ」を上げるには何を変える？", "3. 今週、何を変える？（いつ・誰と・何を）", "4. 数字の目標は？"]
+          if levers else
+          ["1. 一番低い項目はどれ？", "2. なぜ低いと思う？（価格で止めない）", "3. 今週、何を変える？（いつ・誰と・何を）", "4. 数字の目標は？"])
     fig.text(0.615, 0.31, "この順番で聞く", fontsize=12, color=SUB)
     for i, q in enumerate(qs):
         fig.text(0.615, 0.255 - i * 0.045, q, fontsize=14, color=INK)
