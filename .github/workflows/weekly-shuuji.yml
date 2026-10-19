@@ -44,6 +44,14 @@ jobs:
           ELP_SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.ELP_SUPABASE_SERVICE_ROLE_KEY }}
         run: python3 tools/shuuji/notion_to_csv.py notion_out
 
+      - name: 再確認（資料の数字をNotionから別の計算で出し直して照合。1か所でも違えば通知して配信を止める）
+        env:
+          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+          ELP_SUPABASE_URL: ${{ secrets.ELP_SUPABASE_URL }}
+          ELP_SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.ELP_SUPABASE_SERVICE_ROLE_KEY }}
+          DEAL_LINE_CHANNEL_ACCESS_TOKEN: ${{ secrets.DEAL_LINE_CHANNEL_ACCESS_TOKEN }}
+        run: python3 tools/shuuji/audit_outputs.py notion_out --notify-on-error
+
       - name: 代理店別配信PDF生成（データが先週分でなければ中止）
         run: python3 tools/shuuji/build_all.py notion_out out --strict
 

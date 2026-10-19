@@ -60,6 +60,8 @@ NOTION_VERSION = "2022-06-28"
 NOTION_VERSION_V2 = "2025-09-03"
 PERFORMANCE_DATABASE_ID = "f11afda4-a39d-4139-8e12-817d3f70267b"  # 📉 営業部 実績DB（data_source_id）
 KPI_DATABASE_ID = "5f110c1c-b977-4054-9b00-5b3ce27d3493"          # 📊 個人別KPI逆算データ（参照用）
+DEAL_DATA_SOURCE_ID = "8958bbaf-2c24-4e94-97b2-4c801e60cb37"      # DB 商談分析＆アポ分析（data_source_id）
+PDCA_DATA_SOURCE_ID = "17f23c69-8a24-429a-8957-6b5490a87680"      # 📝 週次PDCA記録DB（data_source_id）
 JST = timezone(timedelta(hours=9))
 TOKEN_TTL_SECONDS = 48 * 3600
 
@@ -315,7 +317,7 @@ def view_tabs_html(token: str, active: str) -> str:
         return f'<a class="{cls}" href="{href}">{label}</a>'
     return (
         '<div class="tabs">'
-        f'{tab("day", "単日")}{tab("week", "週間")}{tab("month", "月間")}{tab("ranking", "順位")}'
+        f'{tab("day", "単日")}{tab("goal", "目標")}{tab("week", "週間")}{tab("month", "月間")}{tab("ranking", "順位")}'
         "</div>"
     )
 
@@ -541,6 +543,141 @@ def render_week_page(member_name: str, token: str) -> tuple[int, str]:
     return 200, page_shell(body)
 
 
+def notion_query_v2(data_source_id: str, filter_obj: dict) -> list[dict]:
+    out, cursor = [], None
+    while True:
+        body: dict = {"filter": filter_obj, "page_size": 100}
+        if cursor:
+            body["start_cursor"] = cursor
+        req = urllib.request.Request(
+            f"https://api.notion.com/v1/data_sources/{data_source_id}/query", data=json.dumps(body).encode(), method="POST",
+            headers={"Authorization": f"Bearer {NOTION_TOKEN}", "Notion-Version": NOTION_VERSION_V2,
+                     "Content-Type": "application/json"},
+        )
+        with urllib.request.urlopen(req, timeout=20) as r:
+            data = json.loads(r.read())
+        out += data.get("results", [])
+        if not data.get("has_more"):
+            return out
+        cursor = data.get("next_cursor")
+
+
+def status_name(page: dict, prop_name: str) -> str:
+    st = (page.get("properties", {}).get(prop_name) or {}).get("status")
+    return st.get("name", "") if st else ""
+
+
+def rich_plain(page: dict, prop_name: str) -> str:
+    prop = page.get("properties", {}).get(prop_name) or {}
+    return "".join(t.get("plain_text", "") for t in prop.get("rich_text", []))
+
+
+def goal_block_html(member_name: str, role: str, key: date, start: date, end: date, title: str) -> str:
+    """週次MTで宣言した目標（📝週次PDCA記録DB、週初日=key）と、start〜endの実績を並べる。
+    実績: 訪問・アポ＝📉実績DB（休みの日を除く）、商談・契約＝商談一覧（契約はクーリングオフになった分を含まない）。
+    週次MT資料（tools/shuuji）の個人の数え方と同じ。"""
+    recs = notion_query_v2(PDCA_DATA_SOURCE_ID, {"and": [
+        {"property": "氏名", "select": {"equals": member_name}},
+        {"property": "週初日", "date": {"equals": key.isoformat()}},
+    ]})
+    date_label = f"{start.month}/{start.day}〜{end.month}/{end.day}"
+    if not recs:
+        return (f'<h3 class="sec">{html.escape(title)}</h3>'
+                f'<p class="note">データがありません：週次MTのあと、LINEの記入テンプレ（①学び②宿題③目標）が送られていません。'
+                f'MTの最後に送ってください（議事録から反映された場合もここに出ます）。</p>')
+    rec = recs[0]
+    perf = notion_query_performance_range(member_name, start.isoformat(), end.isoformat()) if start <= end else []
+    work = [r for r in perf if (select_name(r, "出勤状況") or "") != "休み"]
+    # 名前での絞り込みはNotion側でしない（選択肢に無い名前を指定すると400になるため。期間で取ってから絞る）
+    deals = notion_query_v2(DEAL_DATA_SOURCE_ID, {"and": [
+        {"property": "商談日時", "date": {"on_or_after": start.isoformat()}},
+        {"property": "商談日時", "date": {"on_or_before": end.isoformat()}},
+    ]}) if start <= end else []
+
+    def who(d: dict, prop: str) -> str:
+        return select_name(d, prop) or ""
+    if role == "クローザー":
+        mine = [d for d in deals if who(d, "クローザー") == member_name]
+        own = [d for d in mine if who(d, "アポインター") in ("", member_name)]
+        other = [d for d in mine if d not in own]
+        wins = lambda ds: sum(1 for d in ds if status_name(d, "結果") == "契約")
+        rows = [("訪問", "訪問数目標", sum(raw_number(r, "訪問数") for r in work)),
+                ("アポ", "アポ数目標", sum(raw_number(r, "アポ数") for r in work)),
+                ("商談（自アポ）", "商談数目標_自アポ", len(own)), ("商談（他アポ）", "商談数目標_他アポ", len(other)),
+                ("契約（自アポ）", "契約数目標_自アポ", wins(own)), ("契約（他アポ）", "契約数目標_他アポ", wins(other))]
+    else:
+        mine = [d for d in deals if who(d, "アポインター") == member_name]
+        rows = [("訪問", "訪問数目標", sum(raw_number(r, "訪問数") for r in work)),
+                ("アポ", "アポ数目標", sum(raw_number(r, "アポ数") for r in work)),
+                ("商談", "商談数目標_自アポ", len(mine)),
+                ("契約", "契約数目標_自アポ", sum(1 for d in mine if status_name(d, "結果") == "契約"))]
+    trs = []
+    for label, col, actual in rows:
+        target = raw_number(rec, col) if (rec["properties"].get(col) or {}).get("number") is not None else None
+        if target is None:
+            continue
+        rest = max(0, target - actual)
+        rest_html = '<span class="ok">達成</span>' if actual >= target and target > 0 else f'<span class="warn">{int(rest)}</span>'
+        trs.append(f'<tr><td class="label">{html.escape(label)}</td><td class="num">{int(target)}</td>'
+                   f'<td class="num">{int(actual)}</td><td class="num">{rest_html}</td></tr>')
+    table = ('<table><thead><tr><th class="label">項目</th><th>目標</th><th>実績</th><th>残り</th></tr></thead>'
+             f'<tbody>{"".join(trs)}</tbody></table>') if trs else '<p class="note">データがありません：数字の目標（③）が記入されていません。</p>'
+    action = rich_plain(rec, "アクションプラン") or "（宿題の記入なし）"
+    learning = rich_plain(rec, "原因")
+    src = select_name(rec, "記録元") or "LINE"
+    days = sorted({row_date_iso(r) for r in perf if row_date_iso(r)})
+    missing_note = ""
+    if start <= end:
+        # 月・火は基本定休日（tools/shuuji/notion_to_csv.pyのcheck_week_completenessと同じ扱い）
+        expected = sum(1 for i in range((end - start).days + 1) if (start + timedelta(days=i)).weekday() not in (0, 1))
+        if len(days) < expected:
+            missing_note = (f'<p class="note">実績DB（日報）は{date_label}のうち{len(days)}日分です。'
+                            f'未入力の日があれば実績が少なく表示されます。</p>')
+    else:
+        missing_note = '<p class="note info">今週の実績はまだありません（明日から反映されます）</p>'
+    return (f'<h3 class="sec">{html.escape(title)}</h3>'
+            f'<div class="goal"><div class="goal-label">宿題</div><div>{html.escape(action)}</div></div>'
+            + (f'<div class="goal"><div class="goal-label">学び</div><div>{html.escape(learning)}</div></div>' if learning else "")
+            + table + missing_note
+            + f'<p class="legend">実績は{date_label}の記録（訪問・アポ＝日報、商談・契約＝商談一覧。クーリングオフ除く）｜記録元：{html.escape(src)}</p>')
+
+
+def render_goal_page(member_name: str, token: str) -> tuple[int, str]:
+    """今週の目標（水曜の週次MTで決めてLINEで送った宿題・数字）と、月曜〜昨日までの実績。
+    月・火（MT前）は今週の目標がまだ無いので、先週の目標と先週1週間の結果を出す。"""
+    if not NOTION_TOKEN:
+        return 503, error_page("設定未完了", "NOTION_TOKENが未設定のため表示できません。今川さんに確認してください。")
+    today = datetime.now(JST).date()
+    monday = today - timedelta(days=today.weekday())
+    try:
+        kpi_page = notion_query_kpi_member(member_name)
+        role = (select_name(kpi_page, "役割") if kpi_page else None) or "アポインター"
+        # 週次PDCA記録のキー＝目標を実行する週の前週の月曜（tools/shuuji/deliver.pyのpdca_pending_week）
+        blocks = []
+        if today.weekday() >= 2:
+            blocks.append(goal_block_html(member_name, role, monday - timedelta(days=7), monday,
+                                          today - timedelta(days=1), f"今週の目標（{monday.month}/{monday.day}〜の週）"))
+        else:
+            blocks.append('<p class="note info">今週の目標は水曜の週次MTで決めます</p>')
+        last_mon = monday - timedelta(days=7)
+        blocks.append(goal_block_html(member_name, role, last_mon - timedelta(days=7), last_mon,
+                                      monday - timedelta(days=1), f"先週の目標と結果（{last_mon.month}/{last_mon.day}〜の週）"))
+    except (urllib.error.HTTPError, urllib.error.URLError, json.JSONDecodeError) as e:
+        print(f"kpi.py render_goal_page: Notion取得失敗: {e}")
+        return 502, error_page("一時エラー", "データの取得に失敗しました。少し待ってからもう一度開いてください。")
+    body = f"""
+<div class="card">
+  {view_tabs_html(token, "goal")}
+  <div class="header">
+    <div class="name">{html.escape(member_name)}</div>
+    <div class="date">{today.month}/{today.day}時点・昨日までの記録</div>
+  </div>
+  {"".join(blocks)}
+</div>
+"""
+    return 200, page_shell(body)
+
+
 def render_month_page(member_name: str, token: str) -> tuple[int, str]:
     if not NOTION_TOKEN:
         return 503, error_page("設定未完了", "NOTION_TOKENが未設定のため表示できません。今川さんに確認してください。")
@@ -717,6 +854,9 @@ def page_shell(body: str) -> str:
   td.rank, th.rank {{ width: 28px; text-align: center; font-weight: 700; }}
   tr.me {{ background: #fff8e1; }}
   tr.me td.label {{ font-weight: 700; }}
+  h3.sec {{ font-size: 15px; margin: 18px 0 6px; padding-left: 8px; border-left: 4px solid #1a1a1a; }}
+  .goal {{ display: flex; gap: 8px; font-size: 14px; line-height: 1.6; margin: 6px 0; }}
+  .goal-label {{ flex: none; font-size: 12px; font-weight: 700; color: #fff; background: #1a1a1a; border-radius: 6px; padding: 1px 8px; height: fit-content; margin-top: 2px; }}
 </style>
 </head>
 <body>
@@ -739,7 +879,9 @@ class handler(BaseHTTPRequestHandler):
             status, html_body = 403, error_page("リンク切れ", "このリンクは無効か期限切れです。Botで「KPIを見る」ともう一度送ってください。")
         else:
             try:
-                if view == "week":
+                if view == "goal":
+                    status, html_body = render_goal_page(member_name, token)
+                elif view == "week":
                     status, html_body = render_week_page(member_name, token)
                 elif view == "month":
                     status, html_body = render_month_page(member_name, token)

@@ -257,7 +257,7 @@ def review_page(members, pdca):
     for name in members:
         data = (pdca or {}).get(name)
         if not data or not data.get("action"):
-            cell = "（記録なし）"
+            cell = "データがありません：" + ((data or {}).get("missing_reason") or "記録なし")
         else:
             targets = _format_pdca_targets(data)
             cell = data["action"] + (f"\n【目標】{targets}" if targets else "")
@@ -313,7 +313,8 @@ def load_pdca(inp):
         return {}
     out = {}
     for r in csv.DictReader(io.StringIO(txt)):
-        data = {"action": r.get("action", ""), "cause": r.get("cause", ""), "last_eval": r.get("last_eval", "")}
+        data = {"action": r.get("action", ""), "cause": r.get("cause", ""), "last_eval": r.get("last_eval", ""),
+                "missing_reason": r.get("missing_reason", "")}
         for col in PDCA_TARGET_COLS:
             v = r.get(col, "")
             data[col] = float(v) if v not in (None, "") else None
@@ -326,6 +327,7 @@ def load_all(inp, strict=False):
     for r in csv.DictReader(io.StringIO(load(inp, "results.csv", "RESULTS_URL"))):
         d = {k: float(v or 0) for k, v in r.items() if k != "name"}
         for k in ("home", "face", "target", "talk", "cooloff", "screen_fail", "meet_own", "meet_other", "win_own", "win_other"): d.setdefault(k, 0.0)
+        d.setdefault("perf_days", 7.0)  # サンプル等で列が無ければ「行あり」扱い
         d["meet"] = d["meet_own"] + d["meet_other"]; d["win"] = d["win_own"] + d["win_other"]   # 商談・契約の合計は自アポ+他アポ
         res[r["name"]] = d
     cfg = build_cfg(inp, strict)

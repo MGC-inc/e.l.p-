@@ -136,7 +136,8 @@ def build_members(now: datetime.date) -> dict[str, dict]:
         agency_by_name[name] = prop_select(row, "代理店")
         budget_by_name[name] = prop_number(row, "予算（万円）")
 
-    sb_rows = sb_get("closer_line_users?select=closer_name,role,line_user_id&closer_name=not.is.null")
+    sb_rows = sb_get("closer_line_users?select=closer_name,role,line_user_id,pdca_pending_week&closer_name=not.is.null")
+    pending_by_name = {r["closer_name"]: r.get("pdca_pending_week") for r in sb_rows}
     role_by_name = {r["closer_name"]: r["role"] for r in sb_rows if r.get("role")}
     line_id_by_name = {r["closer_name"]: r["line_user_id"] for r in sb_rows}
 
@@ -151,6 +152,7 @@ def build_members(now: datetime.date) -> dict[str, dict]:
         members[name] = {
             "name": name, "line_user_id": line_id, "role": role, "agency": agency,
             "is_manager": "yes" if name in MANAGER_NAMES else "no",
+            "pdca_pending_week": pending_by_name.get(name),
         }
     if skipped:
         print(f"[notion_to_csv] 予算はあるがLINE未登録／役割未設定のため対象外: {', '.join(skipped)}",
@@ -175,7 +177,7 @@ def build_results(members: dict[str, dict], week_start: datetime.date, week_end:
     res: dict[str, dict] = {
         name: dict(visits=0.0, home=0.0, face=0.0, target=0.0, talk=0.0, appo=0.0,
                    meet_own=0.0, meet_other=0.0, win_own=0.0, win_other=0.0,
-                   cooloff=0.0, screen_fail=0.0, sales=0.0)
+                   cooloff=0.0, screen_fail=0.0, sales=0.0, perf_days=0.0)
         for name in members
     }
 
@@ -186,6 +188,7 @@ def build_results(members: dict[str, dict], week_start: datetime.date, week_end:
         # 売上は実績DBの実質売上（契約金額−キャンセル金額。他アポは半額ずつの本人取り分）。
         # 💰予算と達成率の実績と同じ数字になる。休みの日に計上された契約も含める
         res[name]["sales"] += prop_number(row, "契約金額（万円）") - prop_number(row, "キャンセル金額（万円）")
+        res[name]["perf_days"] += 1
         if prop_select(row, "出勤状況") == "休み":
             continue
         res[name]["visits"] += prop_number(row, "訪問数")
@@ -381,12 +384,28 @@ def _strip_prompts(text: str) -> str:
     return text.strip()
 
 
+def pdca_missing_reason(pending_week: str | None, key: str) -> str:
+    """先週の宿題（週初日=key）の記録が無い理由。Supabase closer_line_users.pdca_pending_week は
+    deliver.pyが配信時にキーをセットし、LINEで返信を受け取るとNULLに戻る（webhook.py handle_pdca_reply）。"""
+    if pending_week == key:
+        return "先週のMT後、LINEの記入テンプレに返信がありません（未送信）"
+    if pending_week and pending_week > key:
+        return "記録の週がずれています（今川さんに確認）"
+    if pending_week:
+        return "先週は記入テンプレが届いていません（それ以前の週から未返信のまま）"
+    return "先週は記入テンプレの配信対象に入っていません（予算DB・LINE登録を確認）"
+
+
 def build_pdca(members: dict[str, dict], week_start: datetime.date) -> dict[str, dict]:
     """週次PDCA記録DBから、対象週より前の直近1件（＝前回LINE返信で declared された
     アクションプラン・今週の数値目標）を氏名ごとに拾う。build_all.pyのreview_page()
     「先週決めたアクション」に自動転記される。行が無い人は結果から自然に省かれる
     （build_all.py側で「（記録なし）」表示）。
     """
+    # 先週のMTで決めた宿題＝週初日が「対象週の前週の月曜」の行だけを使う（deliver.pyがその週のキーで
+    # 配信し、LINE返信・議事録反映もそのキーで保存する）。それより古い記録を「先週の宿題」として
+    # 出さない（以前は直近の記録を拾っていたため、2週以上前の宿題が先週分として表示されていた）
+    key = (week_start - datetime.timedelta(days=7)).isoformat()
     rows = notion_query_all(PDCA_DB, {
         "property": "週初日", "date": {"before": week_start.isoformat()},
     })
@@ -402,6 +421,8 @@ def build_pdca(members: dict[str, dict], week_start: datetime.date) -> dict[str,
         ev = prop_select(row, "MT評価")
         if ev and (name not in last_eval or row_week > last_eval[name][0]):
             last_eval[name] = (row_week, ev)
+        if row_week != key:
+            continue
         if name in latest_by_name and row_week <= latest_by_name[name][0]:
             continue
         data = {"action": _strip_prompts(_rich_text_plain(row, "アクションプラン")),
@@ -410,8 +431,15 @@ def build_pdca(members: dict[str, dict], week_start: datetime.date) -> dict[str,
             data[prop_name] = row["properties"].get(prop_name, {}).get("number")
         latest_by_name[name] = (row_week, data)
     out = {name: data for name, (_, data) in latest_by_name.items() if data["action"]}
+    empty = {"action": "", "cause": "", **{p: None for p in PDCA_TARGET_PROPS}}
     for name, (_, ev) in last_eval.items():
-        out.setdefault(name, {"action": "", "cause": "", **{p: None for p in PDCA_TARGET_PROPS}})["last_eval"] = ev
+        out.setdefault(name, dict(empty))["last_eval"] = ev
+    for name, m in members.items():
+        if name in latest_by_name and latest_by_name[name][1]["action"]:
+            continue
+        reason = ("先週のLINE返信に宿題（②）が書かれていません" if name in latest_by_name
+                  else pdca_missing_reason(m.get("pdca_pending_week"), key))
+        out.setdefault(name, dict(empty))["missing_reason"] = reason
     return out
 
 
@@ -454,19 +482,20 @@ def main(out_dir: str) -> None:
     config["check_status"] = "一致" if problems == 0 else f"不一致{problems}件"
     pdca = build_pdca(members, last_monday)
 
-    write_csv(os.path.join(out_dir, "members.csv"), list(members.values()),
+    write_csv(os.path.join(out_dir, "members.csv"),
+              [{k: v for k, v in m.items() if k != "pdca_pending_week"} for m in members.values()],
               ["name", "line_user_id", "role", "agency", "is_manager"])
     write_csv(os.path.join(out_dir, "results.csv"),
               [{"name": name, **vals} for name, vals in results.items()],
               ["name", "visits", "home", "face", "target", "talk", "appo",
-               "meet_own", "meet_other", "win_own", "win_other", "cooloff", "screen_fail", "sales"])
+               "meet_own", "meet_other", "win_own", "win_other", "cooloff", "screen_fail", "sales", "perf_days"])
     write_config_csv(os.path.join(out_dir, "config.csv"), config)
     write_csv(os.path.join(out_dir, "totals.csv"),
               [{"agency": a, "visits": v[0], "appo": v[1], "meet": v[2], "win": v[3], "sales": v[4]} for a, v in totals.items()],
               ["agency", "visits", "appo", "meet", "win", "sales"])
     write_csv(os.path.join(out_dir, "pdca.csv"),
               [{"name": name, **data} for name, data in pdca.items()],
-              ["name", "action", "cause", "last_eval", *PDCA_TARGET_PROPS])
+              ["name", "action", "cause", "last_eval", "missing_reason", *PDCA_TARGET_PROPS])
 
     print(f"対象週: {last_monday}〜{week_end} / メンバー{len(members)}名 -> {out_dir}")
 

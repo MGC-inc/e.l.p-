@@ -131,7 +131,9 @@ def review(pdf, members, mem, res, pdca, cfg, n):
                 fig.text(0.04, y + rh / 2 - 0.035, f"前回の評価 {plan['last_eval']}", fontsize=11, va="center",
                          color=RED if plan["last_eval"] == "×" else SUB)
             if not plan or not plan.get("action"):
-                fig.text(0.16, y + rh / 2, "記録なし（MTの最初に口頭で確認）", fontsize=13, color=RED, va="center")
+                why = (plan or {}).get("missing_reason") or "記録なし"
+                fig.text(0.16, y + rh / 2, f"データがありません\n理由：{why}\n→ MTの最初に口頭で先週の宿題を確認", fontsize=11.5,
+                         color=RED, va="center", linespacing=1.4)
             else:
                 fig.text(0.16, y + rh / 2, wrap(plan["action"], 24, 3), fontsize=12, va="center", color=INK, linespacing=1.35)
                 for j, (lab, t, a, ok) in enumerate(target_check(mem[name]["role"], plan, res[name])):
@@ -260,6 +262,14 @@ def person(pdf, name, mem, res, pdca, cfg, n):
     tname = "アポインター" if role == "appointer" else "クローザー"
     fig = slide(pdf, f"⑤ {name}　（{tname}）", cfg["week"], n)
     r = res[name]
+    if r.get("perf_days", 7) == 0:
+        card(fig, 0.035, 0.3, 0.93, 0.45, "#FBE3E3")
+        fig.text(0.5, 0.62, "データがありません", fontsize=30, fontweight="bold", color=RED, ha="center")
+        fig.text(0.5, 0.48, f"理由：{cfg['week']}の実績DB（日報）に{name}さんの行が1日分もありません（日報が未入力）",
+                 fontsize=15, color=INK, ha="center")
+        fig.text(0.5, 0.39, "→ 日報を入力してもらい、MTでは口頭で先週の動きを確認する", fontsize=14, color=SUB, ha="center")
+        save(pdf, fig)
+        return n + 1
     grp_all = [res[m] for m in res if mem[m]["role"] == role]
     grp_act = [res[m] for m in res if mem[m]["role"] == role and mem[m].get("is_manager") != "yes"] or grp_all
     rows, worst = [], None

@@ -21,6 +21,7 @@ import hmac
 import json
 import mimetypes
 import os
+import re
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -528,6 +529,11 @@ def cv_of(values: list[float]) -> float | None:
     return stdev(values) / mean_v
 
 
+# クローザーの継続力（稼働日率＝出勤日のうち訪問・アポ・商談のどれかをした日の割合）の★
+# 50%未満★1・50〜69%★2・70〜84%★3・85〜94%★4・95%以上★5（週5日出勤なら5日全部で★5、4日で★3）
+CLOSER_CONTINUITY_BANDS = [(0, 1), (50, 2), (70, 3), (85, 4), (95, 5)]
+
+
 def build_status_block(page: dict, recent_rows: list[dict], role: str, now: datetime) -> str:
     """⚔️ 営業ステータス（ユーザー指示によるゲーム性付与）。**全項目、直近1週間
     （過去7日・出勤日のみ）の実績DB生データから算出する**。各項目は
@@ -546,7 +552,9 @@ def build_status_block(page: dict, recent_rows: list[dict], role: str, now: date
       - アポインター＝アポ力（アポ率）: Σアポ数 ÷ Σ対話数（%）
       - 両方とも同じ閾値を使う（10%以下★1・15%以下★2・30%以下★3・40%以下★4・
         41%以上★5。まだアポ力側の実データで検証していないため、必要なら調整する）
-    - 継続力（安定度）: 訪問数・商談数・契約（週間・出勤日）それぞれの変動係数
+    - 継続力（クローザー＝稼働日率）: 出勤日のうち訪問・アポ・商談のどれかをした日の割合。商談の日に訪問が
+      減るのは正常なので、アポインターと同じ「波の無さ」では測らない（ユーザー指示）
+    - 継続力（アポインター＝安定度）: 訪問数・商談数・契約（週間・出勤日）それぞれの変動係数
       （標準偏差÷平均）から「安定度%」= (1 - 変動係数の平均) × 100（0〜100にクランプ）
       に変換して表示する（ユーザー指示: 変動係数は直感的でないため数値化し直す）。
       安定度10%未満★1・10〜39%★2・40〜59%★3・60〜79%★4・80%以上★5。
@@ -586,6 +594,29 @@ def build_status_block(page: dict, recent_rows: list[dict], role: str, now: date
         apo_rate = (100 * weekly_apo / weekly_taiwa) if weekly_taiwa > 0 else 0
         apo_power = stars_text(apo_rate, close_bands)
         close_line = f"アポ力（アポ率）\n{apo_power}（{round(apo_rate)}%）"
+
+    if is_closer:
+        # クローザーは商談に入った日は訪問が減るのが正常なので、日ごとの訪問数の波では測らない。
+        # 「出勤日のうち、訪問・アポ・商談のどれかをした日の割合」＝稼働が途切れていないかで測る（ユーザー指示）
+        def did_work(r: dict) -> bool:
+            return any(row_number(r, c) > 0 for c in ("訪問数", "アポ数", "商談数"))
+
+        def status(r: dict) -> str:
+            sel = (r.get("properties", {}).get("出勤状況") or {}).get("select")
+            return sel.get("name", "") if sel else ""
+        # 出勤状況が空欄で活動も0の行は、休みの入力漏れと区別できないので判定しない
+        judged = [r for r in week_working_rows if status(r) or did_work(r)]
+        if judged:
+            active = sum(1 for r in judged if did_work(r))
+            active_pct = round(100 * active / len(judged))
+            cont = stars_text(active_pct, CLOSER_CONTINUITY_BANDS)
+            cont_line = f"継続力（稼働日率）\n{cont}（{active_pct}%・{active}/{len(judged)}日）"
+        else:
+            cont_line = "継続力（稼働日率）\n⭐⭐⭐☆☆（データ不足）"
+        return "\n\n".join([
+            "⚔️ 営業ステータス", action_line, deal_line, close_line, cont_line,
+            f"※基準の詳細は「{STATUS_DEFINITION_TEXT}」と送ってください",
+        ])
 
     visit_vals = [row_number(r, "訪問数") for r in week_working_rows]
     deal_vals = [row_number(r, "商談数") for r in week_working_rows]
@@ -627,8 +658,10 @@ def build_status_definition_text(role: str) -> str:
         "行動力（週間アポ数）\n2件以下★1・3〜5件★2・6〜9件★3・10〜13件★4・14件以上★5",
         deal_def,
         close_def,
-        "継続力（安定度＝訪問数・商談数・契約の波の無さを0〜100%に変換）\n"
-        "10%未満★1・10〜39%★2・40〜59%★3・60〜79%★4・80%以上★5",
+        ("継続力（稼働日率＝出勤日のうち訪問・アポ・商談のどれかをした日の割合。商談の日に訪問が減っても下がりません）\n"
+         "50%未満★1・50〜69%★2・70〜84%★3・85〜94%★4・95%以上★5") if is_closer else
+        ("継続力（安定度＝訪問数・商談数・契約の波の無さを0〜100%に変換）\n"
+         "10%未満★1・10〜39%★2・40〜59%★3・60〜79%★4・80%以上★5"),
         "※すべて直近1週間（出勤日のみ）の実績が対象です",
     ])
 
@@ -655,6 +688,28 @@ PDCA_TARGET_LABELS = {
 }
 
 
+# 記入テンプレの見出し（新旧）。①②の行の残りは本文として拾うため、見出しをコピーしたまま
+# 返信されても本文に混ざらないよう取り除く（tools/shuuji/deliver.pyのテンプレと揃える）
+PDCA_PROMPTS = [
+    "先週の振り返り・学び（うまくいったこと／いかなかったことと、その理由）", "先週の振り返り・学び",
+    "今週の宿題を1つ（いつ・誰と・何を）", "今週の目標（数字で。日曜までの分）",
+    "なぜ低いと思いますか？（原因）", "良くするために、今週何をしますか？（いつ・誰と・何を）", "今週の目標（数字で）",
+]
+
+
+def strip_pdca_prompts(text: str) -> str:
+    for p in PDCA_PROMPTS:
+        text = text.replace(p, "")
+    return text.strip()
+
+
+def first_int(value: str) -> int | None:
+    """「180(14/16/17日 3日間稼働)」→180。全角数字も読む。最初の数字だけを使う
+    （以前は行内の数字を全部つなげていたため1801416173のような値が保存されていた）。"""
+    m = re.search(r"\d+", value.translate(str.maketrans("０１２３４５６７８９", "0123456789")))
+    return int(m.group()) if m else None
+
+
 def parse_pdca_reply(text: str) -> tuple[str, str, dict[str, int]]:
     """週次PDCAテンプレ返信（①原因／②アクションプラン／③今週の数値目標）を解析する。
     「①」「②」「③」の行を目印に、その後ろの文字を各項目とする。書式が多少崩れても
@@ -672,13 +727,13 @@ def parse_pdca_reply(text: str) -> tuple[str, str, dict[str, int]]:
         stripped = line.strip()
         if stripped.startswith(("①", "1)", "1.", "1、")):
             section = "cause"
-            rest = stripped.lstrip("①123456789).、. ").strip()
+            rest = strip_pdca_prompts(stripped.lstrip("①123456789).、. "))
             if rest:
                 cause_lines.append(rest)
             continue
         if stripped.startswith(("②", "2)", "2.", "2、")):
             section = "action"
-            rest = stripped.lstrip("②123456789).、. ").strip()
+            rest = strip_pdca_prompts(stripped.lstrip("②123456789).、. "))
             if rest:
                 action_lines.append(rest)
             continue
@@ -695,9 +750,9 @@ def parse_pdca_reply(text: str) -> tuple[str, str, dict[str, int]]:
                 continue
             label, _, value = stripped.partition(sep)
             prop_name = PDCA_TARGET_LABELS.get(label.strip())
-            digits = "".join(c for c in value if c.isdigit())
-            if prop_name and digits:
-                targets[prop_name] = int(digits)
+            number = first_int(value)
+            if prop_name and number is not None:
+                targets[prop_name] = number
     cause = "\n".join(cause_lines).strip()
     action = "\n".join(action_lines).strip()
     if not cause and not action and not targets:
