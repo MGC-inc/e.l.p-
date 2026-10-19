@@ -19,13 +19,8 @@ def clean(ax):
 
 def main(inp, outpdf, strict=False):
     mem, res, cfg, _pdca = B.load_all(inp, strict)
-    ag = {}
-    for n, r in res.items():
-        d = ag.setdefault(mem[n]["agency"], [0]*6)
-        for i, k in enumerate(["visits", "appo", "meet", "win", "sales"]): d[i] += r[k]
-        d[5] += 1
+    ag, tot = B.agency_totals(res, mem, cfg)
     names = list(ag); labels = [f"{n}（{ag[n][5]}名）" for n in names]
-    tot = [sum(v[i] for v in ag.values()) for i in range(5)]
     with PdfPages(outpdf) as pdf:
         # ---- 1枚目: 全社の結果と月進捗 ----
         fig = plt.figure(figsize=(13.33, 7.5)); header(fig, "先週の全社結果と月・週の進捗", cfg["week"])

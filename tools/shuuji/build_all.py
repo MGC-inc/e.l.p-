@@ -74,15 +74,28 @@ def draw_progress(ax_m, ax_w, cfg, tot, fs=1.0):
         ax.set_title(title, fontsize=11*fs, loc="left", fontweight="bold", pad=8)
         for sp in ("top", "right", "left"): ax.spines[sp].set_visible(False)
 
+def agency_totals(res, mem, cfg):
+    """代理店→[訪問, アポ, 商談, 契約, 売上, 人数] と 全社の[訪問, アポ, 商談, 契約, 売上]。
+    notion_to_csv.pyのtotals.csv（商談・契約を1件1回で数えた合計）を使う。個人の数字を足すと、
+    1件の商談がクローザーとアポインターの両方に入っていて二重になるため、足し算はしない。
+    totals.csvが無い時（サンプル実行）だけ個人の合計で代用する。"""
+    heads = {}
+    for n in res:
+        heads[mem[n]["agency"]] = heads.get(mem[n]["agency"], 0) + 1
+    t = cfg.get("totals")
+    if t:
+        ag = {a: list(t.get(a, [0.0] * 5)) + [h] for a, h in heads.items()}
+        return ag, list(t["全社"])
+    ag = {}
+    for n, r in res.items():
+        d = ag.setdefault(mem[n]["agency"], [0] * 5 + [heads[mem[n]["agency"]]])
+        for i, k in enumerate(["visits", "appo", "meet", "win", "sales"]): d[i] += r[k]
+    return ag, [sum(v[i] for v in ag.values()) for i in range(5)]
+
 # ---------- 共通ページ ----------
 def common_pages(res, mem, cfg, tmp):
     week = cfg["week"]
-    ag = {}
-    for name, r in res.items():
-        a = mem[name]["agency"]; d = ag.setdefault(a, [0]*5 + [0])
-        for i, k in enumerate(["visits", "appo", "meet", "win", "sales"]): d[i] += r[k]
-        d[5] += 1
-    tot = [sum(v[i] for v in ag.values()) for i in range(5)]
+    ag, tot = agency_totals(res, mem, cfg)
     p1 = [Paragraph("週次ミーティング PDCAシート", H1), Paragraph(week, B), Spacer(1, 6*mm), band("今日のゴール"), Spacer(1, 3*mm),
           Paragraph("全員が「今週やること（誰と・いつ・何を）」と「数字の目標」を決めて帰る。", B), Spacer(1, 5*mm), band("進行（60分）"), Spacer(1, 3*mm),
           grid([hdr("時間", "内容", "使うページ")] + [[Paragraph(a, TD), Paragraph(b, TDL), Paragraph(c, TD)] for a, b, c in [
@@ -280,7 +293,10 @@ def build_cfg(inp, strict):
         sys.exit(f"中止: 入力データの週が古い/未更新です (data_week_start={kv.get('data_week_start')} / 期待値={last_mon.isoformat()})。送信していません。")
     ndays = calendar.monthrange(now.year, now.month)[1]
     wt = lambda key, mkey: float(kv[key]) if kv.get(key) else float(kv[mkey]) * 7 / ndays   # 週目標が未入力なら月目標×7/日数
-    return {"week": week, "month_elapsed": now.day / ndays, "month_label": f"{now.month}月",
+    # notion_to_csv.pyは月の数字を「先週の日曜までの今月」で締め、その経過率・ラベルも渡す（無ければ旧来どおり今日基準）
+    return {"week": week, "month_elapsed": float(kv.get("month_elapsed") or now.day / ndays),
+            "month_label": kv.get("month_label") or f"{now.month}月",
+            "data_as_of": kv.get("data_as_of", ""), "check_status": kv.get("check_status", ""),
             "week_target": {"契約数": wt("week_target_contracts", "target_contracts"), "売上(万円)": wt("week_target_sales", "target_sales")},
             "month_target": {"契約数": float(kv["target_contracts"]), "売上(万円)": float(kv["target_sales"])},
             "month_actual": {"契約数": float(kv["actual_contracts"]), "売上(万円)": float(kv["actual_sales"])}}
@@ -314,6 +330,10 @@ def load_all(inp, strict=False):
         res[r["name"]] = d
     cfg = build_cfg(inp, strict)
     pdca = load_pdca(inp)
+    txt = load(inp, "totals.csv", "")
+    if txt:
+        cfg["totals"] = {r["agency"]: [float(r[k] or 0) for k in ("visits", "appo", "meet", "win", "sales")]
+                         for r in csv.DictReader(io.StringIO(txt))}
     missing = [n for n in mem if n not in res]
     if missing: sys.exit(f"results にいない人: {missing}")
     return mem, res, cfg, pdca

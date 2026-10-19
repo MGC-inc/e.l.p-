@@ -1,0 +1,26 @@
+name: weekly-shuuji-precheck
+
+# 週次MT資料（weekly-shuuji.yml、水曜8:00）の前日に、数字の元になるNotionの入力ずれを確認する。
+# 商談一覧（結果＝契約・クーリングオフ・審査落ち）と📉実績DBの契約金額・キャンセル金額・件数を
+# 人別に突き合わせ（tools/shuuji/verify_numbers.py）、一致・不一致どちらでも今川さんにLINEで結果を送る。
+# 不一致があれば、水曜8:00までに実績DBを直してもらう（直っていなければ水曜の配信は止まる）。
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 9 * * 2"  # 火曜 09:00 UTC = 火曜 18:00 JST
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install jpholiday
+      - name: 数字チェック
+        env:
+          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+          ELP_SUPABASE_URL: ${{ secrets.ELP_SUPABASE_URL }}
+          ELP_SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.ELP_SUPABASE_SERVICE_ROLE_KEY }}
+          DEAL_LINE_CHANNEL_ACCESS_TOKEN: ${{ secrets.DEAL_LINE_CHANNEL_ACCESS_TOKEN }}
+        run: python3 tools/shuuji/verify_numbers.py --notify || true

@@ -19,6 +19,7 @@ LINE配信キット（build_all.py / build_meeting.py）が読める members.csv
 """
 from __future__ import annotations
 
+import calendar
 import csv
 import datetime
 import json
@@ -182,6 +183,9 @@ def build_results(members: dict[str, dict], week_start: datetime.date, week_end:
         name = prop_select(row, "メンバー")
         if name not in res:
             continue
+        # 売上は実績DBの実質売上（契約金額−キャンセル金額。他アポは半額ずつの本人取り分）。
+        # 💰予算と達成率の実績と同じ数字になる。休みの日に計上された契約も含める
+        res[name]["sales"] += prop_number(row, "契約金額（万円）") - prop_number(row, "キャンセル金額（万円）")
         if prop_select(row, "出勤状況") == "休み":
             continue
         res[name]["visits"] += prop_number(row, "訪問数")
@@ -195,10 +199,6 @@ def build_results(members: dict[str, dict], week_start: datetime.date, week_end:
         closer = prop_select(deal, "クローザー")
         appointer = prop_select(deal, "アポインター")
         result = prop_status(deal, "結果")
-        # DB商談分析＆アポ分析の「売上金額」は円単位（number_format:"yen"）。
-        # results.csvのsalesは万円単位（実績DBの契約金額（万円）と単位を揃える）にするため万円へ変換する
-        revenue = prop_number(deal, "売上金額") / 10000
-
         if closer in res and members[closer]["role"] == "closer":
             is_own = appointer == closer
             r = res[closer]
@@ -211,7 +211,6 @@ def build_results(members: dict[str, dict], week_start: datetime.date, week_end:
                     r["win_own"] += 1
                 else:
                     r["win_other"] += 1
-                r["sales"] += revenue
             if result == RESULT_COOLING_OFF:
                 r["cooloff"] += 1
             if result == RESULT_REJECTED:
@@ -222,7 +221,6 @@ def build_results(members: dict[str, dict], week_start: datetime.date, week_end:
             r["meet_own"] += 1
             if result == RESULT_CONTRACT:
                 r["win_own"] += 1
-                r["sales"] += revenue
             if result == RESULT_COOLING_OFF:
                 r["cooloff"] += 1
             if result == RESULT_REJECTED:
@@ -268,36 +266,93 @@ def check_week_completeness(week_start: datetime.date, week_end: datetime.date) 
         )
 
 
+def prop_formula_str(page: dict, name: str) -> str:
+    p = page["properties"].get(name, {})
+    return (p.get("formula") or {}).get("string") or ""
+
+
+def build_totals(start: datetime.date, end: datetime.date, members: dict[str, dict]) -> dict[str, list[float]]:
+    """期間の 代理店→[訪問, アポ, 商談, 契約, 売上] と "全社" の合計。個人の合計を足すと
+    商談・契約がクローザーとアポインターで二重になるため、個人とは別にここで1回ずつ数える。
+      訪問・アポ: 実績DBの全行（休みの日を除く。個人シートと同じ）
+      売上: 実績DBの実質売上の全行（他アポは半額ずつ入っているので全行の合計＝会社の売上）
+      商談: 商談一覧の件数、契約: 商談一覧で結果＝契約の件数（クーリングオフになった分は含まない）
+      代理店: 実績DBの「所属」。商談はクローザーの所属で数える
+    """
+    perf = notion_query_all(PERFORMANCE_DB, {"and": [
+        {"property": "実績日", "date": {"on_or_after": start.isoformat()}},
+        {"property": "実績日", "date": {"on_or_before": end.isoformat()}},
+    ]})
+    deals = notion_query_all(DEAL_DB, {"and": [
+        {"property": "商談日時", "date": {"on_or_after": start.isoformat()}},
+        {"property": "商談日時", "date": {"on_or_before": end.isoformat()}},
+    ]})
+    agency_of = {n: m["agency"] for n, m in members.items()}
+    tot: dict[str, list[float]] = {}
+
+    def add(agency: str, i: int, v: float) -> None:
+        for key in (agency or "（所属なし）", "全社"):
+            tot.setdefault(key, [0.0] * 5)[i] += v
+
+    for r in perf:
+        name = prop_select(r, "メンバー")
+        agency = agency_of.get(name) or prop_formula_str(r, "所属")
+        add(agency, 4, prop_number(r, "契約金額（万円）") - prop_number(r, "キャンセル金額（万円）"))
+        if prop_select(r, "出勤状況") != "休み":
+            add(agency, 0, prop_number(r, "訪問数"))
+            add(agency, 1, prop_number(r, "アポ数"))
+    perf_agency = {prop_select(r, "メンバー"): prop_formula_str(r, "所属") for r in perf}
+    for d in deals:
+        closer = prop_select(d, "クローザー")
+        agency = agency_of.get(closer) or perf_agency.get(closer, "")
+        add(agency, 2, 1)
+        if prop_status(d, "結果") == RESULT_CONTRACT:
+            add(agency, 3, 1)
+    for v in tot.values():
+        v[4] = round(v[4], 2)
+    return tot
+
+
 def build_config(members: dict[str, dict], budget_by_name: dict[str, float], now: datetime.date,
                   week_start: datetime.date) -> dict[str, str]:
-    month_start = now.replace(day=1)
-    deal_rows_month = notion_query_all(DEAL_DB, {
-        "property": "商談日時", "date": {"on_or_after": month_start.isoformat()},
-    })
+    """月の数字は「対象週の日曜が属する月の1日〜その日曜」で数える（週の数字と同じ締め日にそろえる）。"""
+    week_end = week_start + datetime.timedelta(days=6)
+    month_start = week_end.replace(day=1)
+    ndays = calendar.monthrange(week_end.year, week_end.month)[1]
+    month = month_start.strftime("%Y-%m")
+    deal_rows_month = notion_query_all(DEAL_DB, {"and": [
+        {"property": "商談日時", "date": {"on_or_after": month_start.isoformat()}},
+        {"property": "商談日時", "date": {"on_or_before": week_end.isoformat()}},
+    ]})
     actual_contracts = sum(1 for d in deal_rows_month if prop_status(d, "結果") == RESULT_CONTRACT)
-
-    perf_rows_month = notion_query_all(PERFORMANCE_DB, {
-        "property": "実績日", "date": {"on_or_after": month_start.isoformat()},
-    })
-    # 月実績（実質売上）は「登録済みメンバーだけの合計」ではなく会社全体の実績（Notion上の
-    # 実質売上合計と一致させる）。予算・LINE未登録の人（例: 催事）の実績もここには含める
-    # （ユーザー指摘で発覚。以前はmembersで絞ってしまい、Notion上の値より少なく出ていた）
-    actual_sales = sum(
-        prop_number(row, "契約金額（万円）") - prop_number(row, "キャンセル金額（万円）")
-        for row in perf_rows_month
-    )
-
-    target_sales = sum(budget_by_name.get(n, 0.0) for n in members)
-    target_contracts = round(target_sales / YEN_PER_CONTRACT_MAN) if target_sales else 0
-
+    perf_rows_month = notion_query_all(PERFORMANCE_DB, {"and": [
+        {"property": "実績日", "date": {"on_or_after": month_start.isoformat()}},
+        {"property": "実績日", "date": {"on_or_before": week_end.isoformat()}},
+    ]})
+    actual_sales = sum(prop_number(r, "契約金額（万円）") - prop_number(r, "キャンセル金額（万円）")
+                       for r in perf_rows_month)
+    # 売上目標は💰予算と達成率の当月の全行（LINE未登録の人も含む。実績も全行で数えるため）
+    budget_rows = notion_query_all(BUDGET_DB, {"property": "年月（YYYY-MM）", "rich_text": {"equals": month}})
+    target_sales = sum(prop_number(r, "予算（万円）") for r in budget_rows)
+    # 契約目標＝売上目標÷全社の平均契約単価（前月までの3か月。月初予算チェック scripts/monthly_budget_floor.py
+    # と同じ計算）。単価が取れない時だけ65万円/件で代用
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "scripts"))
+    from monthly_budget_floor import avg_contract_price
+    _, avg_price = avg_contract_price(month)
+    target_contracts = round(target_sales / (avg_price or YEN_PER_CONTRACT_MAN))
+    days_in_week = sum(1 for i in range(7) if (week_start + datetime.timedelta(days=i)).month == week_end.month)
     return {
         "data_week_start": week_start.isoformat(),
+        "month_label": f"{week_end.month}月（{month_start.month}/{month_start.day}〜{week_end.month}/{week_end.day}）",
+        "month_elapsed": str(round(week_end.day / ndays, 4)),
         "target_contracts": str(target_contracts),
-        "target_sales": str(target_sales),
+        "avg_contract_price": str(round(avg_price or YEN_PER_CONTRACT_MAN, 1)),
+        "target_sales": str(round(target_sales, 1)),
         "actual_contracts": str(actual_contracts),
         "actual_sales": str(round(actual_sales, 1)),
-        # week_target_* は空欄のままにする → build_all.py側で 月目標×7/当月日数 に自動フォールバック
-        # （依頼2章の仕様どおり）
+        # 週の目安＝月目標を日数で割り、先週のうち当月に入る日数分
+        "week_target_contracts": str(round(target_contracts * days_in_week / ndays, 2)),
+        "week_target_sales": str(round(target_sales * days_in_week / ndays, 2)),
     }
 
 
@@ -391,6 +446,12 @@ def main(out_dir: str) -> None:
     check_week_completeness(last_monday, week_end)
     results = build_results(members, last_monday, week_end)
     config = build_config(members, budget_by_name, now, last_monday)
+    totals = build_totals(last_monday, week_end, members)
+    # 商談一覧と実績DBの突き合わせ（verify_numbers.py）の結果も資料に載せる
+    import verify_numbers
+    problems = sum(len(verify_numbers.compare(s, e)) for _, s, e in verify_numbers.periods(now))
+    config["data_as_of"] = datetime.datetime.now(ZoneInfo("Asia/Tokyo")).strftime("%-m/%-d %H:%M")
+    config["check_status"] = "一致" if problems == 0 else f"不一致{problems}件"
     pdca = build_pdca(members, last_monday)
 
     write_csv(os.path.join(out_dir, "members.csv"), list(members.values()),
@@ -400,6 +461,9 @@ def main(out_dir: str) -> None:
               ["name", "visits", "home", "face", "target", "talk", "appo",
                "meet_own", "meet_other", "win_own", "win_other", "cooloff", "screen_fail", "sales"])
     write_config_csv(os.path.join(out_dir, "config.csv"), config)
+    write_csv(os.path.join(out_dir, "totals.csv"),
+              [{"agency": a, "visits": v[0], "appo": v[1], "meet": v[2], "win": v[3], "sales": v[4]} for a, v in totals.items()],
+              ["agency", "visits", "appo", "meet", "win", "sales"])
     write_csv(os.path.join(out_dir, "pdca.csv"),
               [{"name": name, **data} for name, data in pdca.items()],
               ["name", "action", "cause", "last_eval", *PDCA_TARGET_PROPS])

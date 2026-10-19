@@ -54,8 +54,13 @@ def wrap(text, width, max_lines=None):
     return "\n".join(lines)
 
 
+SOURCE = ""  # 出典の脚注（build_deckで設定）
+
+
 def slide(pdf_pages, title, sub, num):
     fig = plt.figure(figsize=(W, H))
+    if SOURCE:
+        fig.text(0.5, 0.008, SOURCE, color=SUB, fontsize=8, ha="center")
     fig.patch.set_facecolor("white")
     fig.patches.append(plt.Rectangle((0, 0.89), 1, 0.11, transform=fig.transFigure, color=NAVY))
     fig.text(0.035, 0.945, title, color="white", fontsize=26, fontweight="bold", va="center")
@@ -143,14 +148,14 @@ def review(pdf, members, mem, res, pdca, cfg, n):
 
 
 # ---------- 3. チームの数字 ----------
-def team(pdf, agency, members, res, cfg, all_tot, n):
+def team(pdf, agency, members, mem, res, cfg, all_tot, n):
     fig = slide(pdf, "② チームの数字", cfg["week"], n)
-    keys = ["visits", "appo", "meet", "win", "sales"]
-    tot = [sum(res[m][k] for m in members) for k in keys]
+    ag, _ = B.agency_totals(res, mem, cfg)
+    tot = all_tot if agency == ALL else ag.get(agency, [0] * 6)[:5]
     fig.text(0.035, 0.83, f"{agency}の先週の実績（{len(members)}名）", fontsize=15, fontweight="bold", color=INK)
     for i, (lab, v) in enumerate(zip(B.METRICS, tot)):
         x = 0.035 + i * 0.19
-        card(fig, x, 0.6, 0.175, 0.2, BG)
+        card(fig, x, 0.6, 0.175, 0.2, BG)  # 売上は実質売上（キャンセル差し引き後）
         fig.text(x + 0.0875, 0.75, lab, fontsize=13, ha="center", color=SUB)
         fig.text(x + 0.0875, 0.645, f"{v:,.0f}" if lab != "売上(万円)" else f"{v:,.1f}", fontsize=34,
                  ha="center", fontweight="bold", color=NAVY)
@@ -233,15 +238,12 @@ def achievers(pdf, mem, res, pdca, cfg, n):
             fig.text(0.07 + (i % 2) * 0.2, 0.585 - (i // 2) * 0.1, mem[nm]["agency"], fontsize=10, color=SUB)
     else:
         fig.text(0.255, 0.45, "今週はまだいません\n次に名前が載るのは誰？", fontsize=18, ha="center", color=SUB, linespacing=1.6)
-    ag = {}
-    for nm, r in res.items():
-        d = ag.setdefault(mem[nm]["agency"], [0, 0, 0, 0])
-        d[0] += r["meet"]; d[1] += r["win"]; d[2] += r["sales"]; d[3] += 1
+    ag, _ = B.agency_totals(res, mem, cfg)
     names = list(ag)
-    for i, (idx, lab) in enumerate([(1, "1人当たり契約数"), (2, "1人当たり売上（万円）")]):
+    for i, (idx, lab) in enumerate([(3, "1人当たり契約数"), (4, "1人当たり売上（万円）")]):
         ax = fig.add_axes([0.62, 0.5 - i * 0.4, 0.34, 0.27])
-        vals = sorted(((round(ag[a][idx] / ag[a][3], 1), a) for a in names))
-        ax.barh([f"{a}（{ag[a][3]}名）" for _, a in vals], [v for v, _ in vals],
+        vals = sorted(((round(ag[a][idx] / ag[a][5], 1), a) for a in names))
+        ax.barh([f"{a}（{ag[a][5]}名）" for _, a in vals], [v for v, _ in vals],
                 color=[BLUE] * (len(vals) - 1) + [GOLD])
         for y, (v, _) in enumerate(vals):
             ax.text(v, y, f" {v:,.1f}", va="center", fontsize=13, fontweight="bold")
@@ -378,12 +380,16 @@ def week_flow(pdf, cfg, n):
 
 
 def build_deck(path, agency, members, mem, res, pdca, cfg):
-    all_tot = [sum(r[k] for r in res.values()) for k in ["visits", "appo", "meet", "win", "sales"]]
+    global SOURCE
+    SOURCE = ("出典：Notion 実績DB（訪問・アポ・売上＝キャンセルを引いた実質売上。他アポは半額ずつ）／商談一覧（商談・契約＝1件1回、クーリングオフ除く）"
+              + (f"　{cfg['data_as_of']}時点" if cfg.get("data_as_of") else "")
+              + (f"　2つのDBの突き合わせ：{cfg['check_status']}" if cfg.get("check_status") else ""))
+    _, all_tot = B.agency_totals(res, mem, cfg)
     with PdfPages(path) as pdf:
         n = 1
         cover(pdf, agency, cfg, n); n += 1
         n = review(pdf, members, mem, res, pdca, cfg, n)
-        n = team(pdf, agency, members, res, cfg, all_tot, n)
+        n = team(pdf, agency, members, mem, res, cfg, all_tot, n)
         n = ranking(pdf, mem, res, agency, cfg, n)
         n = achievers(pdf, mem, res, pdca, cfg, n)
         for m in members:
