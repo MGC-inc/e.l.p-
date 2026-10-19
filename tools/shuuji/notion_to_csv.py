@@ -52,7 +52,21 @@ RESULT_REJECTED = "審査落ち"
 YEN_PER_CONTRACT_MAN = 65
 
 
+# Notionのクエリは1回の読み取りで行が1件欠けることがある（作成から間もないページで、読むたびに
+# 欠ける行が変わる。2026-10-20に実データで確認：203行中202行しか返らない読み取りが10分以上続いた）。
+# 1回の結果を信用せず、READS回読んで、どれかの読み取りに出た行をすべて使う（行IDで重複を除く）
+READS = 3
+
+
 def notion_query_all(data_source_id: str, filter_obj: dict | None = None) -> list[dict]:
+    rows: dict[str, dict] = {}
+    for _ in range(READS):
+        for r in _notion_query_once(data_source_id, filter_obj):
+            rows[r["id"]] = r
+    return list(rows.values())
+
+
+def _notion_query_once(data_source_id: str, filter_obj: dict | None = None) -> list[dict]:
     token = os.environ["NOTION_TOKEN"]
     headers = {"Authorization": f"Bearer {token}", "Notion-Version": NOTION_VERSION,
                "Content-Type": "application/json"}
@@ -117,6 +131,14 @@ def sb_get(path: str) -> list[dict]:
 # 平均算出からも外す）。正式な管理者フラグが予算DB等に追加されたら、ここは不要になる。
 MANAGER_NAMES = {"今川", "岡野", "門田", "柚木"}
 
+# 週次MT資料・週次LINE配信に出さない人（個人シート・スライド・ランキング・配信の対象外）。
+# 実績DBの行は会社全体の合計には含める（Notionの全社の数字と一致させるため）。代理店の合計からは外し、
+# 「週次対象外」という別枠に入れる（代理店の1人当たりの数字が、表示しない人の分でずれないように）
+WEEKLY_HIDDEN = {
+    "藤江": "催事で稼働しており、週次の集計・配信は一緒にしていない（今川さん指示 2026-10-20）",
+}
+HIDDEN_BUCKET = "週次対象外"
+
 
 def build_members(now: datetime.date) -> dict[str, dict]:
     """予算DB当月行×Supabase closer_line_usersの積集合をメンバーロースターにする。"""
@@ -144,6 +166,9 @@ def build_members(now: datetime.date) -> dict[str, dict]:
     members: dict[str, dict] = {}
     skipped: list[str] = []
     for name, agency in agency_by_name.items():
+        if name in WEEKLY_HIDDEN:
+            print(f"[notion_to_csv] 週次の対象外: {name}（{WEEKLY_HIDDEN[name]}）", file=sys.stderr)
+            continue
         role = role_by_name.get(name)
         line_id = line_id_by_name.get(name)
         if not role or not line_id or not agency:
@@ -299,7 +324,7 @@ def build_totals(start: datetime.date, end: datetime.date, members: dict[str, di
 
     for r in perf:
         name = prop_select(r, "メンバー")
-        agency = agency_of.get(name) or prop_formula_str(r, "所属")
+        agency = HIDDEN_BUCKET if name in WEEKLY_HIDDEN else (agency_of.get(name) or prop_formula_str(r, "所属"))
         add(agency, 4, prop_number(r, "契約金額（万円）") - prop_number(r, "キャンセル金額（万円）"))
         if prop_select(r, "出勤状況") != "休み":
             add(agency, 0, prop_number(r, "訪問数"))
@@ -307,7 +332,7 @@ def build_totals(start: datetime.date, end: datetime.date, members: dict[str, di
     perf_agency = {prop_select(r, "メンバー"): prop_formula_str(r, "所属") for r in perf}
     for d in deals:
         closer = prop_select(d, "クローザー")
-        agency = agency_of.get(closer) or perf_agency.get(closer, "")
+        agency = HIDDEN_BUCKET if closer in WEEKLY_HIDDEN else (agency_of.get(closer) or perf_agency.get(closer, ""))
         add(agency, 2, 1)
         if prop_status(d, "結果") == RESULT_CONTRACT:
             add(agency, 3, 1)

@@ -69,7 +69,18 @@ def notion(method: str, path: str, body: dict | None = None, version: str = NOTI
         return json.load(r)
 
 
+READS = 3  # tools/shuuji/notion_to_csv.pyと同じ理由で、1回の読み取りで行が欠けることがあるため複数回読んで合わせる
+
+
 def query_all(path: str, filter_obj: dict | None, version: str) -> list[dict]:
+    rows: dict[str, dict] = {}
+    for _ in range(READS):
+        for r in _query_once(path, filter_obj, version):
+            rows[r["id"]] = r
+    return list(rows.values())
+
+
+def _query_once(path: str, filter_obj: dict | None, version: str) -> list[dict]:
     out, cursor = [], None
     while True:
         body: dict = {"page_size": 100}
