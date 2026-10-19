@@ -18,6 +18,8 @@
   python3 scripts/monthly_budget_floor.py --month 2026-10 # 対象月を指定
   python3 scripts/monthly_budget_floor.py --dry-run       # 変更内容の表示のみ
   python3 scripts/monthly_budget_floor.py --notify        # 結果を今川さんにLINEで通知
+  python3 scripts/monthly_budget_floor.py --check-only --notify  # 予算未設定者がいればアラートのみ
+                                                          # （前月に予算があり当月に無いメンバーを未設定とみなす）
 """
 from __future__ import annotations
 
@@ -166,6 +168,7 @@ def main() -> None:
     ap.add_argument("--month", default=dt.datetime.now(JST).strftime("%Y-%m"))
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--notify", action="store_true")
+    ap.add_argument("--check-only", action="store_true", help="予算の未設定者の確認・通知だけ行う（更新はしない）")
     args = ap.parse_args()
     load_env()
 
@@ -175,6 +178,21 @@ def main() -> None:
 
     budget_rows = query_all(f"/data_sources/{BUDGET_DB}/query",
                             {"property": "年月（YYYY-MM）", "rich_text": {"equals": month}}, NOTION_VERSION_V2)
+    prev_rows = query_all(f"/data_sources/{BUDGET_DB}/query",
+                          {"property": "年月（YYYY-MM）", "rich_text": {"equals": prev}}, NOTION_VERSION_V2)
+    set_now = {prop_text(r, "メンバー") for r in budget_rows if prop_num(r, "予算（万円）") is not None}
+    missing = sorted({prop_text(r, "メンバー") for r in prev_rows
+                      if prop_num(r, "予算（万円）") is not None} - set_now - {""})
+    if args.check_only:
+        if missing:
+            text = (f"⚠ {month}の予算が未設定です（{len(missing)}名）\n" + "・".join(missing)
+                    + f"\n「💰 予算と達成率」に{month}の予算を入力してください。")
+            print(text)
+            if args.notify:
+                notify_admin(text)
+        else:
+            print(f"{month}の予算は全員設定済みです")
+        return
     budgets: dict[str, float] = {}
     raised: list[str] = []
     for r in budget_rows:
@@ -212,6 +230,8 @@ def main() -> None:
             notion("PATCH", f"/pages/{p['id']}", {"properties": props}, NOTION_VERSION_V1)
 
     report = [f"📅 {month}予算チェック（{prev}の実質売上を下限に設定）"]
+    if missing:
+        report += [f"⚠ {month}の予算が未設定: " + "・".join(missing)]
     report += (["▼引き上げた予算"] + raised) if raised else ["▼引き上げた予算: なし（全員、前月の結果以上）"]
     report += ["▼KPI DBの月目標"] + kpi_lines
     text = "\n".join(report)
