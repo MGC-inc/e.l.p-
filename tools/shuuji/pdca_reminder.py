@@ -47,7 +47,8 @@ def sb_patch(path: str, data: dict) -> None:
 
 
 def week_label(week_start_iso: str) -> str:
-    start = datetime.date.fromisoformat(week_start_iso)
+    # week_start_isoは集計対象週（先週）の月曜。表示は宿題の対象＝その翌週（deliver.pyと同じ）
+    start = datetime.date.fromisoformat(week_start_iso) + datetime.timedelta(days=7)
     end = start + datetime.timedelta(days=6)
     return f"{start.month}/{start.day}〜{end.month}/{end.day}"
 
@@ -72,10 +73,10 @@ def pdca_template(name: str, label: str, role: str) -> str:
         )
     return (
         f"⏰週次PDCA未回答｜{name}さん（今週：{label}）\n\n"
-        "まだ今週のPDCA記入が届いていません。お手すきにこのまま3つに答えて返信してください。\n\n"
-        "①なぜ低いと思いますか？（原因）\n\n\n"
-        "②良くするために、今週何をしますか？（いつ・誰と・何を）\n\n\n"
-        "③今週の目標（数字で）\n" + target_lines
+        "今朝の週次MTで決めた内容がまだ届いていません。このまま3つに書いて返信してください。\n\n"
+        "①先週の振り返り・学び（うまくいったこと／いかなかったことと、その理由）\n\n\n"
+        "②今週の宿題を1つ（いつ・誰と・何を）\n\n\n"
+        "③今週の目標（数字で。日曜までの分）\n" + target_lines
     )
 
 

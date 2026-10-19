@@ -4,7 +4,7 @@ name: weekly-pdca-reminder
 # リマインドを1通LINEで送る（商談分析運用.md 8章参照。実データで「15人中半数以上が
 # 無回答のまま」と判明したため追加）。
 #
-# 水曜配信から3日後の土曜9:00 JSTに実行する。Claude／LLMを一切経由しない決定的コード
+# 水曜朝の週次MT（マニュアル/週次MT.md）の最後に送ってもらう運用のため、同じ水曜の18:00 JSTに実行する。Claude／LLMを一切経由しない決定的コード
 # （tools/shuuji/pdca_reminder.py）。
 on:
   workflow_dispatch:
@@ -14,7 +14,7 @@ on:
         type: boolean
         default: false
   schedule:
-    - cron: "0 0 * * 6"  # 土曜 00:00 UTC = 土曜 09:00 JST
+    - cron: "0 9 * * 3"  # 水曜 09:00 UTC = 水曜 18:00 JST
 
 jobs:
   run:

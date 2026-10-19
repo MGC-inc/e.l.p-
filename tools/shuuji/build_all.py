@@ -297,7 +297,7 @@ def load_pdca(inp):
         return {}
     out = {}
     for r in csv.DictReader(io.StringIO(txt)):
-        data = {"action": r.get("action", "")}
+        data = {"action": r.get("action", ""), "cause": r.get("cause", "")}
         for col in PDCA_TARGET_COLS:
             v = r.get(col, "")
             data[col] = float(v) if v not in (None, "") else None

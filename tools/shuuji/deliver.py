@@ -42,8 +42,11 @@ def week_start_and_label(out_dir: str) -> tuple[str, str]:
     """config.csvのdata_week_startから、週初日(ISO)と表示ラベル(M/D〜M/D)を作る。"""
     cfg = {row["key"]: row["value"] for row in csv.DictReader(open(f"{out_dir}/config.csv", encoding="utf-8-sig"))}
     start = datetime.date.fromisoformat(cfg["data_week_start"])
-    end = start + datetime.timedelta(days=6)
-    label = f"{start.month}/{start.day}〜{end.month}/{end.day}"
+    # 記録のキー（pdca_pending_week）は集計対象週（先週）の月曜のまま。表示ラベルは
+    # 宿題と目標の対象＝MTを開く今週（月〜日）にする
+    this_mon = start + datetime.timedelta(days=7)
+    end = this_mon + datetime.timedelta(days=6)
+    label = f"{this_mon.month}/{this_mon.day}〜{end.month}/{end.day}"
     return start.isoformat(), label
 
 
@@ -68,10 +71,10 @@ def pdca_template(name: str, week_label: str, role: str) -> str:
         )
     return (
         f"📝週次PDCA｜{name}さん（今週：{week_label}）\n\n"
-        "PDFの「最優先の改善項目」を見て、下の3つに答えて、このまま返信してください。\n\n"
-        "①なぜ低いと思いますか？（原因）\n\n\n"
-        "②良くするために、今週何をしますか？（いつ・誰と・何を）\n\n\n"
-        "③今週の目標（数字で）\n" + target_lines
+        "週次MTの最後に、下の3つに書いてこのまま返信してください。\n\n"
+        "①先週の振り返り・学び（うまくいったこと／いかなかったことと、その理由）\n\n\n"
+        "②今週の宿題を1つ（いつ・誰と・何を）\n\n\n"
+        "③今週の目標（数字で。日曜までの分）\n" + target_lines
     )
 
 
@@ -87,11 +90,25 @@ def sb_patch(path: str, data: dict) -> None:
 
 
 week_start_iso, week_label = week_start_and_label(out)
+# build_slides.pyが作る代理店別スライド（無ければスライドのリンクは付けない）
+slides = {}
+if os.path.exists(f"{out}/slides_manifest.csv"):
+    slides = {r["agency"]: r["file"] for r in csv.DictReader(open(f"{out}/slides_manifest.csv", encoding="utf-8-sig"))}
+
+HOW_TO = (
+    "【MTの最後に、次のメッセージに書いて返信】\n"
+    "①先週の振り返り・学び\n例：価格を聞かれてすぐ答えたら話が終わった。先に「何と比べていますか」と聞けば続いた\n"
+    "②今週の宿題を1つ（いつ・誰と・何を）\n例：木曜と金曜の朝、〇〇さんと価格質問の切り返しロープレを10分ずつ\n"
+    "③今週の目標\n例：訪問数：60　アポ数：6（数字だけ入れる）"
+)
 
 for r in csv.DictReader(open(f"{out}/manifest.csv", encoding="utf-8-sig")):
     if mgr and r["is_manager"] != "yes":
         continue
-    pdf_text = f"{r['name']}さん\n今週の{r['agency']}のPDCAシートです。\n{base}/{r['file']}"
+    pdf_text = f"{r['name']}さん\n今週の{r['agency']}の週次MT資料です。\n"
+    if r["agency"] in slides:
+        pdf_text += f"▼MTスライド\n{base}/{slides[r['agency']]}\n"
+    pdf_text += f"▼個人PDCAシート\n{base}/{r['file']}\n\n{HOW_TO}"
     template_text = pdca_template(r["name"], week_label, r["role"])
     to = test_to or r["line_user_id"]
     if test_to:

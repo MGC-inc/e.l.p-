@@ -16,6 +16,8 @@ notion_to_csv.py  (Notion 4DB + Supabase → members/results/config/pdca の4CSV
         ↓
 build_all.py      (代理店別配信PDF。人数×2ページ＋共通4ページ、ランダムファイル名。
                     ⑤先週の振り返りページに、pdca.csvの前回アクションプランを自動転記)
+build_slides.py   (週次MTで映すスライド。代理店別・16:9。宿題の答え合わせ・全社ランキング・
+                    宣言達成者・個人スライド・みんなの学び・BOTへの送り方。進行はマニュアル/週次MT.md)
 build_meeting.py  (全社MT用PDF、16:9×2枚)
         ↓
 publish_supabase.py  (Supabase Storageに公開。バケット名 weekly-pdca)
@@ -90,6 +92,9 @@ python3 deliver.py /tmp/out "https://公開URL" --dry-run
   📝週次PDCA記録DB）とSupabase（`closer_line_users`）から、キットが読める4CSVを生成する
 - `build_all.py` — 代理店別配信PDF生成（キットをベースに、⑤振り返りページをpdca.csvで
   自動転記するよう変更。ランダムファイル名で推測不可に）
+- `build_slides.py` — **新規実装**。週次MTで画面に映す代理店別スライド（16:9）。`slides_manifest.csv`に
+  代理店→ファイル名を書き、`deliver.py`がそのリンクを配信メッセージに入れる。pdca.csvの`cause`
+  （LINE返信の①先週の振り返り・学び。Notionの列名は旧称の「原因」）を「みんなの学び」に出す
 - `build_meeting.py` — 全社MT用PDF生成（キットそのまま）
 - `deliver.py` — LINE配信（キットを元に、環境変数名を`DEAL_LINE_CHANNEL_ACCESS_TOKEN`に統一し、
   `--test-to <line_user_id>`（1人だけにテスト送信）と、週次PDCA記入テンプレの同時送信・

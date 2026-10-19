@@ -4,7 +4,7 @@ name: weekly-shuuji
 # 商談分析運用.md 8章参照。Claude／LLMを一切経由しない決定的コード（tools/shuuji/）。
 #
 # 2026-09-29 今川さんがテスト送信の内容を確認し、本番運用に切り替え済み。
-# 毎週水曜9:00 JSTに自動実行され、代理店の全員へ本番配信する（scheduleトリガーは
+# 毎週水曜7:00 JST（朝イチの週次MTの前）に自動実行され、代理店の全員へ本番配信する（scheduleトリガーは
 # 常にproduction扱い。send_mode入力はworkflow_dispatchで手動実行する時だけ効く）。
 # send_mode=test（既定）: 今川さんのLINEにだけ、全員分の内容をテスト送信する
 # send_mode=production: 各代理店の全員に本番配信する
@@ -17,7 +17,7 @@ on:
         options: [test, production]
         default: test
   schedule:
-    - cron: "0 0 * * 3"  # 水曜 00:00 UTC = 水曜 09:00 JST
+    - cron: "0 22 * * 2"  # 火曜 22:00 UTC = 水曜 07:00 JST
 
 jobs:
   run:
@@ -38,6 +38,9 @@ jobs:
 
       - name: 代理店別配信PDF生成（データが先週分でなければ中止）
         run: python3 tools/shuuji/build_all.py notion_out out --strict
+
+      - name: 週次MTスライド生成（代理店別・16:9）
+        run: python3 tools/shuuji/build_slides.py notion_out out --strict
 
       - name: 全社MT用PDF生成
         run: python3 tools/shuuji/build_meeting.py notion_out out/meeting.pdf

@@ -311,6 +311,21 @@ def _rich_text_plain(row: dict, prop_name: str) -> str:
     return "".join(t.get("plain_text", "") for t in row["properties"].get(prop_name, {}).get("rich_text", []))
 
 
+# LINEの記入テンプレの見出し（新旧）。webhook.pyの解析は①②の行の残りも本文として拾うため、
+# 見出しをコピーしたまま返信されると本文の先頭に混ざる。スライドに出す前に取り除く
+PDCA_PROMPTS = [
+    "先週の振り返り・学び（うまくいったこと／いかなかったことと、その理由）", "先週の振り返り・学び",
+    "今週の宿題を1つ（いつ・誰と・何を）", "なぜ低いと思いますか？（原因）",
+    "良くするために、今週何をしますか？（いつ・誰と・何を）",
+]
+
+
+def _strip_prompts(text: str) -> str:
+    for p in PDCA_PROMPTS:
+        text = text.replace(p, "")
+    return text.strip()
+
+
 def build_pdca(members: dict[str, dict], week_start: datetime.date) -> dict[str, dict]:
     """週次PDCA記録DBから、対象週より前の直近1件（＝前回LINE返信で declared された
     アクションプラン・今週の数値目標）を氏名ごとに拾う。build_all.pyのreview_page()
@@ -328,7 +343,8 @@ def build_pdca(members: dict[str, dict], week_start: datetime.date) -> dict[str,
         row_week = prop_date(row, "週初日") or ""
         if name in latest_by_name and row_week <= latest_by_name[name][0]:
             continue
-        data = {"action": _rich_text_plain(row, "アクションプラン")}
+        data = {"action": _strip_prompts(_rich_text_plain(row, "アクションプラン")),
+                "cause": _strip_prompts(_rich_text_plain(row, "原因"))}  # ①先週の振り返り・学び（列名は旧称の「原因」のまま）
         for prop_name in PDCA_TARGET_PROPS:
             data[prop_name] = row["properties"].get(prop_name, {}).get("number")
         latest_by_name[name] = (row_week, data)
@@ -377,7 +393,7 @@ def main(out_dir: str) -> None:
     write_config_csv(os.path.join(out_dir, "config.csv"), config)
     write_csv(os.path.join(out_dir, "pdca.csv"),
               [{"name": name, **data} for name, data in pdca.items()],
-              ["name", "action", *PDCA_TARGET_PROPS])
+              ["name", "action", "cause", *PDCA_TARGET_PROPS])
 
     print(f"対象週: {last_monday}〜{week_end} / メンバー{len(members)}名 -> {out_dir}")
 
