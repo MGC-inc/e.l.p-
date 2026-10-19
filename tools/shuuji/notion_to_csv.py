@@ -336,11 +336,17 @@ def build_pdca(members: dict[str, dict], week_start: datetime.date) -> dict[str,
         "property": "週初日", "date": {"before": week_start.isoformat()},
     })
     latest_by_name: dict[str, tuple[str, dict]] = {}  # name -> (週初日, {action, targets...})
+    # 直近でMT評価（◎○×。スキル週次MT議事録反映が議事録から書く）が付いた記録の評価。
+    # スライド①に「前回の評価」として出し、2週続けて○・×に気づけるようにする
+    last_eval: dict[str, tuple[str, str]] = {}
     for row in rows:
         name = prop_select(row, "氏名")
         if name not in members:
             continue
         row_week = prop_date(row, "週初日") or ""
+        ev = prop_select(row, "MT評価")
+        if ev and (name not in last_eval or row_week > last_eval[name][0]):
+            last_eval[name] = (row_week, ev)
         if name in latest_by_name and row_week <= latest_by_name[name][0]:
             continue
         data = {"action": _strip_prompts(_rich_text_plain(row, "アクションプラン")),
@@ -348,7 +354,10 @@ def build_pdca(members: dict[str, dict], week_start: datetime.date) -> dict[str,
         for prop_name in PDCA_TARGET_PROPS:
             data[prop_name] = row["properties"].get(prop_name, {}).get("number")
         latest_by_name[name] = (row_week, data)
-    return {name: data for name, (_, data) in latest_by_name.items() if data["action"]}
+    out = {name: data for name, (_, data) in latest_by_name.items() if data["action"]}
+    for name, (_, ev) in last_eval.items():
+        out.setdefault(name, {"action": "", "cause": "", **{p: None for p in PDCA_TARGET_PROPS}})["last_eval"] = ev
+    return out
 
 
 def write_csv(path: str, rows: list[dict], fieldnames: list[str]) -> None:
@@ -393,7 +402,7 @@ def main(out_dir: str) -> None:
     write_config_csv(os.path.join(out_dir, "config.csv"), config)
     write_csv(os.path.join(out_dir, "pdca.csv"),
               [{"name": name, **data} for name, data in pdca.items()],
-              ["name", "action", "cause", *PDCA_TARGET_PROPS])
+              ["name", "action", "cause", "last_eval", *PDCA_TARGET_PROPS])
 
     print(f"対象週: {last_monday}〜{week_end} / メンバー{len(members)}名 -> {out_dir}")
 

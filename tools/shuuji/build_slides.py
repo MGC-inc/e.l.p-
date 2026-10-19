@@ -28,6 +28,7 @@ NAVY, BLUE, TEAL, GOLD, SILVER, BRONZE = "#1F3A5F", "#2E6DA4", "#3B8EA5", "#E0A1
 INK, SUB, LINE, BG, GREEN, RED, YEL = "#1B1F24", "#5A6472", "#D5DBE3", "#F3F5F8", "#2E8B57", "#D64545", "#FFF4CC"
 MEDALS = [(GOLD, "1位"), (SILVER, "2位"), (BRONZE, "3位")]
 W, H = 13.33, 7.5
+ALL = "全社"
 
 # LINEの返信テンプレ③と同じ並び。(表示名, PDCA目標列, 実績キー[自アポ側], 実績キー[他アポ側 or None])
 TARGETS = {
@@ -118,9 +119,13 @@ def review(pdf, members, mem, res, pdca, cfg, n):
         for i, name in enumerate(chunk):
             y = top - 0.03 - (i + 1) * rh
             card(fig, 0.03, y + 0.008, 0.94, rh - 0.016, BG)
-            fig.text(0.04, y + rh / 2, name, fontsize=17, fontweight="bold", va="center", color=INK)
+            fig.text(0.04, y + rh / 2 + (0.015 if (pdca.get(name) or {}).get("last_eval") else 0), name,
+                     fontsize=17, fontweight="bold", va="center", color=INK)
             plan = pdca.get(name)
-            if not plan:
+            if plan and plan.get("last_eval"):
+                fig.text(0.04, y + rh / 2 - 0.035, f"前回の評価 {plan['last_eval']}", fontsize=11, va="center",
+                         color=RED if plan["last_eval"] == "×" else SUB)
+            if not plan or not plan.get("action"):
                 fig.text(0.16, y + rh / 2, "記録なし（MTの最初に口頭で確認）", fontsize=13, color=RED, va="center")
             else:
                 fig.text(0.16, y + rh / 2, wrap(plan["action"], 24, 3), fontsize=12, va="center", color=INK, linespacing=1.35)
@@ -398,6 +403,11 @@ def main(inp, out, strict=False):
         fn = f"{secrets.token_urlsafe(9)}.pdf"
         build_deck(os.path.join(pub, fn), agency, members, mem, res, pdca, cfg)
         rows.append([agency, fn]); print(f"スライド {agency}: {len(members)}人 → {fn}")
+    # 全社版（全員分を1つに。リーダー会議・今川さん用。deliver.pyは代理店名でしか引かないので配信先には混ざらない）
+    everyone = sorted(mem, key=lambda n: (mem[n]["agency"], mem[n]["role"] != "appointer", mem[n].get("is_manager") == "yes"))
+    fn = f"{secrets.token_urlsafe(9)}.pdf"
+    build_deck(os.path.join(pub, fn), ALL, everyone, mem, res, pdca, cfg)
+    rows.append([ALL, fn]); print(f"スライド {ALL}: {len(everyone)}人 → {fn}")
     with open(os.path.join(out, "slides_manifest.csv"), "w", newline="", encoding="utf-8-sig") as f:
         w = csv.writer(f); w.writerow(["agency", "file"]); w.writerows(rows)
 

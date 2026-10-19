@@ -243,7 +243,7 @@ def review_page(members, pdca):
     rows = [hdr("メンバー", "先週決めたアクション", "やった？", "次にどうする")]
     for name in members:
         data = (pdca or {}).get(name)
-        if not data:
+        if not data or not data.get("action"):
             cell = "（記録なし）"
         else:
             targets = _format_pdca_targets(data)
@@ -297,7 +297,7 @@ def load_pdca(inp):
         return {}
     out = {}
     for r in csv.DictReader(io.StringIO(txt)):
-        data = {"action": r.get("action", ""), "cause": r.get("cause", "")}
+        data = {"action": r.get("action", ""), "cause": r.get("cause", ""), "last_eval": r.get("last_eval", "")}
         for col in PDCA_TARGET_COLS:
             v = r.get(col, "")
             data[col] = float(v) if v not in (None, "") else None

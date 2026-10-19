@@ -1,4 +1,4 @@
-"""使い方: python deliver_meeting.py <meeting.pdfの公開URL> <今川さんのline_user_id> [--dry-run]
+"""使い方: python deliver_meeting.py <meeting.pdfの公開URL> <今川さんのline_user_id> [--slides <全社版スライドURL>] [--dry-run]
 
 全社ミーティング画面共有用PDF（成果物B）を、今川さんのLINEにだけ1通push送信する
 （依頼4章: 「送り先は今川さんのみ（LINE個別送信）」）。
@@ -16,7 +16,11 @@ tok = os.environ.get("DEAL_LINE_CHANNEL_ACCESS_TOKEN", "")
 if not dry and not tok:
     sys.exit("DEAL_LINE_CHANNEL_ACCESS_TOKEN が未設定です。送信していません。")
 
+slides = sys.argv[sys.argv.index("--slides") + 1] if "--slides" in sys.argv else ""
 text = f"今週の全社ミーティング用資料です。\n{url}"
+if slides:
+    # build_slides.pyの全社版（全員分の週次MTスライド。リーダー会議用）
+    text += f"\n\n▼週次MTスライド（全社版）\n{slides}"
 
 if dry:
     print("[DRY]", to, url)
