@@ -7,6 +7,7 @@
   1. 表紙と今日の進行
   2. 先週の宿題の答え合わせ（宣言した目標と実績を自動で突き合わせ、◎○×は当日記入）
   3. チームの数字（代理店の先週実績＋全社の月・週進捗）
+     ＋売上 直近4週との比較（代理店と全社の週ごとの売上。個人の推移はリッチメニューで見る）
   4. 全社ランキング（部門別の表彰台）
   5. 宣言達成者（LINEで宣言した数字目標を全部クリアした人）＋代理店ランキング
   6. 個人スライド（1人1枚。平均比と最優先の改善項目）
@@ -187,6 +188,80 @@ def team(pdf, agency, members, mem, res, cfg, all_tot, n):
     axm = fig.add_axes([0.05, 0.08, 0.4, 0.33]); axw = fig.add_axes([0.55, 0.08, 0.4, 0.33])
     B.draw_progress(axm, axw, cfg, all_tot, fs=1.5)
     fig.text(0.035, 0.46, "全社の進捗（赤い線＝今日の時点で届いていたい位置）", fontsize=13, color=SUB)
+    save(pdf, fig)
+    return n + 1
+
+
+# ---------- 3b. 売上 直近4週との比較 ----------
+def history_avg(weeks):
+    """先週より前の週のうち、実績DBに行がある週だけの平均（稼働前・未入力の週は外す）。無ければNone"""
+    past = [s for s, d in weeks[:-1] if d > 0]
+    return (sum(past) / len(past), len(past)) if past else (None, 0)
+
+
+PCT_MIN_AVG = 50  # 平均がこれ未満の週と比べた「%」は、少しの差で何千%にもなり意味がないので、増減（万円）で出す
+
+
+def delta_text(last, avg):
+    """先週と直近の平均の差。平均が小さいときは%ではなく万円の増減で出す。(文字, 色)"""
+    if avg is None: return "比較なし", SUB
+    diff = last - avg
+    col = SUB if abs(diff) < 0.05 else (GREEN if diff > 0 else RED)
+    if avg >= PCT_MIN_AVG:
+        return f"{diff / avg * 100:+.0f}%（{diff:+,.0f}万）", col
+    return f"{diff:+,.0f}万", col
+
+
+def sales_bars(fig, rect, title, ws, weeks, cfg):
+    """週ごとの売上の棒グラフ。先週だけ濃い色、直近の平均を金色の破線で出す。(平均, 平均に使った週数, 先週)を返す"""
+    avg, k = history_avg(ws)
+    ax = fig.add_axes(rect)
+    bars = ax.bar(range(len(ws)), [s for s, _ in ws], color=[LINE] * (len(ws) - 1) + [NAVY], width=0.62)
+    for b, (v, d) in zip(bars, ws):
+        ax.text(b.get_x() + b.get_width() / 2, max(b.get_height(), 0), f"{v:,.0f}" if d else "行なし", ha="center",
+                va="bottom", fontsize=13, color=INK if d else SUB, fontweight="bold")
+    if avg is not None:
+        ax.axhline(avg, color=GOLD, ls="--", lw=2)
+        ax.text(len(ws) - 0.5, avg, f" 平均{avg:,.0f}", color=GOLD, fontsize=12, va="bottom", ha="right", fontweight="bold")
+    ax.set_xticks(range(len(ws)))
+    ax.set_xticklabels([f"{int(w[5:7])}/{int(w[8:])}〜" for w in weeks[:-1]] + ["先週"], fontsize=12)
+    ax.set_ylabel("売上（万円）", fontsize=11); ax.spines[["top", "right"]].set_visible(False)
+    ax.set_ylim(min(0, min(s for s, _ in ws) * 1.3), max([s for s, _ in ws] + [avg or 0, 1]) * 1.2)
+    fig.text(rect[0], rect[1] + rect[3] + 0.07, title, fontsize=15, fontweight="bold", color=INK)
+    dt, col = delta_text(ws[-1][0], avg)
+    msg = (f"直近{k}週の平均{avg:,.0f}万 → 先週{ws[-1][0]:,.0f}万\n（{dt}）" if avg is not None
+           else f"先週{ws[-1][0]:,.0f}万（比べる週がまだありません）")
+    fig.text(rect[0], rect[1] - 0.15, msg, fontsize=15, fontweight="bold", color=col, linespacing=1.3)
+
+
+def sales_history(pdf, agency, members, mem, cfg, n):
+    """週次MTは全体の数字を見る場。個人の直近4週はリッチメニューから各自が見る（kpi.pyの「推移」）。"""
+    hist, weeks = cfg.get("weekly_sales"), cfg.get("history_weeks")
+    if not hist or not weeks:
+        return n
+    fig = slide(pdf, "② 売上 直近4週との比較", cfg["week"], n)
+    zero = [(0.0, 0)] * len(weeks)
+    if agency == ALL:  # 全社版: 全社の推移＋代理店別の表
+        sales_bars(fig, [0.06, 0.24, 0.42, 0.5], "全社の週ごとの売上（万円）", hist.get(("agency", "全社"), zero), weeks, cfg)
+        names = [a for a in dict.fromkeys(m["agency"] for m in mem.values()) if ("agency", a) in hist]
+        x0, top = 0.56, 0.8
+        fig.text(x0, top, "代理店", fontsize=12, color=SUB)
+        for x, t in ((0.75, "直近の平均"), (0.85, "先週"), (0.93, "平均比")):
+            fig.text(x, top, t, fontsize=12, color=SUB, ha="center")
+        rh = min(0.075, 0.66 / max(len(names), 1))
+        for i, name in enumerate(names):
+            y = top - 0.03 - (i + 1) * rh; ws = hist[("agency", name)]
+            a, kk = history_avg(ws); dt, col = delta_text(ws[-1][0], a)
+            card(fig, x0 - 0.01, y + 0.006, 0.42, rh - 0.012, BG)
+            fig.text(x0, y + rh / 2, name, fontsize=14, fontweight="bold", va="center", color=INK)
+            fig.text(0.75, y + rh / 2, "—" if a is None else f"{a:,.1f}", fontsize=14, va="center", ha="center", color=INK)
+            fig.text(0.85, y + rh / 2, f"{ws[-1][0]:,.1f}", fontsize=14, va="center", ha="center", color=INK, fontweight="bold")
+            fig.text(0.93, y + rh / 2, dt, fontsize=14, va="center", ha="center", color=col, fontweight="bold")
+    else:  # 代理店版: 自社の推移と全社の推移を並べる
+        sales_bars(fig, [0.06, 0.24, 0.38, 0.5], f"{agency}の週ごとの売上（万円）", hist.get(("agency", agency), zero), weeks, cfg)
+        sales_bars(fig, [0.56, 0.24, 0.38, 0.5], "全社の週ごとの売上（万円）", hist.get(("agency", "全社"), zero), weeks, cfg)
+    fig.text(0.035, 0.035, "売上＝キャンセルを引いた実質売上（万円）。後からクーリングオフ等が出ると過去の週も減る。"
+             "平均は実績DBに行がある週だけで計算", fontsize=10.5, color=SUB)
     save(pdf, fig)
     return n + 1
 
@@ -440,6 +515,7 @@ def build_deck(path, agency, members, mem, res, pdca, cfg):
         cover(pdf, agency, cfg, n); n += 1
         n = review(pdf, members, mem, res, pdca, cfg, n)
         n = team(pdf, agency, members, mem, res, cfg, all_tot, n)
+        n = sales_history(pdf, agency, members, mem, cfg, n)
         n = ranking(pdf, mem, res, agency, cfg, n)
         n = achievers(pdf, mem, res, pdca, cfg, n)
         for m in members:

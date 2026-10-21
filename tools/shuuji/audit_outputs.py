@@ -12,6 +12,7 @@ notion_to_csv.pyとは計算方法を変えてある（同じ書き間違いで�
   個人: 訪問・対面・アポ・売上・日報の日数（実績DB。対面はランキングの対面→アポ率に使う）、商談・契約（商談一覧）
   代理店: 代理店の合計の和＝全社の合計
   全社: 訪問・アポ・商談・契約・売上、月の契約・売上の実績と売上目標
+  直近の週: 週ごとの売上（全社・個人。先週の前4週を含む）
   宿題: スライドに出す宿題の文が、正しい週の記録と同じか
 
 使い方: python3 tools/shuuji/audit_outputs.py <notion_to_csv.pyの出力フォルダ> [--notify-on-error | --notify]
@@ -114,6 +115,23 @@ def main() -> int:
     budget = query_all(f"/data_sources/{BUDGET_DB}/query",
                        {"property": "年月（YYYY-MM）", "rich_text": {"equals": ms.strftime("%Y-%m")}}, NOTION_VERSION_V2)
     check("月 売上目標", float(cfg["target_sales"]), round(sum(prop_num(r, "予算（万円）") or 0 for r in budget), 1))
+
+    # ---- 直近の週ごとの売上（スライド「売上 直近4週との比較」）----
+    if os.path.exists(f"{inp}/weekly_sales.csv"):
+        ws_rows = read_csv(f"{inp}/weekly_sales.csv")
+        hs = datetime.date.fromisoformat(min(r["week_start"] for r in ws_rows))
+        truth_w = defaultdict(float)
+        for r in perf(hs, we):
+            d = datetime.date.fromisoformat(r["properties"]["実績日"]["date"]["start"][:10])
+            wk = (d - datetime.timedelta(days=d.weekday())).isoformat()
+            v = prop_num(r, "実質売上（万円）") or 0  # Notionの数式列
+            truth_w[("全社", wk)] += v
+            truth_w[(prop_text(r, "メンバー"), wk)] += v
+        for r in ws_rows:
+            if r["kind"] == "person" or r["key"] == "全社":
+                check(f"{r['key']} {r['week_start'][5:]}週の売上", float(r["sales"]), round(truth_w[(r["key"], r["week_start"])], 2))
+        last = [r for r in ws_rows if r["kind"] == "agency" and r["key"] == "全社" and r["week_start"] == ws.isoformat()]
+        check("先週の売上（週ごとの表）＝全社の合計", float(last[0]["sales"]) if last else -1, t["sales"])
 
     # ---- 先週の宿題 ----
     key = (ws - datetime.timedelta(days=7)).isoformat()

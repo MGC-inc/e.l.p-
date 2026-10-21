@@ -5,7 +5,7 @@
 （訪問→在宅/対面→対象→対話→アポのファネルを「行動量（実績/残り）」「転換率（本日/基準/差）」
 の表で見せる形）に寄せたビジュアルなWebページ。単日ビュー（フェーズ1）・週間ビュー
 （フェーズ2、`?view=week`）・月間ビュー（`?view=month`）・全社ランキング
-（`?view=ranking`）を実装済み。週次MTG記録・転換率計算機はまだ未実装（商談分析運用.md参照）。
+（`?view=ranking`）・個人の直近4週の推移（`?view=trend`）を実装済み。週次MTG記録・転換率計算機はまだ未実装（商談分析運用.md参照）。
 
 月間ビューの目標値（訪問・アポ）は、週間/単日ビューのような実績DBからの逆算ではなく
 webhook.pyの「今日の目標を見る」テキスト版と同じ、KPI DB側の手動メンテ値（`今月訪問実績`+
@@ -317,7 +317,7 @@ def view_tabs_html(token: str, active: str) -> str:
         return f'<a class="{cls}" href="{href}">{label}</a>'
     return (
         '<div class="tabs">'
-        f'{tab("day", "単日")}{tab("goal", "目標")}{tab("week", "週間")}{tab("month", "月間")}{tab("ranking", "順位")}'
+        f'{tab("day", "単日")}{tab("goal", "目標")}{tab("week", "週間")}{tab("trend", "推移")}{tab("month", "月間")}{tab("ranking", "順位")}'
         "</div>"
     )
 
@@ -678,6 +678,100 @@ def render_goal_page(member_name: str, token: str) -> tuple[int, str]:
     return 200, page_shell(body)
 
 
+TREND_WEEKS = 4  # 推移タブで振り返る、完了した週の数（月曜始まり。週次MTのスライドと同じ週）
+
+
+def _trend_rows(member_name: str, start: date, end: date) -> list[dict]:
+    """期間の実績DB行。Notionは同時刻に作った行の1件を返さないことがある（週次MT側のREADMEと同じ）ので、
+    2回読んで和集合を取る。"""
+    rows: dict[str, dict] = {}
+    for _ in range(2):
+        for r in notion_query_performance_range(member_name, start.isoformat(), end.isoformat()):
+            rows[r["id"]] = r
+    return list(rows.values())
+
+
+def render_trend_page(member_name: str, token: str) -> tuple[int, str]:
+    """個人の直近4週の推移（週次MTでは全体の数字を見るため、個人の数字はリッチメニューのこのページで振り返る）。
+    週は月曜〜日曜。売上は契約金額−キャンセル金額（週次MTのスライドと同じ）。LINEのメッセージは使わない。"""
+    if not NOTION_TOKEN:
+        return 503, error_page("設定未完了", "NOTION_TOKENが未設定のため表示できません。今川さんに確認してください。")
+    today = datetime.now(JST).date()
+    this_mon = today - timedelta(days=today.weekday())
+    first_mon = this_mon - timedelta(weeks=TREND_WEEKS)
+    try:
+        rows = _trend_rows(member_name, first_mon, today)
+    except (urllib.error.HTTPError, urllib.error.URLError, json.JSONDecodeError) as e:
+        print(f"kpi.py render_trend_page: Notion取得失敗: {e}")
+        return 502, error_page("一時エラー", "データの取得に失敗しました。少し待ってからもう一度開いてください。")
+
+    weeks = []  # 古い週→今週（途中）
+    for i in range(TREND_WEEKS + 1):
+        mon = first_mon + timedelta(weeks=i)
+        sun = mon + timedelta(days=6)
+        wk = [r for r in rows if row_date_iso(r) and mon.isoformat() <= row_date_iso(r) <= sun.isoformat()]
+        work = [r for r in wk if ((r["properties"].get("出勤状況") or {}).get("select") or {}).get("name") != "休み"]
+        weeks.append({
+            "label": f"{mon.month}/{mon.day}〜" + ("（今週）" if mon == this_mon else ""), "current": mon == this_mon,
+            "days": len(wk), "visits": sum(raw_number(r, "訪問数") for r in work),
+            "face": sum(raw_number(r, "対面数") for r in work), "appo": sum(raw_number(r, "アポ数") for r in work),
+            # 契約はクーリングオフ・審査落ちを引いた件数（週次MT側と同じ）
+            "win": sum(raw_number(r, "契約") - raw_number(r, "クーリン") - raw_number(r, "審査落") for r in wk),
+            "sales": sum(raw_number(r, "契約金額（万円）") - raw_number(r, "キャンセル金額（万円）") for r in wk),
+        })
+    done = [w for w in weeks[:-1] if w["days"] > 0]  # 実績DBに行がある週だけで平均する
+    last = weeks[-2]
+
+    def cell(v, fmt="{:,.0f}"):
+        return fmt.format(v)
+
+    trs = []
+    for w in reversed(weeks):  # 新しい週を上に
+        rate = (f"{w['appo'] / w['face'] * 100:.1f}%" if w["face"] > 0 else "—")
+        style = ' class="dim"' if w["current"] else ""
+        if w["days"] == 0:
+            trs.append(f'<tr{style}><td class="label">{w["label"]}</td><td colspan="5" class="note">データがありません（日報が入っていません）</td></tr>')
+            continue
+        trs.append(f'<tr{style}><td class="label">{w["label"]}</td><td class="num">{cell(w["visits"])}</td><td class="num">{cell(w["appo"])}</td>'
+                   f'<td class="num">{rate}</td><td class="num">{cell(w["win"])}</td><td class="num">{cell(w["sales"], "{:,.1f}")}</td></tr>')
+    if done:
+        n = len(done)
+        av = lambda k: sum(w[k] for w in done) / n
+        rate_avg = (f"{sum(w['appo'] for w in done) / sum(w['face'] for w in done) * 100:.1f}%"
+                    if sum(w["face"] for w in done) > 0 else "—")
+        trs.append(f'<tr class="avg"><td class="label">{n}週の平均</td><td class="num">{av("visits"):,.0f}</td><td class="num">{av("appo"):,.1f}</td>'
+                   f'<td class="num">{rate_avg}</td><td class="num">{av("win"):,.1f}</td><td class="num">{av("sales"):,.1f}</td></tr>')
+
+    summary = ""
+    prev = [w for w in done if w is not last]
+    if last["days"] > 0 and prev:
+        # 売上がある人（クローザー等）は売上、アポ専任の人はアポ数で先週とその前の平均を比べる
+        key, label, unit = ("sales", "売上", "万") if any(w["sales"] for w in done) else ("appo", "アポ", "件")
+        avg_prev = sum(w[key] for w in prev) / len(prev)
+        diff = last[key] - avg_prev
+        if last[key] or avg_prev:
+            word = "上回りました" if diff > 0 else ("下回りました" if diff < 0 else "同じでした")
+            tail = f"を <b>{abs(diff):,.1f}{unit}</b> {word}。" if diff else "と同じでした。"
+            summary = (f'<p class="note">先週の{label} <b>{last[key]:,.{1 if unit == "万" else 0}f}{unit}</b> は、その前{len(prev)}週の平均 '
+                       f'{avg_prev:,.1f}{unit} {tail}</p>')
+    body = f"""
+<div class="card">
+  {view_tabs_html(token, "trend")}
+  <div class="header">
+    <div class="name">{html.escape(member_name)}</div>
+    <div class="date">直近{TREND_WEEKS}週の推移（月〜日）</div>
+  </div>
+  {summary}
+  <table>
+    <thead><tr><th class="label">週</th><th>訪問</th><th>アポ</th><th>対面→アポ率</th><th>契約</th><th>売上(万)</th></tr></thead>
+    <tbody>{"".join(trs)}</tbody>
+  </table>
+  <p class="legend">売上＝キャンセルを引いた実質売上。後からクーリングオフ等が出ると過去の週も減ります。平均は日報がある週だけで計算。「今週」は途中経過です。</p>
+</div>
+"""
+    return 200, page_shell(body)
+
+
 def render_month_page(member_name: str, token: str) -> tuple[int, str]:
     if not NOTION_TOKEN:
         return 503, error_page("設定未完了", "NOTION_TOKENが未設定のため表示できません。今川さんに確認してください。")
@@ -844,6 +938,8 @@ def page_shell(body: str) -> str:
   thead tr:first-child th {{ font-size: 11px; color: #888; font-weight: 500; padding-bottom: 0; }}
   thead tr:last-child th {{ border-bottom: 1px solid #ddd; padding-bottom: 6px; color: #444; }}
   td.num {{ font-variant-numeric: tabular-nums; }}
+  tr.dim td {{ color: #999; }}
+  tr.avg td {{ font-weight: 700; border-top: 2px solid #1a1a1a; }}
   .muted-cell {{ color: #999; }}
   .ok {{ color: #1a9e4c; font-weight: 700; }}
   .warn {{ color: #d4380d; font-weight: 700; }}
@@ -883,6 +979,8 @@ class handler(BaseHTTPRequestHandler):
                     status, html_body = render_goal_page(member_name, token)
                 elif view == "week":
                     status, html_body = render_week_page(member_name, token)
+                elif view == "trend":
+                    status, html_body = render_trend_page(member_name, token)
                 elif view == "month":
                     status, html_body = render_month_page(member_name, token)
                 elif view == "ranking":

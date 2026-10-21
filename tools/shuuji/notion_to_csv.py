@@ -371,6 +371,38 @@ def build_totals(start: datetime.date, end: datetime.date, members: dict[str, di
     return tot
 
 
+HISTORY_WEEKS = 4  # 先週の売上を比べる、その前の週数
+
+
+def build_weekly_sales(last_monday: datetime.date, members: dict[str, dict]) -> list[dict]:
+    """先週と、その前のHISTORY_WEEKS週の週ごとの売上（実績DBの実質売上＝契約金額−キャンセル金額）。
+    kind=agency（代理店と"全社"）／person（週次の対象メンバー）。days＝その週に実績DBの行がある日数
+    （0の週は稼働前・未入力として平均から外す）。代理店の分け方はbuild_totalsと同じ。"""
+    start = last_monday - datetime.timedelta(weeks=HISTORY_WEEKS)
+    end = last_monday + datetime.timedelta(days=6)
+    weeks = [start + datetime.timedelta(weeks=i) for i in range(HISTORY_WEEKS + 1)]
+    perf = notion_query_all(PERFORMANCE_DB, {"and": [
+        {"property": "実績日", "date": {"on_or_after": start.isoformat()}},
+        {"property": "実績日", "date": {"on_or_before": end.isoformat()}},
+    ]})
+    agency_of = {n: m["agency"] for n, m in members.items()}
+    keys = [("agency", "全社")] + [("agency", a) for a in dict.fromkeys(agency_of.values())] + \
+           [("person", n) for n in members]
+    acc = {(k, w): [0.0, 0] for k in keys for w in weeks}
+    for r in perf:
+        d = datetime.date.fromisoformat(prop_date(r, "実績日")[:10])
+        w = d - datetime.timedelta(days=d.weekday())
+        name = prop_select(r, "メンバー")
+        agency = HIDDEN_BUCKET if name in WEEKLY_HIDDEN else (agency_of.get(name) or prop_formula_str(r, "所属"))
+        sales = prop_number(r, "契約金額（万円）") - prop_number(r, "キャンセル金額（万円）")
+        for k in (("agency", "全社"), ("agency", agency), ("person", name)):
+            if (k, w) in acc:
+                acc[(k, w)][0] += sales
+                acc[(k, w)][1] += 1
+    return [{"kind": k[0], "key": k[1], "week_start": w.isoformat(), "sales": round(v[0], 2), "days": v[1]}
+            for (k, w), v in acc.items()]
+
+
 def build_config(members: dict[str, dict], budget_by_name: dict[str, float], now: datetime.date,
                   week_start: datetime.date) -> dict[str, str]:
     """月の数字は「対象週の日曜が属する月の1日〜その日曜」で数える（週の数字と同じ締め日にそろえる）。"""
@@ -536,6 +568,7 @@ def main(out_dir: str) -> None:
     config["data_as_of"] = datetime.datetime.now(ZoneInfo("Asia/Tokyo")).strftime("%-m/%-d %H:%M")
     config["check_status"] = "一致" if problems == 0 else f"不一致{problems}件"
     pdca = build_pdca(members, last_monday)
+    weekly_sales = build_weekly_sales(last_monday, members)
 
     write_csv(os.path.join(out_dir, "members.csv"),
               [{k: v for k, v in m.items() if k != "pdca_pending_week"} for m in members.values()],
@@ -548,6 +581,7 @@ def main(out_dir: str) -> None:
     write_csv(os.path.join(out_dir, "totals.csv"),
               [{"agency": a, "visits": v[0], "appo": v[1], "meet": v[2], "win": v[3], "sales": v[4]} for a, v in totals.items()],
               ["agency", "visits", "appo", "meet", "win", "sales"])
+    write_csv(os.path.join(out_dir, "weekly_sales.csv"), weekly_sales, ["kind", "key", "week_start", "sales", "days"])
     write_csv(os.path.join(out_dir, "pdca.csv"),
               [{"name": name, **data} for name, data in pdca.items()],
               ["name", "action", "cause", "last_eval", "missing_reason", *PDCA_TARGET_PROPS])

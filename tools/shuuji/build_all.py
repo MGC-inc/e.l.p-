@@ -411,6 +411,14 @@ def load_all(inp, strict=False):
     if txt:
         cfg["totals"] = {r["agency"]: [float(r[k] or 0) for k in ("visits", "appo", "meet", "win", "sales")]
                          for r in csv.DictReader(io.StringIO(txt))}
+    txt = load(inp, "weekly_sales.csv", "")
+    if txt:  # 直近の週ごとの売上（古い週→先週）。{(kind, key): [(売上, 行のある日数), ...]}
+        hist = {}
+        for r in sorted(csv.DictReader(io.StringIO(txt)), key=lambda r: r["week_start"]):
+            hist.setdefault((r["kind"], r["key"]), []).append((float(r["sales"] or 0), int(r["days"] or 0)))
+            cfg.setdefault("history_weeks", [])
+            if r["week_start"] not in cfg["history_weeks"]: cfg["history_weeks"].append(r["week_start"])
+        cfg["weekly_sales"] = hist
     missing = [n for n in mem if n not in res]
     if missing: sys.exit(f"results にいない人: {missing}")
     return mem, res, cfg, pdca
