@@ -192,13 +192,17 @@ def team(pdf, agency, members, mem, res, cfg, all_tot, n):
 
 
 # ---------- 4. 全社ランキング（表彰台） ----------
+RANK_MIN_FACE = 20  # 対面→アポ率ランキングの対象（対面がこれ未満の人は率がぶれるので外す）
+
+
 def ranking_categories(mem, res):
     field = [n for n in res if mem[n].get("is_manager") != "yes"]
     appointers = [n for n in field if mem[n]["role"] == "appointer"]
     closers = [n for n in res if mem[n]["role"] == "closer"]
     return [
         ("アポ数", "件", [(n, res[n]["appo"]) for n in field]),
-        ("訪問→アポ率", "%", [(n, round(res[n]["appo"] / res[n]["visits"] * 100, 1)) for n in appointers if res[n]["visits"] >= 30]),
+        # 訪問→アポ率は数を追うほど下がるため、対面→アポ率で比べる（2026-10-21 週次MTの決定）
+        ("対面→アポ率", "%", [(n, round(res[n]["appo"] / res[n]["face"] * 100, 1)) for n in appointers if res[n]["face"] >= RANK_MIN_FACE]),
         ("契約数", "件", [(n, res[n]["win"]) for n in closers]),
         ("売上", "万円", [(n, round(res[n]["sales"], 1)) for n in res]),
     ]
@@ -237,7 +241,7 @@ def ranking(pdf, mem, res, agency, cfg, n):
     cats = ranking_categories(mem, res)
     for i, (t, u, rows) in enumerate(cats):
         podium(fig, 0.035 + (i % 2) * 0.47, 0.08 + (1 - i // 2) * 0.4, 0.455, 0.38, t, u, rows, mem, agency)
-    fig.text(0.035, 0.03, "訪問→アポ率は訪問30件以上のアポインターが対象　／　金色の代理店名＝自社のメンバー", fontsize=11, color=SUB)
+    fig.text(0.035, 0.03, f"対面→アポ率は対面{RANK_MIN_FACE}件以上のアポインターが対象　／　金色の代理店名＝自社のメンバー", fontsize=11, color=SUB)
     save(pdf, fig)
     return n + 1
 

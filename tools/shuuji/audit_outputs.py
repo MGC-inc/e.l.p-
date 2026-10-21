@@ -9,7 +9,7 @@ notion_to_csv.pyとは計算方法を変えてある（同じ書き間違いで�
   - 月の売上目標: 💰予算と達成率を読み直す
   - 先週の宿題: 📝週次PDCA記録DBを週初日の完全一致で読み直す
 照合する数字:
-  個人: 訪問・アポ・売上・日報の日数（実績DB）、商談・契約（商談一覧）
+  個人: 訪問・対面・アポ・売上・日報の日数（実績DB。対面はランキングの対面→アポ率に使う）、商談・契約（商談一覧）
   代理店: 代理店の合計の和＝全社の合計
   全社: 訪問・アポ・商談・契約・売上、月の契約・売上の実績と売上目標
   宿題: スライドに出す宿題の文が、正しい週の記録と同じか
@@ -82,10 +82,11 @@ def main() -> int:
         if prop_text(r, "出勤状況") != "休み":
             by[n]["visits"] += prop_num(r, "訪問数") or 0
             by[n]["appo"] += prop_num(r, "アポ数") or 0
+            by[n]["face"] += prop_num(r, "対面数") or 0
     wdeals = deals(ws, we)
     for name, res in results.items():
         role = members[name]["role"]
-        for k, lab in (("visits", "訪問"), ("appo", "アポ"), ("sales", "売上"), ("perf_days", "日報の日数")):
+        for k, lab in (("visits", "訪問"), ("face", "対面"), ("appo", "アポ"), ("sales", "売上"), ("perf_days", "日報の日数")):
             check(f"{name} {lab}", res[k], by[name][k])
         col = "クローザー" if role == "closer" else "アポインター"
         mine = [d for d in wdeals if prop_text(d, col) == name]
