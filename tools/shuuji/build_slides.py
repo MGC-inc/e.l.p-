@@ -113,16 +113,36 @@ def cover(pdf, agency, cfg, n):
 
 
 # ---------- 2. 宿題の答え合わせ ----------
+ROW_H, REVIEW_SPACE = 0.148, 0.74  # 答え合わせの1人分の最小の高さ／1ページに使える高さ（図の高さに対する割合）
+
+
+def action_block(text):
+    """先週の宿題は省略せず全文出す（今川さん指示 2026-10-21）。長い文は文字を小さくし、行の高さを伸ばす。
+    戻り値: (折り返した文, 文字サイズ, 行の高さ)"""
+    for fs, width, max_lines in ((12, 24, 3), (10.5, 27, 8), (9, 32, None)):
+        lines = textwrap.wrap(text.replace("\n", " "), width)
+        if max_lines is None or len(lines) <= max_lines:
+            break
+    rh = max(ROW_H, len(lines) * fs * 1.35 / 72 / H + 0.04)
+    return "\n".join(lines), fs, rh
+
+
 def review(pdf, members, mem, res, pdca, cfg, n):
-    pages = [members[i:i+5] for i in range(0, len(members), 5)] or [[]]
+    heights = {m: action_block(pdca[m]["action"])[2] if (pdca.get(m) or {}).get("action") else ROW_H for m in members}
+    pages, cur, used = [], [], 0.0
+    for m in members:  # 宿題が長い人の行を高くした分、1ページに入る人数を減らす
+        if cur and used + heights[m] > REVIEW_SPACE + 1e-9:
+            pages.append(cur); cur, used = [], 0.0
+        cur.append(m); used += heights[m]
+    pages = pages + [cur] if cur else (pages or [[]])
     for pi, chunk in enumerate(pages):
         fig = slide(pdf, "① 先週の宿題の答え合わせ", cfg["week"] + (f"　{pi+1}/{len(pages)}" if len(pages) > 1 else ""), n); n += 1
         top = 0.84
         fig.text(0.035, top, "名前", fontsize=12, color=SUB); fig.text(0.16, top, "先週決めた宿題", fontsize=12, color=SUB)
         fig.text(0.56, top, "宣言した数字 → 実績（緑＝達成）", fontsize=12, color=SUB); fig.text(0.905, top, "評価", fontsize=12, color=SUB)
-        rh = 0.148
-        for i, name in enumerate(chunk):
-            y = top - 0.03 - (i + 1) * rh
+        y = top - 0.03
+        for name in chunk:
+            rh = heights[name]; y -= rh
             card(fig, 0.03, y + 0.008, 0.94, rh - 0.016, BG)
             fig.text(0.04, y + rh / 2 + (0.015 if (pdca.get(name) or {}).get("last_eval") else 0), name,
                      fontsize=17, fontweight="bold", va="center", color=INK)
@@ -135,10 +155,11 @@ def review(pdf, members, mem, res, pdca, cfg, n):
                 fig.text(0.16, y + rh / 2, f"データがありません\n理由：{why}\n→ MTの最初に口頭で先週の宿題を確認", fontsize=11.5,
                          color=RED, va="center", linespacing=1.4)
             else:
-                fig.text(0.16, y + rh / 2, wrap(plan["action"], 24, 3), fontsize=12, va="center", color=INK, linespacing=1.35)
+                text, fs, _ = action_block(plan["action"])
+                fig.text(0.16, y + rh / 2, text, fontsize=fs, va="center", color=INK, linespacing=1.35)
                 for j, (lab, t, a, ok) in enumerate(target_check(mem[name]["role"], plan, res[name])):
                     x = 0.56 + j * 0.083
-                    card(fig, x, y + 0.03, 0.077, rh - 0.06, "#E3F2EA" if ok else "#FBE3E3")
+                    card(fig, x, y + rh / 2 - (ROW_H - 0.06) / 2, 0.077, ROW_H - 0.06, "#E3F2EA" if ok else "#FBE3E3")
                     fig.text(x + 0.0385, y + rh / 2 + 0.018, lab, fontsize=10, ha="center", color=SUB)
                     fig.text(x + 0.0385, y + rh / 2 - 0.022, f"{t}→{a}", fontsize=13, ha="center", fontweight="bold",
                              color=GREEN if ok else RED)
