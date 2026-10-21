@@ -8,9 +8,9 @@
 対象: 結果＝契約 かつ 完工日がある案件。完工日が今日より後のものは「見込」として分ける。
 
 料率（給与にあたる情報）はこのリポジトリに置かない。--rates で渡すJSON（リポジトリの外）から読む:
-  {"deduct": {"<お客様名>": {"amount": 120000, "note": "WS解約金"}},
-   "agency": {"<代理店>": {"appointer": 0.4, "closer": 0.5}},
-   "person": {"<名前>": {"appointer": 0.2, "closer": 0.2, "both": 0.2, "fixed": 300000, "fixed_from": "2026-06"}}}
+  {"deduct": {"<お客様名>": {"amount": 10000, "note": "解約金"}},
+   "agency": {"<代理店>": {"appointer": 0.3, "closer": 0.3}},
+   "person": {"<名前>": {"appointer": 0.1, "closer": 0.1, "both": 0.1, "fixed": 100000, "fixed_from": "2026-01"}}}
 料率が無い役割は「未設定」として、報酬を出さずに一覧する（推測で埋めない）。
 
 使い方: python3 tools/pl/build_pl.py --rates <rates.json> --out <出力.md> [--today YYYY-MM-DD]
