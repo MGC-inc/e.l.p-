@@ -52,18 +52,48 @@ RESULT_REJECTED = "審査落ち"
 YEN_PER_CONTRACT_MAN = 65
 
 
-# Notionのクエリは1回の読み取りで行が1件欠けることがある（作成から間もないページで、読むたびに
-# 欠ける行が変わる。2026-10-20に実データで確認：203行中202行しか返らない読み取りが10分以上続いた）。
-# 1回の結果を信用せず、READS回読んで、どれかの読み取りに出た行をすべて使う（行IDで重複を除く）
+# Notionのクエリは、同じ時刻にまとめて作った行のうち1件を返さないことがある（2026-10-20・21に実データで確認。
+# 例: 村田旭の10/14と10/17の行が、読むたびにどちらか一方だけ欠け、123行中122行しか返らない。並び順を
+# 指定しても直らず、行そのものはNotionに残っている）。その行のタイトルを同じ値で書き直すと、以後は毎回返る。
+# そこでREADS回読み、読み取りによって出たり出なかったりする行があれば、そのタイトルを書き直して読み直す。
 READS = 3
 
 
 def notion_query_all(data_source_id: str, filter_obj: dict | None = None) -> list[dict]:
-    rows: dict[str, dict] = {}
-    for _ in range(READS):
-        for r in _notion_query_once(data_source_id, filter_obj):
-            rows[r["id"]] = r
+    rows, flaky = _read_union(data_source_id, filter_obj)
+    if flaky:
+        print(f"[notion_to_csv] Notionの読み取りで出たり欠けたりする行が{len(flaky)}件 → タイトルを書き直して読み直す",
+              file=sys.stderr)
+        for pid in flaky:
+            _reindex_page(rows[pid])
+        rows, flaky = _read_union(data_source_id, filter_obj)
+        if flaky:
+            print(f"[notion_to_csv] 書き直し後も{len(flaky)}件が出たり欠けたりする（読めた分はすべて使う）", file=sys.stderr)
     return list(rows.values())
+
+
+def _read_union(data_source_id: str, filter_obj: dict | None) -> tuple[dict[str, dict], set[str]]:
+    """READS回読んだ和集合と、一部の読み取りにしか出なかった行IDを返す。"""
+    rows: dict[str, dict] = {}
+    seen: list[set[str]] = []
+    for _ in range(READS):
+        once = _notion_query_once(data_source_id, filter_obj)
+        seen.append({r["id"] for r in once})
+        for r in once:
+            rows[r["id"]] = r
+    return rows, set(rows) - set.intersection(*seen)
+
+
+def _reindex_page(page: dict) -> None:
+    """タイトルを同じ値で書き直す（値は変えない。Notion側の検索の索引を作り直させるため）。"""
+    name, prop = next((k, v) for k, v in page["properties"].items() if v["type"] == "title")
+    title = [{"text": {"content": t.get("plain_text", "")}} for t in prop["title"]]
+    req = urllib.request.Request(f"{NOTION_API}/pages/{page['id']}", method="PATCH",
+                                 data=json.dumps({"properties": {name: {"title": title}}}).encode(),
+                                 headers={"Authorization": f"Bearer {os.environ['NOTION_TOKEN']}",
+                                          "Notion-Version": NOTION_VERSION, "Content-Type": "application/json"})
+    with urllib.request.urlopen(req, timeout=30):
+        pass
 
 
 def _notion_query_once(data_source_id: str, filter_obj: dict | None = None) -> list[dict]:

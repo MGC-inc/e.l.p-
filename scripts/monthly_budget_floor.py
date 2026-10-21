@@ -73,11 +73,28 @@ READS = 3  # tools/shuuji/notion_to_csv.pyと同じ理由で、1回の読み取�
 
 
 def query_all(path: str, filter_obj: dict | None, version: str) -> list[dict]:
-    rows: dict[str, dict] = {}
-    for _ in range(READS):
-        for r in _query_once(path, filter_obj, version):
-            rows[r["id"]] = r
+    """READS回読んだ和集合を返す。読み取りによって出たり欠けたりする行があれば、タイトルを同じ値で
+    書き直して（Notion側の索引を作り直させて）読み直す（詳細はtools/shuuji/notion_to_csv.py）。"""
+    rows, flaky = _read_union(path, filter_obj, version)
+    if flaky:
+        print(f"[notion] 読み取りで出たり欠けたりする行が{len(flaky)}件 → タイトルを書き直して読み直す", file=sys.stderr)
+        for pid in flaky:
+            name, prop = next((k, v) for k, v in rows[pid]["properties"].items() if v["type"] == "title")
+            title = [{"text": {"content": t.get("plain_text", "")}} for t in prop["title"]]
+            notion("PATCH", f"/pages/{pid}", {"properties": {name: {"title": title}}}, version)
+        rows, _ = _read_union(path, filter_obj, version)
     return list(rows.values())
+
+
+def _read_union(path: str, filter_obj: dict | None, version: str) -> tuple[dict[str, dict], set[str]]:
+    rows: dict[str, dict] = {}
+    seen: list[set[str]] = []
+    for _ in range(READS):
+        once = _query_once(path, filter_obj, version)
+        seen.append({r["id"] for r in once})
+        for r in once:
+            rows[r["id"]] = r
+    return rows, set(rows) - set.intersection(*seen)
 
 
 def _query_once(path: str, filter_obj: dict | None, version: str) -> list[dict]:
