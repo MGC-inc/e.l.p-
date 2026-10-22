@@ -55,13 +55,18 @@ description: LINEで送られてきた商談録音（PLAUD NOTE等のMP3）をGe
 
    成功した行を `status='done'`, `notion_url=<作成したページURL>` に更新する（PostgRESTのPATCHで）。
 
-6. **クローザーごとに、分析結果とゴールマップをまとめて1通で送る**
+6. **受け取る人ごとに、分析結果とゴールマップをまとめて1通で送る**
 
-   送信数を増やさないため、クローザー1人につき**1回のpush呼び出し**（`messages`配列にテキスト＋画像をまとめる）で送る。`DEAL_LINE_CHANNEL_ACCESS_TOKEN` を使い、`https://api.line.me/v2/bot/message/push` にPOSTする（`scripts/line_richmenu.py` のurllib直叩きパターンを踏襲する）。
+   **誰が受け取るか（2026-10-22 ユーザー指示）**: 他のクローザーの録音を送る場合があるため、1件の商談の分析結果は次の**2人（同じ人なら1人）**に送る。
+   - **録音を送った人**: `deal_recordings.line_user_id`（Botの質問に答えた本人）
+   - **商談をしたクローザー**: `deal_recordings.closer_name`（Botの質問で答えたクローザー）と`closer_line_users.closer_name`が一致する行の`line_user_id`。一致する行が無い（LINE未登録）場合はスキップし、ステップ7の管理者通知に「〇〇さんはLINE未登録のため分析結果を送れませんでした」と添える
+   送る相手が送信者とクローザーで別の場合、テキストの1行目に補足を付ける: クローザー宛ては「（〇〇さんが送った録音）」、送信者宛ては「（クローザー: 〇〇さん）」。
+
+   送信数を増やさないため、受け取る人1人につき**1回のpush呼び出し**（`messages`配列にテキスト＋画像をまとめる）で送る。`DEAL_LINE_CHANNEL_ACCESS_TOKEN` を使い、`https://api.line.me/v2/bot/message/push` にPOSTする（`scripts/line_richmenu.py` のurllib直叩きパターンを踏襲する）。
 
    `closer_line_users` の全行についてループする（今回のバッチで分析対象がなかった人も含む）:
 
-   a. その人（`line_user_id`）に紐づく、今回の実行で新たにNotion登録した商談を集め、1件につき2行でテキストにする: 1行目は「お客様名（結果）採点＜100点満点の総合点のみ＞→Notionリンク」、2行目はステップ3のGemini出力（`content_markdown`）の■0内にある「断り文句：」の行をそのまま使う（例: 「断り文句：2回（最初は12:30ごろ・最も多い分類：価格）」。無ければ「断り文句：なし」）。断り文句ログの詳細（■11）はLINEには送らず、Notionリンクを開いて確認してもらう。0件なら送信自体をスキップする（分析対象がない人に毎日「対象はありません」と送るのは煩わしいため）。
+   a. その人が受け取る（上の「誰が受け取るか」で、送った人またはクローザーに当たる）、今回の実行で新たにNotion登録した商談を集め、1件につき2行でテキストにする: 1行目は「お客様名（結果）採点＜100点満点の総合点のみ＞→Notionリンク」、2行目はステップ3のGemini出力（`content_markdown`）の■0内にある「断り文句：」の行をそのまま使う（例: 「断り文句：2回（最初は12:30ごろ・最も多い分類：価格）」。無ければ「断り文句：なし」）。断り文句ログの詳細（■11）はLINEには送らず、Notionリンクを開いて確認してもらう。0件なら送信自体をスキップする（分析対象がない人に毎日「対象はありません」と送るのは煩わしいため）。
 
    b. `closer_line_users.goalmap_member_name` を使い、`tools/goalmap/members/<goalmap_member_name>.json` を読む。`phases`のうち`currentStage`が指す現在フェーズ名、達成率（全`tasks`の`done:true`の割合×100、`tools/goalmap/generate_goalmap.py`と同じ計算式）、現在フェーズの`due`が本日より前かつ未完了なら期限超過、を求める。コメントを1行組み立てる:
       - 通常: `現在フェーズ: ①<フェーズ名>（達成率<n>%）`
