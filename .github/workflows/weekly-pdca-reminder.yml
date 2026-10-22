@@ -3,7 +3,7 @@ name: weekly-pdca-reminder
 # 今週の宿題（週次PDCA）をBOTに送っていない人への催促（tools/shuuji/pdca_reminder.py）。
 # 誰に送るかはNotionの記録で判定する（LINEで送った人も、議事録から反映された人も「提出済み」）。
 # Claude／LLMを一切経由しない決定的コード。送るのは平日の日中だけ（月火は定休）。
-#   水 13:00 JST  stage 1   MTのあと（BOT送信の締切11:15・議事録の反映11:50のあと）
+#   水 14:30 JST  stage 1   MTのあと（BOT送信の締切11:15・議事録の反映11:50のあと）
 #   木 09:00 JST  stage 2   木曜は「アポ中心」の日。今日18時までに送ってもらう
 #   木 18:00 JST  report    まだ出していない人を、代理店ごとに今川さんだけに知らせる（本人には送らない）
 # 本人への催促は最大2回。それでも出ない人は、リーダー／今川さんが声をかける。
@@ -20,7 +20,7 @@ on:
         type: boolean
         default: true
   schedule:
-    - cron: "0 4 * * 3"   # 水曜 04:00 UTC = 水曜 13:00 JST  → stage 1
+    - cron: "30 5 * * 3"  # 水曜 05:30 UTC = 水曜 14:30 JST  → stage 1
     - cron: "0 0 * * 4"   # 木曜 00:00 UTC = 木曜 09:00 JST  → stage 2
     - cron: "0 9 * * 4"   # 木曜 09:00 UTC = 木曜 18:00 JST  → report
 
@@ -42,7 +42,7 @@ jobs:
         run: |
           if [ "${{ github.event_name }}" = "schedule" ]; then
             case "${{ github.event.schedule }}" in
-              "0 4 * * 3") STAGE=1 ;;
+              "30 5 * * 3") STAGE=1 ;;
               "0 0 * * 4") STAGE=2 ;;
               *) STAGE=report ;;
             esac

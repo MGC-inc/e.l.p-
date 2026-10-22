@@ -35,7 +35,7 @@ pdca.csvへ反映される
         ↓
 （3日後の土曜、まだpdca_pending_weekが残っている＝未回答の人だけに）
 pdca_reminder.py    (宿題の未提出者への催促LINE。判定はNotionの記録。.github/workflows/
-                    weekly-pdca-reminder.yml が水13:00・木9:00・木18:00(今川さんへの一覧) JSTに自動実行)
+                    weekly-pdca-reminder.yml が水14:30・木9:00・木18:00(今川さんへの一覧) JSTに自動実行)
 ```
 
 **2026-10追記: 未回答者リマインドを追加した経緯**: 実データで、配信は全員にHTTP 200で
@@ -103,7 +103,7 @@ python3 deliver.py /tmp/out "https://公開URL" --dry-run
 - `publish_supabase.py` — **新規実装**。生成したPDFをSupabase Storageに公開する
   （キット原案のVercelではなくSupabase Storageを使う理由は運用.md参照）
 - `pdca_reminder.py` — **新規実装**。週次PDCAに未回答のまま数日経った人へ記入テンプレの
-  催促を送る（`.github/workflows/weekly-pdca-reminder.yml`が水13:00・木9:00・木18:00 JSTに自動実行。誰に送るかは📝週次PDCA記録DBの記録で判定する。2026-10-22に、再配信で「未回答」の印が立ち直った提出済みの人にも送ってしまう問題が分かったため、Notion基準に変更）
+  催促を送る（`.github/workflows/weekly-pdca-reminder.yml`が水14:30・木9:00・木18:00 JSTに自動実行。誰に送るかは📝週次PDCA記録DBの記録で判定する。2026-10-22に、再配信で「未回答」の印が立ち直った提出済みの人にも送ってしまう問題が分かったため、Notion基準に変更）
 - `sample/` — キット付属のサンプルCSV（動作確認用。`pdca.csv`は無くてもエラーにならず
   「（記録なし）」表示になる）
 
