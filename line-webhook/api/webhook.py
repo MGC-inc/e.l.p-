@@ -74,6 +74,10 @@ CLOSER_RICHMENU_NAME = "営業分析BOT クローザー用"
 REPLY_COUNTS_TOWARD_QUOTA = os.environ.get("REPLY_COUNTS_TOWARD_QUOTA", "false").lower() == "true"
 JST = timezone(timedelta(hours=9))
 
+# 「分析する」を選んだあとの返信。「次回の分析対象です」だけだと、いつ返ってくるのか分からず催促されるため、
+# 結果がこのトークに届くこと・いつ頃かを伝える（日次の商談録音分析Routineは毎晩21時ごろ実行。時刻を変えたらここも直す）
+ANALYSIS_ACCEPTED_TEXT = ("受け付けました。分析は毎晩21時ごろにまとめて行い、結果はこのトークにお送りします。"
+                          "届くまで少しお待ちください。")
 RESULT_OPTIONS = ["契約", "保留", "失注", "クーリングオフ", "審査落ち", "キャンセル"]
 # correcting_* は「修正」フローの途中状態（CORRECTABLE_FIELDS参照）。
 # queued（複数録音が同時進行した際の待機中）はここに含めない
@@ -1398,7 +1402,7 @@ def handle_text_message(event: dict):
             sb("PATCH", f"deal_recordings?id=eq.{row_id}", {"status": "ready"})
             line_reply(reply_token, [{
                 "type": "text",
-                "text": labeled_text(row, f"受け付けました。{row.get('customer_name', '')}は次回の分析対象です。"),
+                "text": labeled_text(row, ANALYSIS_ACCEPTED_TEXT),
             }, *start_next_queued_recording(line_user_id)])
         elif text == "分析しない":
             sb("PATCH", f"deal_recordings?id=eq.{row_id}", {"status": "skipped"})
