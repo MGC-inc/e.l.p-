@@ -1144,6 +1144,111 @@ def build_progress_block(page: dict, role: str, gross_contracts: int, net_contra
 
 # ---- イベント処理 ---------------------------------------------------------
 
+# ---- 分析結果へのフィードバック（2026-10-22 ユーザー指示） ----
+# 分析結果のLINEに付く「フィードバック 〇〇邸」ボタン（または同じ文言の送信）で開始し、
+# 次に送った1通を、Notion「商談案件一覧」の該当ページ「フィードバック」列に追記する。
+# 状態は deal_recordings の status='awaiting_feedback' の行で持つ（storage_pathは'feedback'の目印）。
+# 日次Routine（商談録音分析スキル）が未報告分をまとめて今川さんに通知し、フィードバック報告済みを立てる。
+FEEDBACK_TRIGGER = "フィードバック"
+FEEDBACK_EXPIRE_MINUTES = 60
+FEEDBACK_ASK_TEXT = ("{customer}の分析結果へのご意見ですね。次のメッセージで、具体的に教えてください。\n\n"
+                     "・どの部分の評価か（採点／フェーズ別の★／断り文句／話者割合／次に試す一言 など）\n"
+                     "・どう的外れか、実際はどうだったか\n"
+                     "・意図してやったことがマイナス評価になっていれば、その狙いも")
+FEEDBACK_THANKS_TEXT = "ご意見ありがとうございます！いただいた内容は、今後の分析の改善に活かします。"
+
+
+def notion_page_id_of(url: str | None) -> str | None:
+    m = re.search(r"([0-9a-f]{32})(?:\?|$)", (url or "").replace("-", ""))
+    return m.group(1) if m else None
+
+
+def recent_analyzed_deals(closer: dict) -> list[dict]:
+    """その人が送った、またはクローザーとして関わった、分析済みの直近の商談（新しい順）。"""
+    name = closer.get("closer_name")
+    cond = f"line_user_id.eq.{closer['line_user_id']}"
+    if name:
+        cond += f",closer_name.eq.{urllib.parse.quote(name)}"
+    rows = sb("GET", f"deal_recordings?or=({cond})&status=eq.done&notion_url=not.is.null"
+                     "&order=received_at.desc&limit=30&select=id,customer_name,closer_name,notion_url,received_at") or []
+    seen, out = set(), []
+    for r in rows:  # 同じ商談の録音が複数あっても1件にまとめる
+        if r["customer_name"] in seen:
+            continue
+        seen.add(r["customer_name"])
+        out.append(r)
+    return out
+
+
+def notion_append_feedback(page_id: str, who: str, text: str) -> None:
+    if not NOTION_TOKEN:
+        raise RuntimeError("NOTION_TOKEN未設定")
+    headers = {"Authorization": f"Bearer {NOTION_TOKEN}", "Notion-Version": NOTION_VERSION_V2,
+               "Content-Type": "application/json"}
+    req = urllib.request.Request(f"https://api.notion.com/v1/pages/{page_id}", headers=headers)
+    with urllib.request.urlopen(req, timeout=20) as r:
+        page = json.loads(r.read())
+    old = "".join(t.get("plain_text", "") for t in page["properties"].get("フィードバック", {}).get("rich_text", []))
+    today = datetime.now(timezone(timedelta(hours=9))).strftime("%m/%d")
+    new = (old + "\n" if old else "") + f"【{who} {today}】{text}"
+    chunks = [{"text": {"content": new[i:i + 1900]}} for i in range(0, len(new), 1900)][:100]
+    body = json.dumps({"properties": {"フィードバック": {"rich_text": chunks},
+                                       "フィードバック報告済み": {"checkbox": False}}}).encode()
+    req = urllib.request.Request(f"https://api.notion.com/v1/pages/{page_id}", data=body, method="PATCH", headers=headers)
+    with urllib.request.urlopen(req, timeout=20):
+        pass
+
+
+def handle_feedback(event: dict, closer: dict) -> bool:
+    """フィードバックの開始・本文受け取りを処理する。処理したらTrue（他の分岐に回さない）。"""
+    line_user_id = event["source"]["userId"]
+    reply_token = event["replyToken"]
+    text = event["message"]["text"].strip()
+    if latest_pending_recording(line_user_id) is not None:
+        return False  # 録音の確認フロー中は、その回答を優先する
+
+    waiting = sb("GET", f"deal_recordings?line_user_id=eq.{line_user_id}&status=eq.awaiting_feedback"
+                        "&order=received_at.desc&limit=1&select=*") or []
+    if text.startswith(FEEDBACK_TRIGGER):
+        deals = recent_analyzed_deals(closer)
+        target = text[len(FEEDBACK_TRIGGER):].strip(" 　:：")
+        match = next((d for d in deals if target and d["customer_name"] == to_customer_label(target)), None)
+        if not match:
+            if not deals:
+                line_reply(reply_token, [{"type": "text", "text": "フィードバックの対象になる分析済みの商談が見つかりませんでした。"}])
+                return True
+            line_reply(reply_token, [{
+                "type": "text", "text": "どの商談の分析結果についてですか？ボタンから選んでください。",
+                "quickReply": quick_reply([f"{FEEDBACK_TRIGGER} {d['customer_name']}" for d in deals[:13]])}])
+            return True
+        for w in waiting:  # 前の待ち状態は閉じる
+            sb("PATCH", f"deal_recordings?id=eq.{w['id']}", {"status": "feedback_cancelled"})
+        sb("POST", "deal_recordings", {"line_user_id": line_user_id, "customer_name": match["customer_name"],
+                                      "closer_name": match.get("closer_name"), "notion_url": match["notion_url"],
+                                      "storage_path": "feedback", "status": "awaiting_feedback"})
+        line_reply(reply_token, [{"type": "text", "text": FEEDBACK_ASK_TEXT.format(customer=match["customer_name"])}])
+        return True
+
+    if not waiting:
+        return False
+    row = waiting[0]
+    received = datetime.fromisoformat(row["received_at"].replace("Z", "+00:00"))
+    if datetime.now(timezone.utc) - received > timedelta(minutes=FEEDBACK_EXPIRE_MINUTES):
+        sb("PATCH", f"deal_recordings?id=eq.{row['id']}", {"status": "feedback_expired"})
+        return False  # 時間が経ちすぎた待ち状態は、通常のメッセージとして扱う
+    page_id = notion_page_id_of(row.get("notion_url"))
+    try:
+        notion_append_feedback(page_id, closer.get("closer_name") or "不明", text)
+    except Exception as e:
+        print(f"feedback save error: {e}")
+        line_reply(reply_token, [{"type": "text", "text": "保存に失敗しました。お手数ですが、今川さんに一言伝えてください。"}])
+        return True
+    sb("PATCH", f"deal_recordings?id=eq.{row['id']}", {"status": "feedback_done"})
+    line_reply(reply_token, [{"type": "text", "text": FEEDBACK_THANKS_TEXT}])
+    return True
+
+
+
 def handle_audio_message(event: dict, closer: dict, extra_messages=None):
     message = event["message"]
     message_id = message["id"]
@@ -1684,6 +1789,8 @@ def handle_event(event: dict):
         handle_analysis_request(event, closer)
     elif message_type == "text" and event["message"]["text"] == STATUS_DEFINITION_TEXT:
         handle_status_definition_request(event, closer)
+    elif message_type == "text" and handle_feedback(event, closer):
+        pass  # 分析結果へのフィードバック（開始・本文）。処理済み
     elif (message_type == "text" and closer.get("pdca_pending_week")
           and latest_pending_recording(line_user_id) is None):
         # 週次PDCAテンプレの返信待ち中は、通常の録音受付フローより優先して処理する。
