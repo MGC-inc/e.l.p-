@@ -44,7 +44,7 @@ create table if not exists deal_recordings (
   result text,                     -- 契約/保留/失注/クーリングオフ/審査落ち/キャンセル
   storage_path text not null,      -- deal-recordings バケット内のパス
   status text not null default 'awaiting_appointer',
-  -- awaiting_appointer -> awaiting_customer -> awaiting_result -> awaiting_confirm -> ready/skipped -> done
+  -- awaiting_appointer -> awaiting_closer -> awaiting_customer -> awaiting_result -> awaiting_confirm -> ready/skipped -> done
   notion_url text,
   received_at timestamptz not null default now()
 );
