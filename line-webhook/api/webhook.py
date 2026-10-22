@@ -87,6 +87,19 @@ PENDING_STATUSES = ("awaiting_appointer,awaiting_customer,awaiting_result,awaiti
 # クイックリプライのボタンを並べる
 CORRECTABLE_FIELDS = {"アポインター": "appointer", "お客様名": "customer_name", "結果": "result"}
 CORRECTION_TRIGGER_TEXT = "修正"
+# 「編集」「やり直し」など、修正のつもりで送られる言葉も「修正」として扱う
+# （これらを質問への答え（アポインター名・お客様名）として保存してしまっていた。2026-10-22）
+CORRECTION_WORDS = {"修正", "編集", "訂正", "やり直し", "やりなおし", "やり直す", "間違えた", "まちがえた",
+                    "間違い", "取り消し", "取消", "取消し", "戻る", "戻して", "直して"}
+SELF_APPOINTER_LABEL = "自分で取った"   # 自己アポ（アポインター＝クローザー本人）
+EVENT_APPOINTER_LABEL = "催事"          # 名簿に人としては居ない催事枠
+OTHER_APPOINTER_LABEL = "その他の人"
+FIX_LABEL = "修正"
+# 質問への答えではない言葉（名前として保存しない）。ボタンの文言（前の質問のボタンを打ち直した場合など）も含める
+NOT_A_NAME_WORDS = CORRECTION_WORDS | {SELF_APPOINTER_LABEL, EVENT_APPOINTER_LABEL, OTHER_APPOINTER_LABEL, *RESULT_OPTIONS,"分析", "分析して", "分析する", "分析しない", "はい", "いいえ", "ok", "OK", "了解",
+                                      "分からない", "わからない", "分かりません", "わかりません", "なし", "不明"}
+SENTENCE_HINT = re.compile(r"(です|ます|ください|ですか|でした|ました|して|とは|フィードバック|アポインター|クローザー|"
+                           r"分析|確認|録音|修正|編集|[。、？?！!\n])")
 
 # クローザー（自分で商談録音をbotに送る役割）。LINEの表示名が一致すれば初回メッセージで
 # 自動的にクローザーとして認識される（今川さんの手動承認を待たずに録音を送れる）。
@@ -321,15 +334,16 @@ def labeled_text(row: dict, question: str) -> str:
 
 def prompt_messages_for_status(status: str, row: dict) -> list:
     if status == "awaiting_appointer":
-        return [{"type": "text", "text": labeled_text(row, "アポインターは誰ですか？（お名前を入力してください）")}]
+        return [appointer_question_message(row)]
     if status == "awaiting_customer":
-        return [{"type": "text", "text": labeled_text(row, "お客様の苗字を教えてください（例: 杉浦）")}]
+        return [{"type": "text", "text": labeled_text(row, "お客様の苗字を入力してください（例: 杉浦。「邸」は付けなくてOK）"),
+                 "quickReply": quick_reply([FIX_LABEL])}]
     if status == "awaiting_result":
         return [{"type": "text", "text": labeled_text(row, "商談の結果は？"),
-                 "quickReply": quick_reply(RESULT_OPTIONS)}]
+                 "quickReply": quick_reply(with_fix(RESULT_OPTIONS))}]
     if status == "awaiting_confirm":
         return [{"type": "text", "text": labeled_text(row, "この商談を分析しますか？"),
-                 "quickReply": quick_reply(["分析する", "分析しない"])}]
+                 "quickReply": quick_reply(with_fix(["分析する", "分析しない"]))}]
     return []
 
 
@@ -365,6 +379,107 @@ def match_known_name(text: str, *name_dicts: dict) -> str | None:
             return surname
 
     return None
+
+
+
+POLITE_TAIL = re.compile(r"(でした|ですね|です|だよ|さん|くん|君|ちゃん)$")
+
+
+def strip_polite(text: str) -> str:
+    """「巻田です」「巻田さん」→「巻田」。名前の答えに付く丁寧な語尾だけを外す（全部消えるなら外さない）。"""
+    t = _strip_spaces(text)
+    t2 = POLITE_TAIL.sub("", t)
+    return t2 or t
+
+
+def looks_like_person_name(text: str) -> bool:
+    """人の名前（苗字）らしいか。文章・質問・命令を名前として保存しないための判定。"""
+    t = _strip_spaces(text)
+    if not t or t in NOT_A_NAME_WORDS or SENTENCE_HINT.search(t):
+        return False
+    return re.fullmatch(r"[\u3040-\u30ff\u4e00-\u9fffA-Za-z]{1,6}", t) is not None
+
+
+def resolve_appointer(text: str, closer_name: str | None) -> tuple[str | None, str | None]:
+    """アポインターの答えを名前にする。(名前, 受け取れなかった理由)。理由があるときは何も保存しない。"""
+    t = _strip_spaces(text)
+    if t.endswith(("邸", "様")):  # 「岡野邸」のようにお客様名を答えてしまった（語尾を外す前に判定）
+        return None, "customer"
+    t = strip_polite(t)
+    text = t
+    if t == SELF_APPOINTER_LABEL and closer_name:
+        return closer_name, None
+    if t == EVENT_APPOINTER_LABEL:
+        return EVENT_APPOINTER_LABEL, None
+    if t == OTHER_APPOINTER_LABEL:
+        return None, "other"
+    known = match_known_name(text, KNOWN_CLOSERS, KNOWN_APPOINTERS)
+    if known and len(t) <= 8 and not SENTENCE_HINT.search(t) and t not in NOT_A_NAME_WORDS:
+        return known, None
+    if looks_like_person_name(text):  # 名簿に無い新しい人でも、名前らしければ受け取る（下で必ずオウム返しする）
+        return t, None
+    return None, "sentence"
+
+
+def check_customer_answer(text: str) -> str | None:
+    """お客様の苗字として受け取れない理由（受け取れるときはNone）。"""
+    t = strip_polite(text)
+    if not t or t in NOT_A_NAME_WORDS or SENTENCE_HINT.search(t) or len(t) > 12:
+        return "sentence"
+    return None
+
+
+def appointer_buttons(closer_name: str | None) -> list[str]:
+    """アポインターの質問に出すボタン。「自分で取った」＋このクローザーが最近答えた人＋催事＋その他。
+    名前を打たせずに選べるようにして、文章や別の項目を入れてしまう間違いを減らす（LINEのボタンは最大13個）。"""
+    from collections import Counter
+    valid = set(KNOWN_CLOSERS.values()) | set(KNOWN_APPOINTERS.values())
+    counts: Counter = Counter()
+    try:
+        who = f"closer_name=eq.{urllib.parse.quote(closer_name)}&" if closer_name else ""
+        for r in sb("GET", f"deal_recordings?{who}appointer=not.is.null&select=appointer&order=received_at.desc&limit=80") or []:
+            a = r.get("appointer")
+            if a in valid and a != closer_name:
+                counts[a] += 1
+    except Exception as e:  # ボタンが作れなくても質問自体は出す
+        print(f"appointer_buttons error: {e}")
+    names = [n for n, _ in counts.most_common(9)]
+    return [SELF_APPOINTER_LABEL, *names, EVENT_APPOINTER_LABEL, OTHER_APPOINTER_LABEL][:13]
+
+
+APPOINTER_QUESTION = ("アポインター（アポを取った人）は誰ですか？\n下のボタンから選んでください。"
+                      "自分で取ったアポなら「{self}」を押してください。")
+
+
+def appointer_question_message(row: dict, prefix: str = "") -> dict:
+    return {"type": "text",
+            "text": labeled_text(row, prefix + APPOINTER_QUESTION.format(self=SELF_APPOINTER_LABEL)),
+            "quickReply": quick_reply(appointer_buttons(row.get("closer_name")))}
+
+
+def with_fix(labels: list) -> list:
+    """各ステップのボタンに「修正」を足す（間違えたとき、文字を打たずに直せるように）。"""
+    return [*labels, FIX_LABEL] if FIX_LABEL not in labels else labels
+
+
+def reject_message(row: dict, what: str, reason: str, text: str) -> list:
+    """質問の答えとして受け取れなかったときの返事。何も保存していないことを必ず伝える。"""
+    shown = text.strip().replace("\n", " ")[:20]
+    if what == "appointer":
+        if reason == "other":
+            body = "アポインターの苗字だけを入力してください（例: 巻田）。"
+        elif reason == "customer":
+            body = (f"「{shown}」はお客様のお名前のようです。ここで聞いているのはアポインター（アポを取った人）です。\n"
+                    "ボタンから選ぶか、人の苗字だけを入力してください。\n（今回の入力は保存していません）")
+        else:
+            body = (f"「{shown}」はアポインターの名前として受け取れませんでした（今回の入力は保存していません）。\n"
+                    "ボタンから選ぶか、人の苗字だけを入力してください。")
+        return [{"type": "text", "text": labeled_text(row, body),
+                 "quickReply": quick_reply(appointer_buttons(row.get("closer_name")))}]
+    body = (f"「{shown}」はお客様の苗字として受け取れませんでした（今回の入力は保存していません）。\n"
+            "お客様の苗字だけを入力してください（例: 杉浦。「邸」は付けなくてOKです）。\n"
+            "前の答えを直したいときは、下の「修正」を押してください。")
+    return [{"type": "text", "text": labeled_text(row, body), "quickReply": quick_reply([FIX_LABEL])}]
 
 
 def to_customer_label(text: str) -> str:
@@ -1015,10 +1130,9 @@ def handle_audio_message(event: dict, closer: dict, extra_messages=None):
         "received_at": now.isoformat(),
     }])
 
-    line_reply(reply_token, [*(extra_messages or []), {
-        "type": "text",
-        "text": f"【{label}】を受け取りました。アポインターは誰ですか？（お名前を入力してください）",
-    }])
+    line_reply(reply_token, [*(extra_messages or []),
+                             appointer_question_message({**new_row, "closer_name": closer.get("closer_name")},
+                                                        prefix="録音を受け取りました。\n")])
 
 
 def start_next_queued_recording(line_user_id: str) -> list:
@@ -1028,11 +1142,7 @@ def start_next_queued_recording(line_user_id: str) -> list:
     if not nxt:
         return []
     sb("PATCH", f"deal_recordings?id=eq.{nxt['id']}", {"status": "awaiting_appointer"})
-    return [{
-        "type": "text",
-        "text": f"続いて【{recording_label(nxt)}】について確認します。"
-                f"アポインターは誰ですか？（お名前を入力してください）",
-    }]
+    return [appointer_question_message(nxt, prefix="続いてこの録音について確認します。\n")]
 
 
 def handle_text_message(event: dict):
@@ -1051,15 +1161,24 @@ def handle_text_message(event: dict):
     # あとから言い直したい場合、自由記入の内容からの推測ではなく、必ずこの
     # コマンド経由で修正先の項目を選んでもらう（確実にどの項目の訂正かを
     # 取り違えないようにするため。自由記入だけで判定すると誤爆の恐れがある） ----
-    if text == CORRECTION_TRIGGER_TEXT and not status.startswith("correcting"):
+    if text in CORRECTION_WORDS and not status.startswith("correcting"):
         filled_labels = [label for label, col in CORRECTABLE_FIELDS.items() if row.get(col)]
-        if not filled_labels:
-            return  # まだ何も確定していない（アポインター回答前）ので修正対象なし
+        if not filled_labels:  # まだ何も確定していない（アポインター回答前）。何も保存せず、質問をもう一度出す
+            line_reply(reply_token, [{"type": "text", "text": labeled_text(row, "まだ何も入力されていないので、直すものはありません。")},
+                                     appointer_question_message(row)])
+            return
         sb("PATCH", f"deal_recordings?id=eq.{row_id}", {"status": "correcting_choose_field"})
         line_reply(reply_token, [{
             "type": "text", "text": labeled_text(row, "どの項目を修正しますか？"),
             "quickReply": quick_reply(filled_labels),
         }])
+        return
+
+    if text in CORRECTION_WORDS and status.startswith("correcting") and status != "correcting_choose_field":
+        filled_labels = [label for label, col in CORRECTABLE_FIELDS.items() if row.get(col)]
+        sb("PATCH", f"deal_recordings?id=eq.{row_id}", {"status": "correcting_choose_field"})
+        line_reply(reply_token, [{"type": "text", "text": labeled_text(row, "どの項目を修正しますか？"),
+                                  "quickReply": quick_reply(filled_labels)}])
         return
 
     if status == "correcting_choose_field":
@@ -1083,13 +1202,17 @@ def handle_text_message(event: dict):
                 "quickReply": quick_reply(RESULT_OPTIONS),
             }])
         elif next_status == "correcting_appointer":
-            line_reply(reply_token, [{"type": "text", "text": labeled_text(row, "新しいアポインター名を入力してください。")}])
+            line_reply(reply_token, [{"type": "text", "text": labeled_text(row, "正しいアポインターを選んでください（下のボタンか、苗字を入力）。"),
+                                      "quickReply": quick_reply(appointer_buttons(row.get("closer_name")))}])
         else:
             line_reply(reply_token, [{"type": "text", "text": labeled_text(row, "新しいお客様の苗字を入力してください（例: 杉浦）")}])
         return
 
     if status == "correcting_appointer":
-        appointer_name = match_known_name(text, KNOWN_CLOSERS, KNOWN_APPOINTERS) or text.strip()
+        appointer_name, why = resolve_appointer(text, row.get("closer_name"))
+        if why:
+            line_reply(reply_token, reject_message(row, "appointer", why, text))
+            return
         updated_row = {**row, "appointer": appointer_name}
         new_status = resume_status(updated_row)
         sb("PATCH", f"deal_recordings?id=eq.{row_id}", {"appointer": appointer_name, "status": new_status})
@@ -1100,7 +1223,10 @@ def handle_text_message(event: dict):
         return
 
     if status == "correcting_customer":
-        customer_name = to_customer_label(text)
+        if check_customer_answer(text):
+            line_reply(reply_token, reject_message(row, "customer", "sentence", text))
+            return
+        customer_name = to_customer_label(strip_polite(text) if not text.strip().endswith("様") else text)
         updated_row = {**row, "customer_name": customer_name}
         new_status = resume_status(updated_row)
         sb("PATCH", f"deal_recordings?id=eq.{row_id}", {"customer_name": customer_name, "status": new_status})
@@ -1134,32 +1260,40 @@ def handle_text_message(event: dict):
     if status == "awaiting_appointer":
         # フルネーム（スペースあり/なし）で返信されても、既知のクローザー・
         # アポインター名簿から苗字を特定して保存する（一致しなければ元のテキストのまま）
-        appointer_name = match_known_name(text, KNOWN_CLOSERS, KNOWN_APPOINTERS) or text.strip()
+        appointer_name, why = resolve_appointer(text, row.get("closer_name"))
+        if why:  # 文章・質問・お客様名などは保存せず、聞き直す
+            line_reply(reply_token, reject_message(row, "appointer", why, text))
+            return
         updated_row = {**row, "appointer": appointer_name}
         sb("PATCH", f"deal_recordings?id=eq.{row_id}",
            {"appointer": appointer_name, "status": "awaiting_customer"})
+        shown = f"{appointer_name}（自分で取ったアポ）" if appointer_name == row.get("closer_name") else appointer_name
         line_reply(reply_token, [{
             "type": "text",
             "text": labeled_text(updated_row,
-                                  f"アポインター: {appointer_name} で承知しました。\n\nお客様の苗字を教えてください（例: 杉浦）"),
+                                  f"アポインター: {shown} で承知しました。\n\nお客様の苗字を入力してください（例: 杉浦。「邸」は付けなくてOK）"),
+            "quickReply": quick_reply([FIX_LABEL]),
         }])
 
     elif status == "awaiting_customer":
-        customer_name = to_customer_label(text)
+        if check_customer_answer(text):  # 文章・質問などはお客様名として保存しない
+            line_reply(reply_token, reject_message(row, "customer", "sentence", text))
+            return
+        customer_name = to_customer_label(strip_polite(text) if not text.strip().endswith("様") else text)
         updated_row = {**row, "customer_name": customer_name}
         sb("PATCH", f"deal_recordings?id=eq.{row_id}",
            {"customer_name": customer_name, "status": "awaiting_result"})
         line_reply(reply_token, [{
             "type": "text",
             "text": labeled_text(updated_row, f"お客様名: {customer_name} で承知しました。\n\n商談の結果は？"),
-            "quickReply": quick_reply(RESULT_OPTIONS),
+            "quickReply": quick_reply(with_fix(RESULT_OPTIONS)),
         }])
 
     elif status == "awaiting_result":
         if text not in RESULT_OPTIONS:
             line_reply(reply_token, [{
                 "type": "text", "text": labeled_text(row, "ボタンから選んでください。"),
-                "quickReply": quick_reply(RESULT_OPTIONS),
+                "quickReply": quick_reply(with_fix(RESULT_OPTIONS)),
             }])
             return
         sb("PATCH", f"deal_recordings?id=eq.{row_id}",
@@ -1167,7 +1301,7 @@ def handle_text_message(event: dict):
         line_reply(reply_token, [{
             "type": "text",
             "text": labeled_text(row, f"結果: {text} で承知しました。\n\nこの商談を分析しますか？"),
-            "quickReply": quick_reply(["分析する", "分析しない"]),
+            "quickReply": quick_reply(with_fix(["分析する", "分析しない"])),
         }])
 
     elif status == "awaiting_confirm":
@@ -1185,7 +1319,7 @@ def handle_text_message(event: dict):
         else:
             line_reply(reply_token, [{
                 "type": "text", "text": labeled_text(row, "ボタンから選んでください。"),
-                "quickReply": quick_reply(["分析する", "分析しない"]),
+                "quickReply": quick_reply(with_fix(["分析する", "分析しない"])),
             }])
 
 
