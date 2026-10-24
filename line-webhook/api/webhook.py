@@ -1263,6 +1263,103 @@ def handle_declaration(event: dict, closer: dict):
 
 
 
+# ---- 毎朝カードからの「今月の進み具合を見る」と「目標を上げる」（scripts/daily_mission.py） ----
+KPI_MONTH_TEXT = "今月の進み具合を見る"
+TARGET_TRIGGER = "目標を上げる"
+TARGET_EXPIRE_MINUTES = 60
+
+
+def handle_kpi_month_request(event: dict, closer: dict):
+    """朝のカードの「今月の進み具合を見る」。朝は今日の日報が無く単日KPIが空になるため、
+    前日までの累計が入る月間ビューと、直近4週の推移ビューを返す。"""
+    member_name = closer.get("closer_name")
+    if not member_name:
+        line_reply(event["replyToken"], [{"type": "text", "text": "お名前が未登録のため表示できません。"}])
+        return
+    token = make_kpi_token(member_name)
+    base = f"{KPI_BASE_URL}/api/kpi?token={token}"
+    line_reply(event["replyToken"], [{"type": "text", "text": (
+        f"📊 {member_name}さんの今月の進み具合（48時間有効なリンクです）\n"
+        f"・今月の累計（前日まで）\n{base}&view=month\n"
+        f"・直近4週の推移\n{base}&view=trend")}])
+
+
+def notion_set_declared_target(member_name: str, value: int, month: str) -> None:
+    page = notion_query_member(member_name)
+    if page is None:
+        raise RuntimeError("KPIデータの行が見つかりません")
+    body = json.dumps({"properties": {"宣言アポ目標": {"number": value},
+                                       "宣言月": {"rich_text": [{"text": {"content": month}}]}}}).encode()
+    req = urllib.request.Request(f"https://api.notion.com/v1/pages/{page['id']}", data=body, method="PATCH",
+                                 headers={"Authorization": f"Bearer {NOTION_TOKEN}", "Notion-Version": NOTION_VERSION,
+                                          "Content-Type": "application/json"})
+    with urllib.request.urlopen(req, timeout=20):
+        pass
+
+
+def handle_target(event: dict, closer: dict) -> bool:
+    """今月のアポ目標を、本人が宣言し直す。処理したらTrue。
+    状態は deal_recordings の status='awaiting_target' の行で持つ（storage_pathは'target'の目印）。"""
+    line_user_id = event["source"]["userId"]
+    reply_token = event["replyToken"]
+    text = event["message"]["text"].strip()
+    if latest_pending_recording(line_user_id) is not None:
+        return False
+    name = closer.get("closer_name") or ""
+    now = datetime.now(JST)
+    waiting = sb("GET", f"deal_recordings?line_user_id=eq.{line_user_id}&status=eq.awaiting_target"
+                        "&order=received_at.desc&limit=1&select=*") or []
+
+    if text == TARGET_TRIGGER:
+        for w in waiting:
+            sb("PATCH", f"deal_recordings?id=eq.{w['id']}", {"status": "target_cancelled"})
+        try:
+            page = notion_query_member(name)
+        except Exception:
+            page = None
+        cur = int(raw_number(page, "今月アポ目標概算") or 0) if page else 0
+        done = int(raw_number(page, "今月アポ実績") or 0) if page else 0
+        ideas = sorted({max(cur + 1, done + 2), max(cur + 2, round(done * 1.2) + 1), max(cur + 3, round(done * 1.5) + 1)})
+        sb("POST", "deal_recordings", {"line_user_id": line_user_id, "storage_path": "target", "status": "awaiting_target",
+                                      "customer_name": str(cur)})
+        line_reply(reply_token, [{"type": "text",
+            "text": (f"{name}さん、いいですね。今月のアポ目標は今{cur}件、ここまで{done}件。\n"
+                     "いくつを目指しますか？数字だけ送ってください（下のボタンでも選べます）。\n"
+                     "宣言した数字が、明日の朝からのカードの目標になります。"),
+            "quickReply": quick_reply([f"{n}件" for n in ideas][:13])}])
+        return True
+
+    if not waiting:
+        return False
+    row = waiting[0]
+    received = datetime.fromisoformat(row["received_at"].replace("Z", "+00:00"))
+    if datetime.now(timezone.utc) - received > timedelta(minutes=TARGET_EXPIRE_MINUTES):
+        sb("PATCH", f"deal_recordings?id=eq.{row['id']}", {"status": "target_expired"})
+        return False
+    m = re.fullmatch(r"\s*(\d{1,3})\s*件?\s*", text.translate(str.maketrans("０１２３４５６７８９", "0123456789")))
+    if not m:
+        if len(text) > 12:
+            return False  # 長い文章は別の用件（日報・フィードバック等）なので横取りしない
+        line_reply(reply_token, [{"type": "text", "text": "数字だけ送ってください（例: 30）。やめるときは何も送らなくて大丈夫です。"}])
+        return True
+    value, cur = int(m.group(1)), int(row.get("customer_name") or 0)
+    if value <= cur:
+        line_reply(reply_token, [{"type": "text", "text": f"今の目標は{cur}件です。それより大きい数字を送ってください。"}])
+        return True
+    try:
+        notion_set_declared_target(name, value, now.strftime("%Y-%m"))
+    except Exception as e:
+        print(f"declared target save error: {e}")
+        line_reply(reply_token, [{"type": "text", "text": "保存に失敗しました。お手数ですが、今川さんに一言伝えてください。"}])
+        return True
+    sb("PATCH", f"deal_recordings?id=eq.{row['id']}", {"status": "target_done"})
+    line_reply(reply_token, [{"type": "text", "text": (
+        f"宣言、受け取りました。今月のアポ目標は{value}件です。🔥\n"
+        "自分で決めた数字。みんなで見てるので、一緒に超えにいきましょう。\n明日の朝のカードから、この数字で出します。")}])
+    return True
+
+
+
 def handle_audio_message(event: dict, closer: dict, extra_messages=None):
     message = event["message"]
     message_id = message["id"]
@@ -1805,6 +1902,10 @@ def handle_event(event: dict):
         handle_status_definition_request(event, closer)
     elif message_type == "text" and event["message"]["text"].strip() == DECLARE_TEXT:
         handle_declaration(event, closer)
+    elif message_type == "text" and event["message"]["text"].strip() == KPI_MONTH_TEXT:
+        handle_kpi_month_request(event, closer)
+    elif message_type == "text" and handle_target(event, closer):
+        pass  # 今月のアポ目標の宣言（開始・数字）。処理済み
     elif message_type == "text" and handle_feedback(event, closer):
         pass  # 分析結果へのフィードバック（開始・本文）。処理済み
     elif (message_type == "text" and closer.get("pdca_pending_week")
