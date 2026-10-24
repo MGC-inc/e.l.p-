@@ -717,15 +717,20 @@ def main() -> int:
     by_day, team_sales = perf_by_member_day(_perf_rows(days[0], today - dt.timedelta(days=1)))  # 今日の分は朝時点でまだ無い
     budgets, team_budget = month_budgets(month)
     team = {"budget": team_budget, "sales": team_sales}
-    bad = audit(by_day, team_sales, today, month)
+    stage, bad = "再計算（実績DBを別の読み方で読み直した結果）", audit(by_day, team_sales, today, month)
     if not bad and not args.skip_verify:  # 商談一覧（商談1件ずつの記録）と実績DBが人別に一致するか（週次MT資料と同じ確認）
         sys.path.insert(0, os.path.join(HERE, "..", "tools", "shuuji"))
         import verify_numbers  # noqa: E402
-        bad = verify_numbers.compare(days[0], today)
+        stage, bad = "商談一覧と実績DBの突き合わせ", verify_numbers.compare(days[0], today)
     if bad:
-        print("【数字の再計算が合いません。配信を止めます】\n" + "\n".join(bad))
+        # 数字が合わないときは配信しない。原因を今川さんに知らせ、指示をもらってから直して、配信し直す
+        report = (f"⚠ 今日の任された数字カードの配信を止めました（{today.month}/{today.day}）\n"
+                  f"【どこで合わなかったか】{stage}\n【ずれの内容】\n" + "\n".join(bad)[:3200] +
+                  "\n\n【今の状態】誰にも送っていません。\n【お願い】原因を見て、どう直すか（Notionのどの行を直すか／このまま送るか）を指示してください。"
+                  "直したあと、私が配信し直します（GitHub Actionsの「daily-mission」を手動実行でも再配信できます）。")
+        print(report)
         if admin and not args.dry_run:
-            line_push(admin, [{"type": "text", "text": "⚠ 今日の任された数字カードの配信を止めました（再計算が合いません）\n" + "\n".join(bad)[:4000]}])
+            line_push(admin, [{"type": "text", "text": report}])
         return 1
     print(f"確認OK（再計算・商談一覧との突き合わせ）: 全社売上 {team_sales:,.1f}万 / 全社予算 {team_budget:,.1f}万 / 実績のあるメンバー{len(by_day)}名")
 
