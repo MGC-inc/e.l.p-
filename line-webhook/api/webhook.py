@@ -1249,6 +1249,20 @@ def handle_feedback(event: dict, closer: dict) -> bool:
 
 
 
+# ---- 毎朝の「今日の任された数字」カード（scripts/daily_mission.py）の「今日やる！」ボタン ----
+# 宣言すると守りたくなる（一貫性）。返信だけで記録はしない（Reply APIは配信数に数えない）
+DECLARE_TEXT = "今日やる！"
+
+
+def handle_declaration(event: dict, closer: dict):
+    name = closer.get("closer_name") or ""
+    line_reply(event["replyToken"], [{"type": "text", "text": (
+        f"{name}さん、宣言を受け取りました。🔥\n"
+        "今日の数字は、あなたが任された数字です。最初の1件を、午前中に。\n"
+        "終わったら、日報でその数字を報告してください。待っています。")}])
+
+
+
 def handle_audio_message(event: dict, closer: dict, extra_messages=None):
     message = event["message"]
     message_id = message["id"]
@@ -1789,6 +1803,8 @@ def handle_event(event: dict):
         handle_analysis_request(event, closer)
     elif message_type == "text" and event["message"]["text"] == STATUS_DEFINITION_TEXT:
         handle_status_definition_request(event, closer)
+    elif message_type == "text" and event["message"]["text"].strip() == DECLARE_TEXT:
+        handle_declaration(event, closer)
     elif message_type == "text" and handle_feedback(event, closer):
         pass  # 分析結果へのフィードバック（開始・本文）。処理済み
     elif (message_type == "text" and closer.get("pdca_pending_week")

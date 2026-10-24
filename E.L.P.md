@@ -26,6 +26,7 @@
 | 商談録音の分析・営業PDCAの回し方を知りたい | [商談分析運用.md](./商談分析運用.md)（個別分析はNotion「DB 商談分析＆アポ分析」、週次レビューは [商談分析/](./商談分析/)） |
 | 週次MT用PDF（代理店別配信・全社MT用）の集計・判定ロジックを知りたい | [tools/shuuji/README.md](./tools/shuuji/README.md)（商談分析運用.mdに全体設計、Notionエージェント版`/shuuji`は2026-09-29廃止） |
 | 月次の粗利・報酬（PL）を作り直したい（管理者のみ） | [tools/pl/build_pl.py](./tools/pl/build_pl.py)（冒頭の説明を参照。料率は給与にあたるためリポジトリに置かず、`--rates`のJSONで渡す。出力は管理者だけが見られるNotionページに貼り、リポジトリには置かない） |
+| 毎朝の「今日の任された数字」カード（稼働日にLINEで各メンバーへ送る）を変えたい・確認したい | [scripts/daily_mission.py](./scripts/daily_mission.py)（冒頭の説明を参照）と [.github/workflows/daily-mission.yml](./.github/workflows/daily-mission.yml)。設計の考え方は [商談分析運用.md](./商談分析運用.md) の「毎朝の任された数字カード」 |
 | 顧客が誰で、どんな取引状況か知りたい | [顧客一覧.md](./顧客一覧.md) |
 | 未完了タスクを横断で確認したい | [タスク.md](./タスク.md) |
 | 業務の標準手順・品質基準を知りたい | [マニュアル/](./マニュアル/) |

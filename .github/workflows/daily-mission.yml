@@ -1,0 +1,49 @@
+name: daily-mission
+
+# 毎朝（稼働日）の「今日の任された数字」カードを各メンバーにLINEで送る（scripts/daily_mission.py）。
+# 稼働日＝水〜日と祝日の月火。定休の月火はスクリプトが自分で判断して何も送らずに終わる。
+# Claude／LLMを一切経由しない決定的コード。
+#   毎日 22:45 UTC = 翌朝 07:45 JST（GitHub Actionsの定刻起動は数分〜十数分遅れることがある）
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "true=送信せずカード画像と内容だけ作る"
+        type: boolean
+        default: true
+      only:
+        description: "この人だけに送る（例: 今川）。空なら全員"
+        type: string
+        default: ""
+      force:
+        description: "true=定休日でも送る（テスト用）"
+        type: boolean
+        default: false
+  schedule:
+    - cron: "45 22 * * *"
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install matplotlib jpholiday
+      - run: sudo apt-get update && sudo apt-get install -y fonts-ipafont-gothic
+
+      - name: 今日の任された数字カードを配信
+        env:
+          DEAL_LINE_CHANNEL_ACCESS_TOKEN: ${{ secrets.DEAL_LINE_CHANNEL_ACCESS_TOKEN }}
+          IMAGAWA_LINE_USER_ID: ${{ secrets.IMAGAWA_LINE_USER_ID }}
+          ELP_SUPABASE_URL: ${{ secrets.ELP_SUPABASE_URL }}
+          ELP_SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.ELP_SUPABASE_SERVICE_ROLE_KEY }}
+          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+        run: |
+          ARGS=""
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            [ "${{ inputs.dry_run }}" = "true" ] && ARGS="$ARGS --dry-run"
+            [ "${{ inputs.force }}" = "true" ] && ARGS="$ARGS --force"
+            [ -n "${{ inputs.only }}" ] && ARGS="$ARGS --only ${{ inputs.only }}"
+          fi
+          python3 scripts/daily_mission.py --out /tmp/daily_mission $ARGS
