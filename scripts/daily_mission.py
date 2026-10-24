@@ -410,11 +410,12 @@ def _finish(fig, ax, Hu: float, bottom: float, path: str) -> int:
 
 
 def _header(ax, box, Hu, m, today, sub):
-    box(0, Hu - 17, 100, 17, NAVY, r=0)
-    ax.text(5, Hu - 6, f"{m['name']}さん", color="white", fontsize=30, fontweight="bold", va="center")
-    ax.text(95, Hu - 6, f"{today.month}/{today.day}（{WD[today.weekday()]}）", color="#C9D6E8", fontsize=22, ha="right", va="center")
-    ax.text(5, Hu - 13.5, sub, color=GOLD, fontsize=21, fontweight="bold", va="center")
-    return Hu - 20
+    box(0, Hu - 21, 100, 21, NAVY, r=0)
+    ax.text(5, Hu - 2.6, "日本一の営業マンになるための現在地", color="#9FB3CF", fontsize=13, va="center")
+    ax.text(5, Hu - 9, f"{m['name']}さん", color="white", fontsize=30, fontweight="bold", va="center")
+    ax.text(95, Hu - 9, f"{today.month}/{today.day}（{WD[today.weekday()]}）", color="#C9D6E8", fontsize=22, ha="right", va="center")
+    ax.text(5, Hu - 16.5, sub, color=GOLD, fontsize=21, fontweight="bold", va="center")
+    return Hu - 24
 
 
 def render_card1(m: dict, today: dt.date, path: str) -> int:
