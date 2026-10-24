@@ -1,0 +1,54 @@
+name: weekly-pdca-reminder
+
+# 今週の宿題（週次PDCA）をBOTに送っていない人への催促（tools/shuuji/pdca_reminder.py）。
+# 誰に送るかはNotionの記録で判定する（LINEで送った人も、議事録から反映された人も「提出済み」）。
+# Claude／LLMを一切経由しない決定的コード。送るのは平日の日中だけ（月火は定休）。
+#   水 14:30 JST  stage 1   MTのあと（BOT送信の締切11:15・議事録の反映11:50のあと）
+#   木 09:00 JST  stage 2   木曜は「アポ中心」の日。今日18時までに送ってもらう
+#   木 18:00 JST  report    まだ出していない人を、代理店ごとに今川さんだけに知らせる（本人には送らない）
+# 本人への催促は最大2回。それでも出ない人は、リーダー／今川さんが声をかける。
+on:
+  workflow_dispatch:
+    inputs:
+      stage:
+        description: "1=水の催促 / 2=木の催促 / report=今川さんへの未提出一覧"
+        type: choice
+        options: ["1", "2", "report"]
+        default: "2"
+      dry_run:
+        description: "true=送信せず対象者だけ表示"
+        type: boolean
+        default: true
+  schedule:
+    - cron: "30 5 * * 3"  # 水曜 05:30 UTC = 水曜 14:30 JST  → stage 1
+    - cron: "0 0 * * 4"   # 木曜 00:00 UTC = 木曜 09:00 JST  → stage 2
+    - cron: "0 9 * * 4"   # 木曜 09:00 UTC = 木曜 18:00 JST  → report
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+
+      - name: 宿題が未提出の人への催促
+        env:
+          DEAL_LINE_CHANNEL_ACCESS_TOKEN: ${{ secrets.DEAL_LINE_CHANNEL_ACCESS_TOKEN }}
+          IMAGAWA_LINE_USER_ID: ${{ secrets.IMAGAWA_LINE_USER_ID }}
+          ELP_SUPABASE_URL: ${{ secrets.ELP_SUPABASE_URL }}
+          ELP_SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.ELP_SUPABASE_SERVICE_ROLE_KEY }}
+          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+        run: |
+          if [ "${{ github.event_name }}" = "schedule" ]; then
+            case "${{ github.event.schedule }}" in
+              "30 5 * * 3") STAGE=1 ;;
+              "0 0 * * 4") STAGE=2 ;;
+              *) STAGE=report ;;
+            esac
+            python3 tools/shuuji/pdca_reminder.py --stage "$STAGE"
+          elif [ "${{ inputs.dry_run }}" = "true" ]; then
+            python3 tools/shuuji/pdca_reminder.py --stage "${{ inputs.stage }}" --dry-run
+          else
+            python3 tools/shuuji/pdca_reminder.py --stage "${{ inputs.stage }}"
+          fi
