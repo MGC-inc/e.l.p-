@@ -212,6 +212,11 @@ PRAISE_HEADLINES = [
 ]
 
 
+def is_sales_day(d: dt.date) -> bool:
+    """売上（商談）が立つ日＝土日と祝日。"""
+    return d.weekday() >= 5 or bool(jpholiday and jpholiday.is_holiday(d))
+
+
 def week_window(today: dt.date) -> tuple[dt.date, dt.date]:
     start = today - dt.timedelta(days=(today.weekday() - 2) % 7)  # 水曜始まり（週次の定義と同じ）
     return start, start + dt.timedelta(days=6)
@@ -294,26 +299,38 @@ def build_mission(page: dict, today: dt.date, days: list[dt.date], by_day: dict,
     yday_work = [d for d in past][-1] if past else None
     stale_since = last_work if (last_work and yday_work and last_work < yday_work) else None  # 前回稼働日が昨日より前
 
-    # 売上（クローザーは個人の月予算に対して。全員に、チームの月予算に対しての残りを週で見せる）
+    # 売上は土日（と祝日）に立つ。稼働日で割らず、「残りの土日」で達成する計算にする（ここで達成して、更新する）
     # 予算に加えて「クーリングオフ・審査落ちを見越した契約ベースの目標」（予算×CANCEL_BUFFER）まで契約しておく
     wk_start, wk_end = week_window(today)
-    week_left = len([d for d in work if today <= d <= min(wk_end, days[-1])])
-    week_goal_left = min(week_left, eff_left)
+    sdays = [d for d in days if is_sales_day(d)]
+    s_past = [d for d in sdays if d < today]
+    s_left_days = [d for d in sdays if d >= today]  # 今日を含む、残りの売上が立つ日
+    s_plan = max(1, math.ceil(len(sdays) * ACHIEVE_BY))  # 3週目の終わりまでに数える土日の日数
+    s_goal_left = max(0, s_plan - len(s_past))
+    s_eff_left = s_goal_left if s_goal_left > 0 else max(1, len(s_left_days))
+    s_wk_no = min(4, len(s_past) * 4 // len(sdays) + 1) if sdays else 1
+    week_s_left = len([d for d in s_left_days if d <= wk_end])  # 今週（水〜火）の、残りの売上が立つ日
+    week_goal_left = min(week_s_left, s_eff_left)
     money = None
     budget_p = budgets.get(name)
+    ideal_k = min(1.0, len(s_past) / s_plan)
     if role == "クローザー" and budget_p:
         goal_p = budget_p * CANCEL_BUFFER
         sales_m = sum(v.get("売上", 0) for v in mine.values())
         rem_p = max(0.0, goal_p - sales_m)
         money = {"budget": budget_p, "goal": goal_p, "sales": sales_m, "remaining": rem_p,
-                 "to_budget": max(0.0, budget_p - sales_m), "ideal": goal_p * min(1.0, elapsed / plan_days),
-                 "week_aim": math.ceil(rem_p * week_goal_left / eff_left) if rem_p else 0,
-                 "week_left": week_left, "week_sales": sum(v.get("売上", 0) for d, v in mine.items() if d >= wk_start)}
+                 "to_budget": max(0.0, budget_p - sales_m), "ideal": goal_p * ideal_k,
+                 "week_aim": math.ceil(rem_p * week_goal_left / s_eff_left) if rem_p else 0,
+                 "per_day": math.ceil(rem_p / s_eff_left) if rem_p else 0,
+                 "week_sales": sum(v.get("売上", 0) for d, v in mine.items() if d >= wk_start)}
     goal_c = team["budget"] * CANCEL_BUFFER
     rem_c = max(0.0, goal_c - team["sales"])
     company = {"budget": team["budget"], "goal": goal_c, "sales": team["sales"], "remaining": rem_c,
                "to_budget": max(0.0, team["budget"] - team["sales"]), "left": left,
-               "week_aim": math.ceil(rem_c * week_goal_left / eff_left) if rem_c else 0, "week_left": week_left}
+               "week_aim": math.ceil(rem_c * week_goal_left / s_eff_left) if rem_c else 0,
+               "per_day": math.ceil(rem_c / s_eff_left) if rem_c else 0}
+    sales_plan = {"days_left": s_left_days, "wk_no": s_wk_no, "week_left": week_s_left, "eff_left": s_eff_left,
+                  "ideal_k": ideal_k, "total": len(sdays)}
     return {"name": name, "role": role, "target": target, "declared": declared, "done": done, "ideal": ideal, "gap": gap,
             "left": left, "total": total, "elapsed": elapsed, "today_target": today_target,
             "forecast": forecast, "note": note, "stretch": stretch, "n_meet": n_meet,
@@ -321,7 +338,7 @@ def build_mission(page: dict, today: dt.date, days: list[dt.date], by_day: dict,
             "stale_since": stale_since, "last_work": last_work,
             "visit_today": int(prop_num(page, "今日やるべき訪問数") or 0), "visits_month": visits_month,
             "budget": prop_num(page, "今月予算万円") or 0, "week_apo": int(prop_num(page, "今週の必要アポ数") or 0),
-            "week_visit": int(prop_num(page, "今週の必要訪問数") or 0), "money": money, "company": company}
+            "week_visit": int(prop_num(page, "今週の必要訪問数") or 0), "money": money, "company": company, "sales_plan": sales_plan}
 
 
 def pick(items: list[str], m: dict, today: dt.date) -> str:
@@ -503,9 +520,13 @@ def render_card2(m: dict, today: dt.date, path: str) -> int:
     y -= 22
 
     mo, co = m["money"], m["company"]
+    dl = sp_days = m["sales_plan"]["days_left"]
+    wk_text = ("今月の売上が立つ土日は、残り" + str(len(dl)) + "日（" + "・".join(f"{d.day}日" for d in dl) + "）。ここで達成して、更新する"
+               if dl else "今月の土日は終了。月末の取りこぼしを確認しよう")
     # 月の進め方: 3週目で目標を達成し、最終週は記録更新
-    wk = m["wk_no"]
-    ax.text(5, y, "今月の進め方", color=INK, fontsize=22, fontweight="bold", va="center")
+    sp = m["sales_plan"]
+    wk = sp["wk_no"]
+    ax.text(5, y, "今月の進め方（売上は土日で立てる）", color=INK, fontsize=22, fontweight="bold", va="center")
     stages = [("1週目", "土台"), ("2週目", "加速"), ("3週目", "達成！"), ("4週目", "記録更新！")]
     sw = 21.5
     for i, (a_, b_) in enumerate(stages):
@@ -528,11 +549,14 @@ def render_card2(m: dict, today: dt.date, path: str) -> int:
         box(4, y - 38, 92, 9, "#EAF1FB")
         ax.text(7, y - 33.5, f"今週の狙い  +{man(mo['week_aim'])}" if mo["remaining"] else "ここから先は記録更新。期待してる",
                 color=NAVY, fontsize=22 if mo["remaining"] else 19, fontweight="bold", va="center")
-        ax.text(93, y - 33.5, f"今週ここまで {man(mo['week_sales'])}／残り{mo['week_left']}稼働日", color=SUB, fontsize=13.5, ha="right", va="center")
-        ax.text(5, y - 44, "週末に商談が集まるので、日割りではなく週で見よう", color=SUB, fontsize=13.5, va="center")
+        ax.text(93, y - 33.5, f"今週ここまで {man(mo['week_sales'])}", color=SUB, fontsize=13.5, ha="right", va="center")
+        ax.text(5, y - 44, wk_text, color=RED if sp["days_left"] and len(sp["days_left"]) <= 2 else SUB, fontsize=14.5, fontweight="bold", va="center")
         y -= 51
 
     pct_b = co["sales"] / co["budget"] * 100 if co["budget"] else 0
+    if not mo:
+        ax.text(5, y + 3, wk_text, color=RED if dl and len(dl) <= 2 else SUB, fontsize=14.5, fontweight="bold", va="center")
+        y -= 5
     box(4, y - 38, 92, 38, "#F3F5F8")
     ax.text(7, y - 5, "チームの月予算", color=SUB, fontsize=16, va="center")
     ax.text(93, y - 5, man(co["budget"]), color=INK, fontsize=22, fontweight="bold", ha="right", va="center")
@@ -543,8 +567,8 @@ def render_card2(m: dict, today: dt.date, path: str) -> int:
     ax.plot([7, 93], [y - 22, y - 22], color=LINE, lw=1.5)
     ax.text(7, y - 27.5, f"見越し目標 {man(co['goal'])} まで、あと", color=INK, fontsize=17, fontweight="bold", va="center")
     ax.text(93, y - 27.5, man(co["remaining"]), color=RED if co["remaining"] > 0 else GREEN, fontsize=30, fontweight="bold", ha="right", va="center")
-    ax.text(7, y - 34, f"クーリング・審査落ちを見越して、予算の115%を契約しておく。今週のチームの狙い +{man(co['week_aim'])}",
-            color=NAVY, fontsize=14, fontweight="bold", va="center")
+    ax.text(7, y - 33.5, f"残りの土日{len(dl)}日で、1日 {man(co['per_day'])}。今週のチームの狙い +{man(co['week_aim'])}",
+            color=NAVY, fontsize=16, fontweight="bold", va="center")
     y -= 44
 
     line = pick(LINES, m, today)
@@ -610,7 +634,7 @@ def flex_message(m: dict, url1: str, h1: int, url2: str, h2: int, today: dt.date
     if m["money"]:
         mo = m["money"]
         body2.append({"type": "text", "weight": "bold", "size": "md", "wrap": True, "color": "#1F3A5F",
-                      "text": (f"今週の狙い +{man(mo['week_aim'])}／見越し目標まであと{man(mo['remaining'])}" if mo["remaining"]
+                      "text": (f"今週の狙い +{man(mo['week_aim'])}／見越し目標まであと{man(mo['remaining'])}（残りの土日{len(m['sales_plan']['days_left'])}日）" if mo["remaining"]
                                else "見越し目標は達成済み。記録更新を期待してる")})
     body2.append({"type": "text", "size": "sm", "wrap": True, "color": "#444444",
                   "text": f"チームは予算{man(m['company']['budget'])}に対して{man(m['company']['sales'])}。見越し目標{man(m['company']['goal'])}まであと{man(m['company']['remaining'])}、今週の狙い +{man(m['company']['week_aim'])}"})
