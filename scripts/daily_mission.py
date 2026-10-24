@@ -218,7 +218,7 @@ def is_sales_day(d: dt.date) -> bool:
 
 
 def week_window(today: dt.date) -> tuple[dt.date, dt.date]:
-    start = today - dt.timedelta(days=(today.weekday() - 2) % 7)  # 水曜始まり（週次の定義と同じ）
+    start = today - dt.timedelta(days=today.weekday())  # 1週間は月曜〜日曜
     return start, start + dt.timedelta(days=6)
 
 
@@ -328,7 +328,9 @@ def build_mission(page: dict, today: dt.date, days: list[dt.date], by_day: dict,
     company = {"budget": team["budget"], "goal": goal_c, "sales": team["sales"], "remaining": rem_c,
                "to_budget": max(0.0, team["budget"] - team["sales"]), "left": left,
                "week_aim": math.ceil(rem_c * week_goal_left / s_eff_left) if rem_c else 0,
-               "per_day": math.ceil(rem_c / s_eff_left) if rem_c else 0}
+               "per_day": math.ceil(rem_c / s_eff_left) if rem_c else 0,
+               "n_closers": team.get("n_closers", 0),
+               "week_aim_each": math.ceil(rem_c * week_goal_left / s_eff_left / team["n_closers"]) if rem_c and team.get("n_closers") else 0}
     sales_plan = {"days_left": s_left_days, "wk_no": s_wk_no, "week_left": week_s_left, "eff_left": s_eff_left,
                   "ideal_k": ideal_k, "total": len(sdays)}
     return {"name": name, "role": role, "target": target, "declared": declared, "done": done, "ideal": ideal, "gap": gap,
@@ -410,12 +412,15 @@ def _finish(fig, ax, Hu: float, bottom: float, path: str) -> int:
 
 
 def _header(ax, box, Hu, m, today, sub):
-    box(0, Hu - 21, 100, 21, NAVY, r=0)
-    ax.text(5, Hu - 2.6, "日本一の営業マンになるための現在地", color="#9FB3CF", fontsize=13, va="center")
-    ax.text(5, Hu - 9, f"{m['name']}さん", color="white", fontsize=30, fontweight="bold", va="center")
-    ax.text(95, Hu - 9, f"{today.month}/{today.day}（{WD[today.weekday()]}）", color="#C9D6E8", fontsize=22, ha="right", va="center")
-    ax.text(5, Hu - 16.5, sub, color=GOLD, fontsize=21, fontweight="bold", va="center")
-    return Hu - 24
+    box(0, Hu - 18, 100, 18, NAVY, r=0)
+    ax.text(5, Hu - 6.5, f"{m['name']}さん", color="white", fontsize=30, fontweight="bold", va="center")
+    ax.text(95, Hu - 6.5, f"{today.month}/{today.day}（{WD[today.weekday()]}）", color="#C9D6E8", fontsize=22, ha="right", va="center")
+    # 名前と日付のあいだに、日付と同じ大きさで（長い名前でも重ならない位置・大きさに収める）
+    name_end = 5 + 4.3 * (len(m["name"]) + 1) + 3
+    fs = max(14.0, min(22.0, (76 - name_end) / 2.27))  # 日付と同じ22pt。長い名前のときだけ、重ならないよう少し小さくする
+    ax.text((name_end + 76) / 2, Hu - 6.5, "日本一の営業マンになるための現在地", color="#9FB3CF", fontsize=fs, ha="center", va="center")
+    ax.text(5, Hu - 14, sub, color=GOLD, fontsize=21, fontweight="bold", va="center")
+    return Hu - 21
 
 
 def render_card1(m: dict, today: dt.date, path: str) -> int:
@@ -548,7 +553,7 @@ def render_card2(m: dict, today: dt.date, path: str) -> int:
         ax.text(95, y - 25, f"見越し目標まで あと {man(mo['remaining'])}" if mo["remaining"] else "見越し目標 達成済み", color=INK if mo["remaining"] else GREEN,
                 fontsize=19, fontweight="bold", ha="right", va="center")
         box(4, y - 38, 92, 9, "#EAF1FB")
-        ax.text(7, y - 33.5, f"今週の狙い  +{man(mo['week_aim'])}" if mo["remaining"] else "ここから先は記録更新。期待してる",
+        ax.text(7, y - 33.5, f"あなたの今週の狙い  +{man(mo['week_aim'])}" if mo["remaining"] else "ここから先は記録更新。期待してる",
                 color=NAVY, fontsize=22 if mo["remaining"] else 19, fontweight="bold", va="center")
         ax.text(93, y - 33.5, f"今週ここまで {man(mo['week_sales'])}", color=SUB, fontsize=13.5, ha="right", va="center")
         ax.text(5, y - 44, wk_text, color=RED if sp["days_left"] and len(sp["days_left"]) <= 2 else SUB, fontsize=14.5, fontweight="bold", va="center")
@@ -558,7 +563,7 @@ def render_card2(m: dict, today: dt.date, path: str) -> int:
     if not mo:
         ax.text(5, y + 3, wk_text, color=RED if dl and len(dl) <= 2 else SUB, fontsize=14.5, fontweight="bold", va="center")
         y -= 5
-    box(4, y - 38, 92, 38, "#F3F5F8")
+    box(4, y - 43, 92, 43, "#F3F5F8")
     ax.text(7, y - 5, "チームの月予算", color=SUB, fontsize=16, va="center")
     ax.text(93, y - 5, man(co["budget"]), color=INK, fontsize=22, fontweight="bold", ha="right", va="center")
     ax.text(7, y - 11.5, "ここまでの実績", color=SUB, fontsize=16, va="center")
@@ -568,9 +573,10 @@ def render_card2(m: dict, today: dt.date, path: str) -> int:
     ax.plot([7, 93], [y - 22, y - 22], color=LINE, lw=1.5)
     ax.text(7, y - 27.5, f"見越し目標 {man(co['goal'])} まで、あと", color=INK, fontsize=17, fontweight="bold", va="center")
     ax.text(93, y - 27.5, man(co["remaining"]), color=RED if co["remaining"] > 0 else GREEN, fontsize=30, fontweight="bold", ha="right", va="center")
-    ax.text(7, y - 33.5, f"残りの土日{len(dl)}日で、1日 {man(co['per_day'])}。今週のチームの狙い +{man(co['week_aim'])}",
-            color=NAVY, fontsize=16, fontweight="bold", va="center")
-    y -= 44
+    ax.text(7, y - 33.5, f"チーム全体の今週の狙い  +{man(co['week_aim'])}", color=NAVY, fontsize=18, fontweight="bold", va="center")
+    ax.text(7, y - 38.5, f"クローザー{co['n_closers']}人で割ると、1人あたり約{man(co['week_aim_each'])}（残りの土日{len(dl)}日で1日 {man(co['per_day'])}）",
+            color=SUB, fontsize=13.5, va="center")
+    y -= 49
 
     line = pick(LINES, m, today)
     ax.text(50, y - 3.5, line, color=NAVY, fontsize=16, fontweight="bold", ha="center", va="center")
@@ -635,7 +641,7 @@ def flex_message(m: dict, url1: str, h1: int, url2: str, h2: int, today: dt.date
     if m["money"]:
         mo = m["money"]
         body2.append({"type": "text", "weight": "bold", "size": "md", "wrap": True, "color": "#1F3A5F",
-                      "text": (f"今週の狙い +{man(mo['week_aim'])}／見越し目標まであと{man(mo['remaining'])}（残りの土日{len(m['sales_plan']['days_left'])}日）" if mo["remaining"]
+                      "text": (f"あなたの今週の狙い +{man(mo['week_aim'])}／見越し目標まであと{man(mo['remaining'])}（残りの土日{len(m['sales_plan']['days_left'])}日）" if mo["remaining"]
                                else "見越し目標は達成済み。記録更新を期待してる")})
     body2.append({"type": "text", "size": "sm", "wrap": True, "color": "#444444",
                   "text": f"チームは予算{man(m['company']['budget'])}に対して{man(m['company']['sales'])}。見越し目標{man(m['company']['goal'])}まであと{man(m['company']['remaining'])}、今週の狙い +{man(m['company']['week_aim'])}"})
@@ -682,6 +688,7 @@ def main() -> int:
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--force", action="store_true", help="定休日でも送る（テスト用）")
     ap.add_argument("--only", help="この人だけ")
+    ap.add_argument("--skip-verify", action="store_true", help="商談一覧と実績DBの突き合わせを省く（テスト用）")
     ap.add_argument("--date", help="今日の日付を指定（YYYY-MM-DD。画像の確認用）")
     ap.add_argument("--out", default=os.path.join(HERE, "..", "tools", "shuuji", "out", "daily_mission"))
     args = ap.parse_args()
@@ -700,12 +707,16 @@ def main() -> int:
     budgets, team_budget = month_budgets(month)
     team = {"budget": team_budget, "sales": team_sales}
     bad = audit(by_day, team_sales, today, month)
+    if not bad and not args.skip_verify:  # 商談一覧（商談1件ずつの記録）と実績DBが人別に一致するか（週次MT資料と同じ確認）
+        sys.path.insert(0, os.path.join(HERE, "..", "tools", "shuuji"))
+        import verify_numbers  # noqa: E402
+        bad = verify_numbers.compare(days[0], today)
     if bad:
         print("【数字の再計算が合いません。配信を止めます】\n" + "\n".join(bad))
         if admin and not args.dry_run:
             line_push(admin, [{"type": "text", "text": "⚠ 今日の任された数字カードの配信を止めました（再計算が合いません）\n" + "\n".join(bad)[:4000]}])
         return 1
-    print(f"再計算OK: 全社売上 {team_sales:,.1f}万 / 全社予算 {team_budget:,.1f}万 / 実績のあるメンバー{len(by_day)}名")
+    print(f"確認OK（再計算・商談一覧との突き合わせ）: 全社売上 {team_sales:,.1f}万 / 全社予算 {team_budget:,.1f}万 / 実績のあるメンバー{len(by_day)}名")
 
     meet = meetings_today(today)
     pages = query_all(f"/databases/{KPI_DB}/query", None, NOTION_VERSION_V1)
@@ -715,6 +726,7 @@ def main() -> int:
              if u.get("closer_name")}
     salt = os.environ.get("ELP_SUPABASE_SERVICE_ROLE_KEY", "")[:16]
 
+    team["n_closers"] = len([p for p in active if prop_text(p, "役割") == "クローザー"])
     sent, failed, skipped = [], [], []
     for p in active:
         name = prop_text(p, "メンバー")
@@ -750,6 +762,11 @@ def main() -> int:
             continue
         res = line_push(to, [flex_message(m, url1, h1, url2, h2, today)])
         (sent if res == 200 else failed).append(name if res == 200 else (name, res))
+    if admin and not args.dry_run and not args.only:
+        line_push(admin, [{"type": "text", "text": (
+            f"✅ 今日の任された数字カード: 配信前の数字確認OK\n・{today.month}/{today.day}までのNotion実績を読み込み\n"
+            f"・メンバー別のアポ数・売上を別の読み方で再計算 → 一致\n・商談一覧と実績DBを人別に突き合わせ → 一致\n"
+            f"・全社売上 {team_sales:,.1f}万／予算 {team_budget:,.1f}万\n送信 {len(sent)}名／失敗 {len(failed)}名／スキップ {len(skipped)}名")}])
     print(f"送信 {len(sent)}名 / 失敗 {len(failed)}名 / スキップ {len(skipped)}名")
     for n_, why in skipped + failed:
         print(f"  ・{n_}: {why}")
