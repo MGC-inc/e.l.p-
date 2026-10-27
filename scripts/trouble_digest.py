@@ -1,10 +1,15 @@
 #!/usr/bin/env python3
-"""毎晩21時（JST）に、Notion「🆘 困ったメモ」の未共有分を今川さんのLINEへまとめて送る。
+"""毎日の終礼（19:30 JST）に、Notion「🆘 困ったメモ」を今川さんのLINEへまとめて送る。
+終礼で今川さんが解決策を示す。今川さんが終礼に入れない日は、このLINEへの返信でBotが本人に回答を送る。
 
   python3 scripts/trouble_digest.py [--dry-run]
 
 ・メモは要約せず、本人が書いた原文のまま送る（投稿者・日時・場面・本人の解決案を添える）
 ・「回答待ち」（本人が自分で考えても解決に向かわなかったもの）を先に、そのほか（自己解決・考え中）を後に
+・「自己解決中」のまま1時間以上止まっているメモ（解決案を聞かれて返事が止まったもの）は、回答待ちに移してから送る
+・前日以前からの持ち越しの回答待ちも、毎回1件ずつ送り直す（どれにでも返信で答えられるように）
+・先頭に回答状況（未回答の件数・一番古いものが何日待っているか）を出す
+・終礼でその場で解決したものは、そのメッセージに「終礼で解決」と返信すると、本人には送らず記録だけ残る
 ・送ったメモは「今川共有済み」を立てる。0件の日は何も送らない（配信数を使わない）
 ・「回答待ち」は1件ずつ別のメッセージで送る。今川さんがそのメッセージにLINEで返信（引用）して答えると、
   Botが本人へ回答を送り、Notionの「回答」と状態（解決）を更新する（line-webhook/api/webhook.py の handle_admin_answer）。
@@ -88,25 +93,48 @@ def split(text: str) -> list[str]:
 
 def main() -> None:
     dry = "--dry-run" in sys.argv
+    now = dt.datetime.now(dt.timezone(dt.timedelta(hours=9)))
+    # 解決案を聞かれたまま止まっているメモは、誰も答えないまま残らないよう回答待ちに移す
+    for p in query({"property": "状態", "select": {"equals": "自己解決中"}}):
+        posted = plain(p, "投稿日時")
+        if posted and now - dt.datetime.fromisoformat(posted) > dt.timedelta(hours=1):
+            print("回答待ちに移す:", plain(p, "投稿者"), posted[:16])
+            if not dry:
+                notion("PATCH", f"pages/{p['id']}", {"properties": {"状態": {"select": {"name": "回答待ち"}}}})
+                p["properties"]["状態"] = {"type": "select", "select": {"name": "回答待ち"}}
     new = query({"property": "今川共有済み", "checkbox": {"equals": False}})
-    waiting = [p for p in new if plain(p, "状態") == "回答待ち"]
-    others = [p for p in new if plain(p, "状態") != "回答待ち"]
-    carry = [p for p in query({"and": [{"property": "今川共有済み", "checkbox": {"equals": True}},
-                                      {"property": "状態", "select": {"equals": "回答待ち"}}]})]
-    if not new:
-        print("新しい困ったメモはありません。送信しません。")
+    new_ids = {p["id"] for p in new}
+    waiting_all = query({"property": "状態", "select": {"equals": "回答待ち"}})
+    if dry:   # 試し実行では上の書き換えをしていないので、移す予定のものも回答待ちとして数える
+        moved = [p for p in new if plain(p, "状態") == "自己解決中"
+                 and now - dt.datetime.fromisoformat(plain(p, "投稿日時")) > dt.timedelta(hours=1)]
+        waiting_all += [p for p in moved if p["id"] not in {w["id"] for w in waiting_all}]
+    waiting_new = [p for p in waiting_all if p["id"] in new_ids]
+    carry = [p for p in waiting_all if p["id"] not in new_ids]
+    others = [p for p in new if p["id"] not in {w["id"] for w in waiting_all}]
+    if not new and not carry:
+        print("新しい困ったメモも、未回答のメモもありません。送信しません。")
         return
-    summary = [f"🆘 今日の困ったメモ（{len(new)}件）"]
+
+    def days_waiting(p: dict) -> int:
+        return (now.date() - dt.date.fromisoformat(plain(p, "投稿日時")[:10])).days
+    summary = [f"🆘 終礼の困ったメモ（{now.month}/{now.day}）"]
+    if waiting_all:
+        oldest = max(waiting_all, key=days_waiting)
+        summary.append(f"📊 回答状況：未回答 {len(waiting_all)}件（今日の新規{len(waiting_new)}件・持ち越し{len(carry)}件）"
+                       f"／一番古いもの {days_waiting(oldest)}日待ち（{plain(oldest, '投稿者')} {plain(oldest, '投稿日時')[5:10].replace('-', '/')}）")
+    else:
+        summary.append("📊 回答状況：未回答 0件")
     if others:
-        summary += [f"【自己解決・考え中 {len(others)}件】"] + [entry(p) for p in others]
-    if carry:
-        summary += [f"【持ち越しの回答待ち {len(carry)}件】" + "、".join(f"{plain(p, '投稿者')}({plain(p, '投稿日時')[5:10].replace('-', '/')})" for p in carry)
-                    + "\n（返信は「回答 名前：本文」でも送れます）"]
-    if waiting:
-        summary.append(f"【回答待ち {len(waiting)}件】は、次のメッセージに1件ずつ送ります。各メッセージに返信（引用）で答えると、本人へそのまま届きます。")
+        summary += [f"【自己解決・考え中 {len(others)}件】（回答は不要。様子だけ共有）"] + [entry(p) for p in others]
+    if waiting_all:
+        summary.append("回答待ちは、次のメッセージに1件ずつ送ります。終礼で解決策を示してください。\n"
+                       "終礼に入れないときは、各メッセージに返信（引用）で答えると本人へそのまま届きます。"
+                       "終礼で解決したものは「終礼で解決」と返信すると、記録だけ残ります。")
     messages: list[tuple[str, str | None]] = [(t, None) for t in split("\n\n".join(summary))]
-    for p in waiting:
-        messages.append((f"❓回答待ち\n{entry(p)}\n\n↩ このメッセージに返信して回答すると、{plain(p, '投稿者')}さんに届きます。", p["id"]))
+    for p in waiting_new + sorted(carry, key=days_waiting, reverse=True):
+        tag = "❓回答待ち（今日）" if p["id"] in new_ids else f"❓回答待ち（持ち越し・{days_waiting(p)}日目）"
+        messages.append((f"{tag}\n{entry(p)}\n\n↩ このメッセージに返信して回答すると、{plain(p, '投稿者')}さんに届きます。", p["id"]))
     print("\n---\n".join(t for t, _ in messages))
     if dry:
         return

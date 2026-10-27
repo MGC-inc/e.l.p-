@@ -1,8 +1,8 @@
 name: trouble-digest
 
-# 毎晩21:00 JSTに、Notion「🆘 困ったメモ」の未共有分を今川さんのLINEへまとめて送る（scripts/trouble_digest.py）。
-# 新しいメモが0件の日は何も送らない。Claude／LLMを経由しない決定的コード。
-#   毎日 12:00 UTC = 21:00 JST（GitHub Actionsの定刻起動は数分〜十数分遅れることがある）
+# 毎日の終礼（19:30 JST）に、Notion「🆘 困ったメモ」を今川さんのLINEへまとめて送る（scripts/trouble_digest.py）。
+# 新しいメモも未回答のメモも0件の日は何も送らない。Claude／LLMを経由しない決定的コード。
+#   毎日 10:15 UTC = 19:15 JST（GitHub Actionsの定刻起動は数分〜十数分遅れるため、19:30の終礼に間に合うよう早めに起動する）
 on:
   workflow_dispatch:
     inputs:
@@ -11,7 +11,7 @@ on:
         type: boolean
         default: true
   schedule:
-    - cron: "0 12 * * *"
+    - cron: "15 10 * * *"
 
 jobs:
   run:
@@ -20,7 +20,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: { python-version: "3.12" }
-      - name: 困ったメモをまとめて今川さんへ
+      - name: 困ったメモを終礼前に今川さんへ
         env:
           DEAL_LINE_CHANNEL_ACCESS_TOKEN: ${{ secrets.DEAL_LINE_CHANNEL_ACCESS_TOKEN }}
           IMAGAWA_LINE_USER_ID: ${{ secrets.IMAGAWA_LINE_USER_ID }}

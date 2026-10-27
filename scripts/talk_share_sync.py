@@ -7,16 +7,20 @@ Notion「🗣 うまくいったトーク集」に取り込む。LINE Botのク�
 
 ・対象: 「DB 商談分析＆アポ分析」で 分析済み=✔ かつ 商談日時が直近N日の商談（採点があるもの）
 ・取込済みの商談（取込キー=商談ページID）は飛ばす。同じ商談を2回取り込まない
-・引用は分析ページの本文そのまま（要約しない）。フェーズはキーワードからの推定（目安）
+・引用は分析ページの本文そのまま（要約しない）
+・場面（フェーズ）はGemini（GEMINI_API_KEY）が引用と理由から7つのどれかに分類する。使えないときはキーワードで推定
+・--reclassify で、取り込み済みの全トークの場面を分類し直す
 ・商談分析（商談録音分析スキル）がNotionページを作った直後にも実行する（--days 3 で十分）
 
-環境変数: NOTION_TOKEN
+環境変数: NOTION_TOKEN, GEMINI_API_KEY（無ければキーワード推定）
 """
 import datetime as dt
 import json
 import os
 import re
 import sys
+import time
+import urllib.error
 import urllib.request
 
 DEAL_DB = "aa496718-e62f-4a70-818d-953492cad435"
@@ -105,7 +109,7 @@ def parse_effective(lines: list[str]) -> list[dict]:
         quote = TIME_RE.sub("", s).strip(" 　:：")
         if quote and len(quote) <= 140:  # 長い地の文は引用ではない（下のフォールバックで「」の中だけ拾う）
             items.append({"quote": quote, "time": m.group(0) if m else "", "reason": ""})
-    items = [i for i in items if len(i["quote"]) >= 8 and "「" in i["quote"]]  # 発言の引用だけ（状況の説明文は除く）
+    items = [i for i in items if len(i["quote"]) >= 8 and re.match(r"^(営業|お客様)?「", i["quote"])]  # 発言の引用だけ（状況の説明文は除く）
     if items:
         return items
     # 旧形式（引用が地の文の中に「」で入っている）: 「」の中をそのまま引用、その行を理由として付ける
@@ -117,6 +121,40 @@ def parse_effective(lines: list[str]) -> list[dict]:
             m = TIME_RE.search(s)
             items.append({"quote": f"「{q}」", "time": m.group(0) if m else "", "reason": reason})
     return items
+
+
+PHASE_NAMES = ["入り・信頼構築", "ヒアリング", "課題の言語化", "提案", "価格提示", "反論処理", "クロージング"]
+
+
+def gemini_phase(quote: str, reason: str) -> str | None:
+    """商談のどの場面のトークかをGeminiに1語で答えさせる。失敗したらNone。"""
+    key = os.environ.get("GEMINI_API_KEY")
+    if not key:
+        return None
+    prompt = ("訪問販売（浄水器・住宅設備保証）の商談で使われた営業トークです。商談のどの場面のトークか、次の7つから1つだけ選び、"
+              "その言葉だけを答えてください。\n" + "／".join(PHASE_NAMES) +
+              f"\n\nトーク: {quote}\nこのトークが効いた理由: {reason}")
+    body = json.dumps({"contents": [{"parts": [{"text": prompt}]}],
+                       "generationConfig": {"temperature": 0, "maxOutputTokens": 64, "thinkingConfig": {"thinkingBudget": 0}}}).encode()
+    req = urllib.request.Request(
+        f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={key}",
+        data=body, method="POST", headers={"Content-Type": "application/json"})
+    out = ""
+    for attempt in range(4):
+        try:
+            with urllib.request.urlopen(req, timeout=60) as r:
+                out = json.loads(r.read())["candidates"][0]["content"]["parts"][0]["text"].strip()
+            break
+        except urllib.error.HTTPError as e:
+            if e.code == 429 and attempt < 3:   # 回数制限。少し待ってやり直す
+                time.sleep(20 * (attempt + 1))
+                continue
+            print(f"  Gemini分類に失敗（キーワード推定にします）: {e}", file=sys.stderr)
+            return None
+        except Exception as e:  # noqa: BLE001
+            print(f"  Gemini分類に失敗（キーワード推定にします）: {e}", file=sys.stderr)
+            return None
+    return next((n for n in PHASE_NAMES if n in out), None)
 
 
 def phase_of(text: str) -> str:
@@ -152,7 +190,26 @@ def existing_keys() -> set[str]:
         cur = d["next_cursor"]
 
 
+def reclassify() -> None:
+    cur = None
+    while True:
+        d = call("POST", f"databases/{TALK_DB}/query", {"page_size": 100, **({"start_cursor": cur} if cur else {})})
+        for p in d["results"]:
+            quote, reason = prop_plain(p, "トーク"), prop_plain(p, "理由")
+            if quote == "（引用なし）":
+                continue
+            phase = gemini_phase(quote, reason) or phase_of(quote + reason)
+            print(f"{phase}\t{quote[:50]}")
+            call("PATCH", f"pages/{p['id']}", {"properties": {"フェーズ": {"select": {"name": phase}}}})
+        if not d.get("has_more"):
+            return
+        cur = d["next_cursor"]
+
+
 def main() -> None:
+    if "--reclassify" in sys.argv:
+        reclassify()
+        return
     days = int(sys.argv[sys.argv.index("--days") + 1]) if "--days" in sys.argv else 21
     dry = "--dry-run" in sys.argv
     since = (dt.date.today() - dt.timedelta(days=days)).isoformat()
@@ -179,7 +236,7 @@ def main() -> None:
             props = {
                 "トーク": {"title": rich(it["quote"])},
                 "理由": {"rich_text": rich(it["reason"])},
-                "フェーズ": {"select": {"name": phase_of(it["quote"] + it["reason"])}},
+                "フェーズ": {"select": {"name": gemini_phase(it["quote"], it["reason"]) or phase_of(it["quote"] + it["reason"])}},
                 "時刻": {"rich_text": rich(it["time"])},
                 "お客様名": {"rich_text": rich(customer)},
                 "商談日": {"date": {"start": date}} if date else {"date": None},
