@@ -96,11 +96,11 @@ if os.path.exists(f"{out}/slides_manifest.csv"):
     slides = {r["agency"]: r["file"] for r in csv.DictReader(open(f"{out}/slides_manifest.csv", encoding="utf-8-sig"))}
 
 HOW_TO = (
-    "【MTの最後に、次のメッセージに書いて返信】\n"
-    "①先週の振り返り・学び\n例：価格を聞かれてすぐ答えたら話が終わった。先に「何と比べていますか」と聞けば続いた\n"
-    "②今週の宿題を1つ（いつ・誰と・何を）\n例：木曜と金曜の朝、〇〇さんと価格質問の切り返しロープレを10分ずつ\n"
-    "③今週の目標\n例：訪問数：60　アポ数：6（数字だけ入れる）"
+    "【MTの最後に、次のメッセージの「宿題を登録する」ボタンを押す】\n"
+    "質問に答えるだけ（約30秒）です。\n"
+    "①今週の宿題 ②いつ ③誰と ④今週の数字の目標（過去データからのおすすめ付き） ⑤先週の学び（スキップ可）"
 )
+REGISTER_BUTTON = "宿題を登録する"   # line-webhook/api/webhook.py の HW_TRIGGER と同じ文言
 
 for r in csv.DictReader(open(f"{out}/manifest.csv", encoding="utf-8-sig")):
     if mgr and r["is_manager"] != "yes":
@@ -109,7 +109,8 @@ for r in csv.DictReader(open(f"{out}/manifest.csv", encoding="utf-8-sig")):
     if r["agency"] in slides:
         pdf_text += f"▼MTスライド\n{base}/{slides[r['agency']]}\n"
     pdf_text += f"▼個人PDCAシート\n{base}/{r['file']}\n\n{HOW_TO}"
-    template_text = pdca_template(r["name"], week_label, r["role"])
+    template_text = (f"📝週次PDCA｜{r['name']}さん（今週：{week_label}）\n\n"
+                     "週次MTで決めた「宿題」と「数字の目標」を、下のボタンから登録してください。")
     to = test_to or r["line_user_id"]
     if test_to:
         pdf_text = f"【テスト送信・本来の宛先: {r['name']}さん（{r['agency']}）】\n{pdf_text}"
@@ -122,7 +123,8 @@ for r in csv.DictReader(open(f"{out}/manifest.csv", encoding="utf-8-sig")):
         "https://api.line.me/v2/bot/message/push", method="POST",
         data=json.dumps({"to": to, "messages": [
             {"type": "text", "text": pdf_text},
-            {"type": "text", "text": template_text},
+            {"type": "text", "text": template_text, "quickReply": {"items": [
+                {"type": "action", "action": {"type": "message", "label": REGISTER_BUTTON, "text": REGISTER_BUTTON}}]}},
         ]}).encode(),
         headers={"Content-Type": "application/json", "Authorization": f"Bearer {tok}"},
     )

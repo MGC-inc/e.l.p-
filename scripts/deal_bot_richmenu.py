@@ -2,12 +2,14 @@
 """「ユメイク営業分析bot」（DEAL_LINE_CHANNEL_ACCESS_TOKEN）に、役割別の
 リッチメニューを2種類登録する。
 
-- 全員向け（デフォルト）: 「今日の目標を見る」1ボタン
-- クローザー用: 「今日の目標を見る」＋「直近の商談分析結果を見る」の2ボタン
-  （アポインターは商談分析の対象外のため、こちらは表示しない）
+- 全員向け（デフォルト・アポインター）: 2×2の4ボタン
+    今月の進み具合／困ったメモ／困ったメモを見返す／最近の有力な共有
+- クローザー用: 3×2の6ボタン
+    今月の進み具合／困ったメモ／困ったメモを見返す／
+    全員の商談のうまくいったトーク／契約後の案件確認／自分の商談分析結果
 
-タップされたテキストはline-webhook/api/webhook.py側のhandle_goal_request /
-handle_analysis_requestが処理する。役割ごとの出し分けは、Supabase
+タップされたテキストはline-webhook/api/webhook.py側が処理する（文言はwebhook.pyの
+KPI_MONTH_TEXT・TROUBLE_*・TALK_TEXT・SHARE_TEXT・POST_CONTRACT_TEXT・ANALYSIS_BUTTON_TEXTと完全一致させること）。役割ごとの出し分けは、Supabase
 closer_line_usersのroleが確定したタイミングでwebhook.py側が
 `linkRichMenuToUser`を呼んで個別に切り替える（このスクリプトは初期登録と
 既存クローザーへのバックフィルのみ担当）。
@@ -54,10 +56,18 @@ if not Path(FONT_PATH).exists():
         FONT_PATH = "/usr/share/fonts/opentype/ipafont-gothic/ipag.ttf"
 
 W, H = 2500, 1686
-GOAL_TEXT = "今日の目標を見る"
-ANALYSIS_TEXT = "直近の商談分析結果を見る"
+# (表示ラベル（\nで改行）, 押したときに送るテキスト)。送るテキストはwebhook.pyの定数と同じにする
+MONTH = ("今月の\n進み具合", "今月の進み具合を見る")
+TROUBLE = ("困った\nメモ", "困ったメモ")
+TROUBLE_REVIEW = ("困ったメモ\nを見返す", "困ったメモを見返す")
+TALK = ("全員の商談の\nうまくいった\nトーク", "全員の商談のうまくいったトーク")
+SHARE = ("最近の\n有力な共有", "最近の有力な共有")
+POST_CONTRACT = ("契約後の\n案件確認", "契約後の案件確認")
+ANALYSIS = ("自分の\n商談分析結果", "直近の商談分析結果を見る")
+DEFAULT_CELLS = [MONTH, TROUBLE, TROUBLE_REVIEW, SHARE]                           # 2列×2行
+CLOSER_CELLS = [MONTH, TROUBLE, TROUBLE_REVIEW, TALK, POST_CONTRACT, ANALYSIS]    # 3列×2行
 
-DEFAULT_MENU_NAME = "営業分析BOT 今日の目標"
+DEFAULT_MENU_NAME = "営業分析BOT アポインター用"
 CLOSER_MENU_NAME = "営業分析BOT クローザー用"
 
 # 赤系ファイヤーカラー（固定。プロフィール画像からの抽出はしない）
@@ -218,55 +228,49 @@ def draw_glow_text(img: Image.Image, text: str, font: ImageFont.FreeTypeFont,
     ImageDraw.Draw(img).text((x, y), text, font=font, fill=fill)
 
 
-def make_default_image() -> None:
-    """全員向けデフォルト: 「今日の目標を見る」1ボタン。"""
-    cx, cy = W // 2, 760
-    img = make_explosion_bg(W, H, cx, cy)
-    draw_button(img, cx, cy, r=300)
-
-    f_label = ImageFont.truetype(FONT_PATH, 132, index=FONT_INDEX)
-    f_sub = ImageFont.truetype(FONT_PATH, 46, index=FONT_INDEX)
-
-    draw_glow_text(img, GOAL_TEXT, f_label, cx, 1190, fill=(255, 255, 255), glow=TEXT_GLOW, blur=18)
-
-    sub = "TAP & FIRE UP YOUR DAY"
+def make_grid_image(cols: int, cells: list, path: str) -> None:
+    """cols列×(cells数/cols)行のボタン画像。1マスごとに別の爆発背景と円形ボタンを置き、ボタンの中に文字を入れる。"""
+    rows = -(-len(cells) // cols)
+    cw, ch = W // cols, H // rows
+    img = Image.new("RGB", (W, H))
+    for i, (label, _) in enumerate(cells):
+        x0, y0 = (i % cols) * cw, (i // cols) * ch
+        img.paste(make_explosion_bg(cw, ch, cw // 2, ch // 2, seed_offset=40 * i), (x0, y0))
     d = ImageDraw.Draw(img)
-    sb = d.textbbox((0, 0), sub, font=f_sub)
-    d.text((cx - (sb[2] - sb[0]) / 2, 1360), sub, font=f_sub, fill=(255, 176, 110))
+    for c in range(1, cols):
+        d.line([(c * cw, 0), (c * cw, H)], fill=(40, 4, 4), width=4)
+    for r in range(1, rows):
+        d.line([(0, r * ch), (W, r * ch)], fill=(40, 4, 4), width=4)
+    radius = int(min(cw, ch) * 0.40)
+    for i, (label, _) in enumerate(cells):
+        cx, cy = (i % cols) * cw + cw // 2, (i // cols) * ch + ch // 2
+        draw_button(img, cx, cy, r=radius)
+        lines = label.split("\n")
+        size = 96 if cols == 2 else 70
+        font = ImageFont.truetype(FONT_PATH, size, index=FONT_INDEX)
+        while max(ImageDraw.Draw(img).textbbox((0, 0), ln, font=font)[2] for ln in lines) > radius * 1.7 and size > 40:
+            size -= 4
+            font = ImageFont.truetype(FONT_PATH, size, index=FONT_INDEX)
+        line_h = int(size * 1.25)
+        top = cy - line_h * len(lines) // 2
+        for k, ln in enumerate(lines):
+            draw_glow_text(img, ln, font, cx, top + k * line_h, fill=(255, 255, 255), glow=TEXT_GLOW, blur=10)
+    save_under_1mb(img, path)
 
-    save_under_1mb(img, DEFAULT_IMG_PATH)
+
+def make_default_image() -> None:
+    make_grid_image(2, DEFAULT_CELLS, DEFAULT_IMG_PATH)
 
 
 def make_closer_image() -> None:
-    """クローザー用: 左右2分割で「今日の目標を見る」「直近の商談分析結果を見る」。"""
-    half = W // 2
-    left = make_explosion_bg(half, H, half // 2, 760, seed_offset=0)
-    right = make_explosion_bg(half, H, half // 2, 760, seed_offset=100)
-    img = Image.new("RGB", (W, H))
-    img.paste(left, (0, 0))
-    img.paste(right, (half, 0))
+    make_grid_image(3, CLOSER_CELLS, CLOSER_IMG_PATH)
 
-    # 中央の区切り線（うっすら）
-    ImageDraw.Draw(img).line([(half, 0), (half, H)], fill=(40, 4, 4), width=4)
 
-    cy = 760
-    draw_button(img, half // 2, cy, r=230)
-    draw_button(img, half + half // 2, cy, r=230)
-
-    f_label = ImageFont.truetype(FONT_PATH, 78, index=FONT_INDEX)
-
-    for cx, text in ((half // 2, GOAL_TEXT), (half + half // 2, ANALYSIS_TEXT)):
-        d = ImageDraw.Draw(img)
-        tb = d.textbbox((0, 0), text, font=f_label)
-        tw = tb[2] - tb[0]
-        if tw > half - 80:
-            # 収まらない場合は少し小さいフォントで再計測する
-            f_label2 = ImageFont.truetype(FONT_PATH, 62, index=FONT_INDEX)
-            draw_glow_text(img, text, f_label2, cx, 1130, fill=(255, 255, 255), glow=TEXT_GLOW, blur=14)
-        else:
-            draw_glow_text(img, text, f_label, cx, 1100, fill=(255, 255, 255), glow=TEXT_GLOW, blur=14)
-
-    save_under_1mb(img, CLOSER_IMG_PATH)
+def grid_areas(cols: int, cells: list) -> list:
+    rows = -(-len(cells) // cols)
+    cw, ch = W // cols, H // rows
+    return [{"bounds": {"x": (i % cols) * cw, "y": (i // cols) * ch, "width": cw, "height": ch},
+             "action": {"type": "message", "text": text}} for i, (_, text) in enumerate(cells)]
 
 
 def save_under_1mb(img: Image.Image, path: str, limit: int = 950_000) -> None:
@@ -324,22 +328,8 @@ def main():
         api(token, "DELETE", f"richmenu/{rm['richMenuId']}")
         print(f"deleted old richmenu {rm['richMenuId']}")
 
-    default_id = register_menu(
-        token, DEFAULT_MENU_NAME, "今日の目標",
-        [{"bounds": {"x": 0, "y": 0, "width": W, "height": H},
-          "action": {"type": "message", "text": GOAL_TEXT}}],
-        DEFAULT_IMG_PATH,
-    )
-    closer_id = register_menu(
-        token, CLOSER_MENU_NAME, "メニュー",
-        [
-            {"bounds": {"x": 0, "y": 0, "width": W // 2, "height": H},
-             "action": {"type": "message", "text": GOAL_TEXT}},
-            {"bounds": {"x": W // 2, "y": 0, "width": W - W // 2, "height": H},
-             "action": {"type": "message", "text": ANALYSIS_TEXT}},
-        ],
-        CLOSER_IMG_PATH,
-    )
+    default_id = register_menu(token, DEFAULT_MENU_NAME, "メニュー", grid_areas(2, DEFAULT_CELLS), DEFAULT_IMG_PATH)
+    closer_id = register_menu(token, CLOSER_MENU_NAME, "メニュー", grid_areas(3, CLOSER_CELLS), CLOSER_IMG_PATH)
 
     api(token, "POST", f"user/all/richmenu/{default_id}")
     print("set as default richmenu ✅ (全員)")

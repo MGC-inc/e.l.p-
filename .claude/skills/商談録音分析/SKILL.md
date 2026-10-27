@@ -55,6 +55,10 @@ description: LINEで送られてきた商談録音（PLAUD NOTE等のMP3）をGe
 
    **失敗した場合**（Notion API制限・プロパティ不一致等）: 手順3同様にスキップし、`status='ready'`のまま残す。
 
+4b. **うまくいったトークをNotionに取り込む**
+
+   Notionページを作った直後に `python3 scripts/talk_share_sync.py --days 3` を実行する。分析ページの「■5 効果的だった表現」から引用を取り出し、Notion「🗣 うまくいったトーク集」（採点60点以上の商談のみ）に追加する。LINEの「全員の商談のうまくいったトーク」がこれを読む（出典は クローザー名・商談日・お客様名・採点・分析ページ）。失敗しても分析の流れは止めない。
+
 5. **Supabaseを更新する**
 
    成功した行を `status='done'`, `notion_url=<作成したページURL>` に更新する（PostgRESTのPATCHで）。

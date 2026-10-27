@@ -50,11 +50,17 @@ def sb(method: str, path: str, data: dict | None = None):
         return json.loads(body) if body else None
 
 
-def push(to: str, text: str) -> int | str:
+REGISTER_BUTTON = "宿題を登録する"   # line-webhook/api/webhook.py の HW_TRIGGER と同じ文言
+
+
+def push(to: str, text: str, button: str | None = None) -> int | str:
     tok = os.environ["DEAL_LINE_CHANNEL_ACCESS_TOKEN"]
+    msg = {"type": "text", "text": text}
+    if button:
+        msg["quickReply"] = {"items": [{"type": "action", "action": {"type": "message", "label": button, "text": button}}]}
     req = urllib.request.Request(
         "https://api.line.me/v2/bot/message/push", method="POST",
-        data=json.dumps({"to": to, "messages": [{"type": "text", "text": text}]}).encode(),
+        data=json.dumps({"to": to, "messages": [msg]}).encode(),
         headers={"Content-Type": "application/json", "Authorization": f"Bearer {tok}"})
     try:
         with urllib.request.urlopen(req, timeout=20) as r:
@@ -80,12 +86,10 @@ def template(role: str) -> str:
 def message(stage: str, name: str, role: str, label: str) -> str:
     if stage == "1":
         return (f"📝{name}さん、今週（{label}）の宿題がまだ届いていません。\n\n"
-                "今朝の週次MTで決めた「宿題」と「数字の目標」を、下の形で書いて返信してください。2分で終わります。\n\n"
-                + template(role))
+                "今朝の週次MTで決めた「宿題」と「数字の目標」を、下のボタンから登録してください。質問に答えるだけで30秒です。")
     return (f"📝{name}さん、今週（{label}）の宿題がまだ届いていません。\n\n"
-            "今日（木）は「アポ中心」の日です。今日の動きを決めるためにも、今日18時までに、下の形で返信してください。"
-            "書き方に迷うときは、先週の数字を見て「いつ・誰と・何を」だけ決めればOKです。\n\n"
-            + template(role))
+            "今日（木）は「アポ中心」の日です。今日の動きを決めるためにも、今日18時までに、下のボタンから登録してください。"
+            "質問に答えるだけで30秒です。")
 
 
 def main() -> None:
@@ -140,7 +144,7 @@ def main() -> None:
         if dry:
             print("[DRY]", r["closer_name"])
             continue
-        print(r["closer_name"], push(r["line_user_id"], text))
+        print(r["closer_name"], push(r["line_user_id"], text, REGISTER_BUTTON))
     skipped = [r["closer_name"] for r in missing if r["closer_name"] in NO_REMINDER]
     if skipped:
         print("催促しない（管理者・対象外）:", "、".join(skipped))
