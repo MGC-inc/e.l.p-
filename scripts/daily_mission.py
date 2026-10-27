@@ -133,6 +133,8 @@ def perf_by_member_day(rows: list[dict]) -> tuple[dict, float]:
         rec["訪問数"] += prop_num(r, "訪問数") or 0
         rec["アポ数"] += prop_num(r, "アポ数") or 0
         rec["売上"] += sales
+        rec["契約"] += prop_num(r, "契約") or 0
+        rec["取消"] += (prop_num(r, "クーリン") or 0) + (prop_num(r, "審査落") or 0)
         if ((r["properties"].get("出勤状況") or {}).get("select") or {}).get("name") == "出勤":
             rec["出勤"] = 1.0
     return out, team
@@ -336,6 +338,17 @@ def build_mission(page: dict, today: dt.date, days: list[dt.date], by_day: dict,
                "per_day": math.ceil(rem_c / max(1, len(s_to_deadline))) if rem_c else 0,
                "n_closers": team.get("n_closers", 0),
                "week_aim_each": math.ceil(rem_c * wk_share / team["n_closers"]) if rem_c and team.get("n_closers") else 0}
+    # 今日の商談があるクローザーは、アポではなく「契約◯件」を今日の必達にする（商談があると、アポを回る時間がないため）。
+    # 商談が1件だけなら時間に余裕があるので、アポ数も併記する（2件以上ならアポは追わない）
+    contract_mode, contract_today, c_done, c_target = False, 0, 0, 0
+    if role == "クローザー" and n_meet >= 1:
+        contract_mode = True
+        c_target = int(prop_num(page, "今月契約目標") or 0)
+        c_done = max(0, int(sum(v.get("契約", 0) - v.get("取消", 0) for v in mine.values())))
+        c_rem = max(0, c_target - c_done)
+        rate = (prop_num(page, "契約率%_30日") or 28) / 100
+        need = math.ceil(c_rem / max(1, len(s_to_deadline))) if c_rem else 0
+        contract_today = min(n_meet, max(1, math.ceil(n_meet * rate), need))
     sales_plan = {"days_left": s_left_days, "wk_no": s_wk_no, "wk_idx": wk_idx, "week_days_left": s_week_left,
                   "deadline_is_now": deadline_is_now, "ideal_k": ideal_k, "total": len(sdays)}
     return {"name": name, "role": role, "target": target, "declared": declared, "done": done, "ideal": ideal, "gap": gap,
@@ -345,7 +358,9 @@ def build_mission(page: dict, today: dt.date, days: list[dt.date], by_day: dict,
             "stale_since": stale_since, "last_work": last_work,
             "visit_today": int(prop_num(page, "今日やるべき訪問数") or 0), "visits_month": visits_month,
             "budget": prop_num(page, "今月予算万円") or 0, "week_apo": int(prop_num(page, "今週の必要アポ数") or 0),
-            "week_visit": int(prop_num(page, "今週の必要訪問数") or 0), "money": money, "company": company, "sales_plan": sales_plan}
+            "week_visit": int(prop_num(page, "今週の必要訪問数") or 0), "money": money, "company": company, "sales_plan": sales_plan,
+            "contract_mode": contract_mode, "contract_today": contract_today, "c_done": c_done, "c_target": c_target,
+            "appo_secondary": today_target if (contract_mode and n_meet == 1) else 0}
 
 
 def pick(items: list[str], m: dict, today: dt.date) -> str:
@@ -353,6 +368,8 @@ def pick(items: list[str], m: dict, today: dt.date) -> str:
 
 
 def headline(m: dict, today: dt.date) -> str:
+    if m["contract_mode"]:  # 商談のある日のクローザー: 契約◯件
+        return pick(HEADLINES, m, today).replace("アポ{n}件", "契約{n}件").format(n=m["contract_today"])
     if m["fierce"]:
         return pick(ZERO_HEADLINES, m, today)
     if m["big_ahead"]:
@@ -438,7 +455,17 @@ def render_card1(m: dict, today: dt.date, path: str) -> int:
     # 今日の必達（いちばん大きく）
     box(4, y - 32, 92, 32, "#FDECEC" if m["fierce"] else "#FFF8E6" if m["big_ahead"] else BG)
     ax.text(50, y - 5, "今日の必達！　任された数字！", color=RED if m["fierce"] else NAVY, fontsize=26, fontweight="bold", ha="center", va="center")
-    if m["today_target"]:
+    if m["contract_mode"]:
+        ax.text(14, y - 17, "契約", color=SUB, fontsize=30, fontweight="bold", ha="center", va="center")
+        ax.text(52, y - 17, f"{m['contract_today']}", color=NAVY, fontsize=96, fontweight="bold", ha="right", va="center")
+        ax.text(54, y - 19, "件", color=INK, fontsize=36, fontweight="bold", ha="left", va="center")
+        sub = f"今日の商談{m['n_meet']}件 → 契約{m['contract_today']}件を、取り切る"
+        ax.text(50, y - 26, sub, color=NAVY, fontsize=16.5, fontweight="bold", ha="center", va="center")
+        if m["appo_secondary"]:
+            ax.text(50, y - 30, f"商談が1件なので、空き時間でアポ{m['appo_secondary']}件も", color=SUB, fontsize=14, ha="center", va="center")
+        else:
+            ax.text(50, y - 30, "商談に集中する日。今日はアポは追わない", color=SUB, fontsize=14, ha="center", va="center")
+    elif m["today_target"]:
         ax.text(14, y - 17, "アポ", color=SUB, fontsize=30, fontweight="bold", ha="center", va="center")
         ax.text(52, y - 17, f"{m['today_target']}", color=RED if m["fierce"] else (color if color != GREEN else INK),
                 fontsize=96, fontweight="bold", ha="right", va="center")
@@ -659,7 +686,8 @@ def flex_message(m: dict, url1: str, h1: int, url2: str, h2: int, today: dt.date
     b2 = {"type": "bubble", "size": "mega",
           "hero": {"type": "image", "url": url2, "size": "full", "aspectMode": "fit", "aspectRatio": f"1040:{h2}"},
           "body": {"type": "box", "layout": "vertical", "spacing": "sm", "contents": body2}}
-    alt = f"【今日の任された数字】アポ{m['today_target']}件｜{status}" + (f"｜今週の狙い+{man(m['money']['week_aim'])}" if m["money"] else "")
+    what, num = ("契約", m["contract_today"]) if m["contract_mode"] else ("アポ", m["today_target"])
+    alt = f"【今日の任された数字】{what}{num}件｜{status}" + (f"｜今週の狙い+{man(m['money']['week_aim'])}" if m["money"] else "")
     return {"type": "flex", "altText": alt, "contents": {"type": "carousel", "contents": [b1, b2]}}
 
 
@@ -674,7 +702,7 @@ def audit(by_day: dict, team_sales: float, today: dt.date, month: str) -> list[s
     team = 0.0
     for r in rows:
         d = ((r["properties"].get("実績日") or {}).get("date") or {}).get("start")
-        if not d or dt.date.fromisoformat(d[:10]) > today:
+        if not d or dt.date.fromisoformat(d[:10]) >= today:
             continue
         v = ((r["properties"].get("実質売上（万円）") or {}).get("formula") or {}).get("number") or 0
         team += v
@@ -781,7 +809,7 @@ def main() -> int:
         (sent if res == 200 else failed).append(name if res == 200 else (name, res))
     if admin and not args.dry_run and not args.only:
         line_push(admin, [{"type": "text", "text": (
-            f"✅ 今日の任された数字カード: 配信前の数字確認OK\n・{today.month}/{today.day}までのNotion実績を読み込み\n"
+            f"✅ 今日の任された数字カード: 配信前の数字確認OK\n・前日（{(today - dt.timedelta(days=1)).month}/{(today - dt.timedelta(days=1)).day}）までのNotion実績を読み込み\n"
             f"・メンバー別のアポ数・売上を別の読み方で再計算 → 一致\n・商談一覧と実績DBを人別に突き合わせ → 一致\n"
             f"・全社売上 {team_sales:,.1f}万／予算 {team_budget:,.1f}万\n送信 {len(sent)}名／失敗 {len(failed)}名／スキップ {len(skipped)}名")}])
     print(f"送信 {len(sent)}名 / 失敗 {len(failed)}名 / スキップ {len(skipped)}名")

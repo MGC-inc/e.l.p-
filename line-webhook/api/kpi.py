@@ -322,6 +322,10 @@ def view_tabs_html(token: str, active: str) -> str:
     )
 
 
+# アポを回らない人（管理・商談中心）は、週間目標の順位に出さない（2026-10-27 今川さん指示）
+RANKING_HIDDEN = {"今川"}
+
+
 def compute_ranking(week_start: date, week_end: date) -> list[dict]:
     """全社ランキング（ユーザー決定: 代理店内に絞らず全社、頻度は週次のまま）。
     役割（クローザー/アポインター）でアポのノルマの絶対数が違うため、公平に比べるには
@@ -337,7 +341,7 @@ def compute_ranking(week_start: date, week_end: date) -> list[dict]:
     entries = []
     for page in notion_query_all_kpi_members():
         name = title_text(page, "メンバー")
-        if not name:
+        if not name or name in RANKING_HIDDEN:
             continue
         target = formula_number(page, "今週の必要アポ数")
         actual = appo_by_member.get(name, 0)
