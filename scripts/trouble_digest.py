@@ -6,10 +6,12 @@
 ・メモは要約せず、本人が書いた原文のまま送る（投稿者・日時・場面・本人の解決案を添える）
 ・「回答待ち」（本人が自分で考えても解決に向かわなかったもの）を先に、そのほか（自己解決・考え中）を後に
 ・送ったメモは「今川共有済み」を立てる。0件の日は何も送らない（配信数を使わない）
-・回答は、Notionの「回答」に書いて状態を「解決」にすると、本人の「困ったメモを見返す」に表示される
-  （本人へのプッシュ通知はしない。まず自分で考えてもらい、答えを取りに来てもらう運用）
+・「回答待ち」は1件ずつ別のメッセージで送る。今川さんがそのメッセージにLINEで返信（引用）して答えると、
+  Botが本人へ回答を送り、Notionの「回答」と状態（解決）を更新する（line-webhook/api/webhook.py の handle_admin_answer）。
+  返信の対応づけ用に、送ったメッセージIDとNotionページIDをSupabase deal_recordings（storage_path='trouble_q'）に残す
+・引用が使えないときは「回答 平井：本文」と送ればよい
 
-環境変数: NOTION_TOKEN, DEAL_LINE_CHANNEL_ACCESS_TOKEN, IMAGAWA_LINE_USER_ID
+環境変数: NOTION_TOKEN, DEAL_LINE_CHANNEL_ACCESS_TOKEN, IMAGAWA_LINE_USER_ID, ELP_SUPABASE_URL, ELP_SUPABASE_SERVICE_ROLE_KEY
 """
 import datetime as dt
 import json
@@ -42,6 +44,16 @@ def plain(page: dict, name: str) -> str:
     if t == "checkbox":
         return "1" if v else ""
     return ""
+
+
+def supabase(method: str, path: str, data=None):
+    key = os.environ["ELP_SUPABASE_SERVICE_ROLE_KEY"]
+    req = urllib.request.Request(os.environ["ELP_SUPABASE_URL"].rstrip("/") + f"/rest/v1/{path}", method=method,
+                                 data=json.dumps(data).encode() if data is not None else None,
+                                 headers={"apikey": key, "Authorization": f"Bearer {key}", "Content-Type": "application/json"})
+    with urllib.request.urlopen(req, timeout=20) as r:
+        body = r.read()
+        return json.loads(body) if body else None
 
 
 def query(filter_: dict) -> list[dict]:
@@ -84,23 +96,34 @@ def main() -> None:
     if not new:
         print("新しい困ったメモはありません。送信しません。")
         return
-    blocks = [f"🆘 今日の困ったメモ（{len(new)}件）"]
-    if waiting:
-        blocks += [f"【回答待ち {len(waiting)}件】本人が考えても解決に向かわなかったもの"] + [entry(p) for p in waiting]
+    summary = [f"🆘 今日の困ったメモ（{len(new)}件）"]
     if others:
-        blocks += [f"【自己解決・考え中 {len(others)}件】"] + [entry(p) for p in others]
+        summary += [f"【自己解決・考え中 {len(others)}件】"] + [entry(p) for p in others]
     if carry:
-        blocks += [f"【持ち越しの回答待ち {len(carry)}件】" + "、".join(f"{plain(p, '投稿者')}({plain(p, '投稿日時')[5:10].replace('-', '/')})" for p in carry)]
-    blocks.append("回答はNotion「🆘 困ったメモ」の『回答』に書き、状態を『解決』にすると、本人の『困ったメモを見返す』に表示されます。")
-    parts = split("\n\n".join(blocks))[:5]
-    print("\n---\n".join(parts))
+        summary += [f"【持ち越しの回答待ち {len(carry)}件】" + "、".join(f"{plain(p, '投稿者')}({plain(p, '投稿日時')[5:10].replace('-', '/')})" for p in carry)
+                    + "\n（返信は「回答 名前：本文」でも送れます）"]
+    if waiting:
+        summary.append(f"【回答待ち {len(waiting)}件】は、次のメッセージに1件ずつ送ります。各メッセージに返信（引用）で答えると、本人へそのまま届きます。")
+    messages: list[tuple[str, str | None]] = [(t, None) for t in split("\n\n".join(summary))]
+    for p in waiting:
+        messages.append((f"❓回答待ち\n{entry(p)}\n\n↩ このメッセージに返信して回答すると、{plain(p, '投稿者')}さんに届きます。", p["id"]))
+    print("\n---\n".join(t for t, _ in messages))
     if dry:
         return
-    req = urllib.request.Request(
-        "https://api.line.me/v2/bot/message/push", method="POST",
-        data=json.dumps({"to": os.environ["IMAGAWA_LINE_USER_ID"], "messages": [{"type": "text", "text": t} for t in parts]}).encode(),
-        headers={"Content-Type": "application/json", "Authorization": f"Bearer {os.environ['DEAL_LINE_CHANNEL_ACCESS_TOKEN']}"})
-    print("LINE:", urllib.request.urlopen(req, timeout=30).status)
+    to = os.environ["IMAGAWA_LINE_USER_ID"]
+    for i in range(0, len(messages), 5):   # LINEは1回のpushで5通まで
+        chunk = messages[i:i + 5]
+        req = urllib.request.Request(
+            "https://api.line.me/v2/bot/message/push", method="POST",
+            data=json.dumps({"to": to, "messages": [{"type": "text", "text": t} for t, _ in chunk]}).encode(),
+            headers={"Content-Type": "application/json", "Authorization": f"Bearer {os.environ['DEAL_LINE_CHANNEL_ACCESS_TOKEN']}"})
+        with urllib.request.urlopen(req, timeout=30) as r:
+            sent = json.loads(r.read()).get("sentMessages", [])
+        print("LINE: ok", len(sent))
+        for (_, page_id), m in zip(chunk, sent):
+            if page_id:
+                supabase("POST", "deal_recordings", {"line_user_id": to, "storage_path": "trouble_q", "status": "trouble_q",
+                                                      "customer_name": m["id"], "notion_url": page_id})
     for p in new:
         notion("PATCH", f"pages/{p['id']}", {"properties": {"今川共有済み": {"checkbox": True}}})
 

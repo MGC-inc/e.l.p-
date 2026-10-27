@@ -1894,47 +1894,116 @@ def handle_share(event: dict, closer: dict) -> None:
         flex_message("最近の有力な共有", bubbles)])
 
 
+def deal_signed_iso(p: dict) -> str:
+    """契約日。未入力の行（平松邸など）は商談日を代わりに使う。"""
+    return (plain(p, "契約日") or plain(p, "商談日時"))[:10]
+
+
 def handle_post_contract(event: dict, closer: dict) -> None:
+    """未完了の契約案件の確認。完工と入金の両方が確認できていない契約を、期間を区切らず全部出す。
+    完工済み＝完工日が今日以前（完工日が空なら完工待ち）／入金済み＝入金状況が「入金済」か入金日あり（報酬反映済み・入金不能も対象外）。"""
     if closer.get("role") != "closer":
         line_reply(event["replyToken"], [{"type": "text", "text": "この機能はクローザー限定です。"}])
         return
     name = closer.get("closer_name") or ""
     today = datetime.now(JST).date()
-    res = notion_call("POST", f"databases/{DEAL_DATABASE_ID}/query", {"filter": {"and": [
-        {"property": "クローザー", "select": {"equals": name}},
-        {"property": "契約日", "date": {"on_or_after": (today - timedelta(days=14)).isoformat()}}]},
-        "sorts": [{"property": "契約日", "direction": "descending"}], "page_size": 50})["results"]
-    active, ended, cancelled = [], [], []
-    for p in res:
-        result = plain(p, "結果")
-        if result not in ("契約", "クーリングオフ"):
+    rows, cur = [], None
+    while True:
+        d = notion_call("POST", f"databases/{DEAL_DATABASE_ID}/query", {"filter": {"and": [
+            {"property": "クローザー", "select": {"equals": name}}, {"property": "結果", "status": {"equals": "契約"}}]},
+            "page_size": 100, **({"start_cursor": cur} if cur else {})})
+        rows += d["results"]
+        if not d.get("has_more") or len(rows) >= 300:
+            break
+        cur = d["next_cursor"]
+    before_work, after_work = [], []   # 完工前／完工済みで入金が未確認
+    for p in rows:
+        built = plain(p, "完工日")[:10]
+        paid = (plain(p, "入金状況") == "入金済" or bool(plain(p, "入金日"))
+                or p["properties"]["支払い反映済み"]["checkbox"] or plain(p, "入金状況") == "入金不能")
+        done_work = bool(built) and built <= today.isoformat()
+        if done_work and paid:
             continue
-        signed = plain(p, "契約日")[:10]
-        try:
-            deadline = date.fromisoformat(signed) + timedelta(days=COOLING_OFF_DAYS - 1)
-        except ValueError:
-            continue
-        (cancelled if result == "クーリングオフ" else active if deadline >= today else ended).append((p, deadline))
+        (after_work if done_work else before_work).append(p)
+    before_work.sort(key=lambda p: (plain(p, "完工日")[:10] or "9999", deal_signed_iso(p)))
+    after_work.sort(key=lambda p: deal_signed_iso(p), reverse=True)
 
-    def line(p: dict, deadline: date, show_days: bool) -> str:
+    def line(p: dict) -> str:
         amount = plain(p, "売上金額")
         money = f"{float(amount) / 10000:g}万円" if amount else "金額未入力"
-        built = md(plain(p, "完工日")) or "未定"
-        days = f"／期限{deadline.month}/{deadline.day}（あと{(deadline - today).days}日）" if show_days else ""
+        built = plain(p, "完工日")[:10]
+        work = f"完工予定{md(built)}" if built and built > today.isoformat() else (f"完工日{md(built)}" if built else "完工日未定")
+        pay = plain(p, "入金状況") or "入金状況未入力"
         analyzed = ("✅分析済み " + (plain(p, "録音分析ページ") or p.get("url", ""))) if p["properties"]["分析済み"]["checkbox"] \
             else "⚠未分析（録音を送ると分析できます）"
-        return f"・{plain(p, 'お客様名')}｜{md(plain(p, '契約日'))}契約｜{money}｜完工{built}{days}\n  {analyzed}"
+        return f"・{plain(p, 'お客様名')}｜{md(deal_signed_iso(p))}契約｜{money}｜{work}｜{pay}\n  {analyzed}"
 
     parts = []
-    if active:
-        parts.append("⏳ クーリング期間中（8日以内）\n" + "\n".join(line(p, d, True) for p, d in active))
-    if ended:
-        parts.append("🔒 期間を過ぎて確定\n" + "\n".join(line(p, d, False) for p, d in ended))
-    if cancelled:
-        parts.append("❌ クーリングオフ\n" + "\n".join(line(p, d, False) for p, d in cancelled))
-    text = f"📋 {name}さんの契約後の案件（直近2週間）\n\n" + "\n\n".join(parts) if parts else \
-        "直近2週間で、契約した案件はありません。"
-    line_reply(event["replyToken"], [{"type": "text", "text": text[:4900]}])
+    if before_work:
+        parts.append(f"🔨 完工前（{len(before_work)}件）\n" + "\n".join(line(p) for p in before_work))
+    if after_work:
+        parts.append(f"💴 完工日あり・入金が未確認（{len(after_work)}件）\n" + "\n".join(line(p) for p in after_work))
+    if not parts:
+        line_reply(event["replyToken"], [{"type": "text", "text": "完工・入金が未確認の契約案件はありません。"}])
+        return
+    text = f"📋 {name}さんの未完了の契約案件（完工・入金まで確認できていないもの）\n\n" + "\n\n".join(parts)
+    chunks, cur_text = [], ""
+    for ln in text.split("\n"):
+        if len(cur_text) + len(ln) + 1 > 4800:
+            chunks.append(cur_text)
+            cur_text = ""
+        cur_text += ("\n" if cur_text else "") + ln
+    chunks.append(cur_text)
+    line_reply(event["replyToken"], [{"type": "text", "text": c} for c in chunks[:5]])
+
+
+def line_push(to: str, messages: list) -> None:
+    _line_request("https://api.line.me/v2/bot/message/push", "POST", json.dumps({"to": to, "messages": messages}).encode(),
+                  {"Content-Type": "application/json"})
+
+
+ADMIN_NAME = "今川"
+ANSWER_PREFIX = re.compile(r"^回答\s*([^\s:：]+)\s*[:：\s]\s*(.+)$", re.S)
+
+
+def handle_admin_answer(event: dict, closer: dict) -> bool:
+    """今川さんの回答を、困ったメモの本人へ送る。毎晩の共有（scripts/trouble_digest.py）の「回答待ち」メッセージに
+    LINEの返信（引用）で答えるか、「回答 平井：本文」と送る。本人へ回答を届け、Notionの回答欄と状態（解決）を更新する。"""
+    if closer.get("closer_name") != ADMIN_NAME:
+        return False
+    raw = event["message"]["text"].strip()
+    quoted = event["message"].get("quotedMessageId")
+    page_id, answer = None, raw
+    if quoted:
+        rows = sb("GET", f"deal_recordings?storage_path=eq.trouble_q&customer_name=eq.{quoted}&limit=1&select=notion_url") or []
+        if not rows:
+            return False
+        page_id = rows[0]["notion_url"]
+    else:
+        m = ANSWER_PREFIX.match(raw)
+        if not m:
+            return False
+        found = notion_call("POST", f"databases/{TROUBLE_DB}/query", {"filter": {"and": [
+            {"property": "投稿者", "select": {"equals": m.group(1)}}, {"property": "状態", "select": {"equals": "回答待ち"}}]},
+            "sorts": [{"property": "投稿日時", "direction": "descending"}], "page_size": 1})["results"]
+        if not found:
+            line_reply(event["replyToken"], [{"type": "text", "text": f"{m.group(1)}さんの回答待ちのメモは見つかりませんでした。"}])
+            return True
+        page_id, answer = found[0]["id"], m.group(2).strip()
+    page = notion_call("GET", f"pages/{page_id}")
+    member, original = plain(page, "投稿者"), plain(page, "原文")
+    old = plain(page, "回答")
+    notion_call("PATCH", f"pages/{page_id}", {"properties": {
+        "回答": {"rich_text": rt((old + "\n" if old else "") + answer)}, "状態": {"select": {"name": "解決"}}}})
+    users = sb("GET", f"closer_line_users?closer_name=eq.{urllib.parse.quote(member)}&select=line_user_id&limit=1") or []
+    if not users:
+        line_reply(event["replyToken"], [{"type": "text", "text": f"回答はNotionに保存しましたが、{member}さんのLINEが見つからず送れませんでした。"}])
+        return True
+    line_push(users[0]["line_user_id"], [{"type": "text", "text": (
+        f"💡 困ったメモへの回答です\n\n【あなたのメモ】\n{_clip(original, 200)}\n\n【回答】\n{answer}\n\n"
+        "メニューの『困ったメモを見返す』でいつでも見返せます。")}])
+    line_reply(event["replyToken"], [{"type": "text", "text": f"{member}さんに回答を送りました。"}])
+    return True
 
 
 def handle_new_menu(event: dict, closer: dict) -> bool:
@@ -1949,7 +2018,7 @@ def handle_new_menu(event: dict, closer: dict) -> bool:
             print(f"menu handler error ({text}): {e}")
             line_reply(event["replyToken"], [{"type": "text", "text": "一時的に取得できませんでした。少し待ってからもう一度お試しください。"}])
         return True
-    return handle_trouble(event, closer) or handle_homework(event, closer)
+    return handle_admin_answer(event, closer) or handle_trouble(event, closer) or handle_homework(event, closer)
 
 
 def handle_audio_message(event: dict, closer: dict, extra_messages=None):
