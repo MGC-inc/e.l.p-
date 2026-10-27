@@ -1606,6 +1606,13 @@ HW_CHOICES = {
 HW_WHENS = ["木曜", "金曜", "木・金", "毎日", "土日"]
 HW_WHOS = ["ひとりで", "リーダーと", "同じ代理店の仲間と"]
 HW_METRICS = [("訪問数", "訪問数目標"), ("アポ数", "アポ数目標"), ("商談数", "商談数目標_自アポ"), ("契約数", "契約数目標_自アポ")]
+APPOINTER_SKIP_METRICS = {"商談数"}   # アポインターは商談数を聞かない（実績DBでは0のため、おすすめが意味をなさない）
+
+
+def hw_metrics_of(d: dict) -> list:
+    """この人に聞く数字の項目。宿題登録の開始時に役割から決めて d["metrics"] に入れておく。"""
+    labels = d.get("metrics") or [label for label, _ in HW_METRICS]
+    return [m for m in HW_METRICS if m[0] in labels]
 HW_DEFAULT_OPTS = {"訪問数": [20, 40, 60, 80], "アポ数": [3, 5, 8, 10], "商談数": [1, 2, 3, 5], "契約数": [0, 1, 2, 3]}
 HW_QUESTION_Q1 = "📝 今週の宿題を登録します（約30秒・全5問）\n\n① 今週の宿題を1つ選んでください"
 
@@ -1681,7 +1688,7 @@ def hw_week_key(closer: dict) -> str:
 
 
 def hw_summary(d: dict) -> str:
-    nums = "・".join(f"{label}{d.get('t_' + label, '-')}" for label, _ in HW_METRICS)
+    nums = "・".join(f"{label}{d.get('t_' + label, '-')}" for label, _ in hw_metrics_of(d))
     s = f"宿題：{d.get('what')}\nいつ：{d.get('when')}／誰と：{d.get('who')}\n数字：{nums}"
     if d.get("learn"):
         s += f"\n先週の学び：{d['learn']}"
@@ -1695,7 +1702,7 @@ def notion_save_homework(member: str, week_key: str, d: dict) -> None:
     }
     if d.get("learn"):
         props["原因"] = {"rich_text": rt(d["learn"])}
-    for label, prop in HW_METRICS:
+    for label, prop in hw_metrics_of(d):
         if d.get("t_" + label) is not None:
             props[prop] = {"number": int(d["t_" + label])}
     found = notion_call("POST", f"data_sources/{PDCA_DATABASE_ID}/query", {"filter": {"and": [
@@ -1710,7 +1717,7 @@ def notion_save_homework(member: str, week_key: str, d: dict) -> None:
 
 
 def hw_ask_number(reply: str, row: dict, d: dict, idx: int, prefix: str = "") -> None:
-    label = HW_METRICS[idx][0]
+    label = hw_metrics_of(d)[idx][0]
     rec = (d.get("rec") or {}).get(label)
     pace = (d.get("pace") or {}).get(label)
     flow_update(row, step=f"num{idx}", data=d)
@@ -1730,8 +1737,9 @@ def handle_homework(event: dict, closer: dict) -> bool:
     uid, reply, text = event["source"]["userId"], event["replyToken"], event["message"]["text"].strip()
     name, role = closer.get("closer_name") or "", closer.get("role") or "appointer"
     choices = HW_CHOICES["closer" if role == "closer" else "appointer"]
+    metric_labels = [label for label, _ in HW_METRICS if role == "closer" or label not in APPOINTER_SKIP_METRICS]
     if text == HW_TRIGGER:
-        flow_start(uid, "homework", "what", {"week": hw_week_key(closer)})
+        flow_start(uid, "homework", "what", {"week": hw_week_key(closer), "metrics": metric_labels})
         line_reply(reply, [{"type": "text", "text": HW_QUESTION_Q1, "quickReply": quick_reply(choices)}])
         return True
     row = flow_active(uid, "homework")
@@ -1772,18 +1780,19 @@ def handle_homework(event: dict, closer: dict) -> bool:
 
     if step == "who":
         d["who"] = text
-        d["rec"] = recommended_targets(name) or {}
-        d["pace"] = goal_pace(name)
+        keep = {label for label, _ in hw_metrics_of(d)}
+        d["rec"] = {k: v for k, v in (recommended_targets(name) or {}).items() if k in keep}
+        d["pace"] = {k: v for k, v in goal_pace(name).items() if k in keep}
         rec, pace = d["rec"], d["pace"]
         if not rec and not pace:
             hw_ask_number(reply, row, d, 0, prefix="④ 今週の数字の目標です。過去データがまだ少ないので、1つずつ決めましょう。\n\n")
             return True
         lines, buttons = ["④ 今週の数字の目標です。"], []
         if rec:
-            lines.append("過去データに基づくあなたへのおすすめ：\n" + "・".join(f"{label}{rec[label]}" for label, _ in HW_METRICS))
+            lines.append("過去データに基づくあなたへのおすすめ：\n" + "・".join(f"{label}{rec[label]}" for label, _ in hw_metrics_of(d)))
             buttons.append(HW_OK_PAST)
         if pace:
-            lines.append("月の目標に必要な今週のペース：\n" + "・".join(f"{label}{pace[label]}" for label, _ in HW_METRICS if label in pace))
+            lines.append("月の目標に必要な今週のペース：\n" + "・".join(f"{label}{pace[label]}" for label, _ in hw_metrics_of(d) if label in pace))
             buttons.append(HW_OK_PACE)
         if rec and pace:
             lines.append("高い方を選ぶのがおすすめです。")
@@ -1796,7 +1805,7 @@ def handle_homework(event: dict, closer: dict) -> bool:
         rec, pace = d.get("rec") or {}, d.get("pace") or {}
         if text in (HW_OK_PAST, HW_OK_PACE, "この数字でOK"):
             base = pace if text == HW_OK_PACE else rec
-            for label, _ in HW_METRICS:   # 目標ペースに無い項目は過去データで埋める
+            for label, _ in hw_metrics_of(d):   # 目標ペースに無い項目は過去データで埋める
                 v = base.get(label, rec.get(label, pace.get(label)))
                 if v is not None:
                     d["t_" + label] = v
@@ -1814,8 +1823,8 @@ def handle_homework(event: dict, closer: dict) -> bool:
         if not m:
             line_reply(reply, [{"type": "text", "text": "数字だけ送ってください（例：5）。"}])
             return True
-        d["t_" + HW_METRICS[idx][0]] = int(m.group(1))
-        if idx + 1 < len(HW_METRICS):
+        d["t_" + hw_metrics_of(d)[idx][0]] = int(m.group(1))
+        if idx + 1 < len(hw_metrics_of(d)):
             hw_ask_number(reply, row, d, idx + 1)
         else:
             hw_ask_learn(reply, row, d)
@@ -1830,7 +1839,7 @@ def handle_homework(event: dict, closer: dict) -> bool:
 
     if step == "confirm":
         if text == "やり直す":
-            flow_start(uid, "homework", "what", {"week": d.get("week") or hw_week_key(closer)})
+            flow_start(uid, "homework", "what", {"week": d.get("week") or hw_week_key(closer), "metrics": metric_labels})
             line_reply(reply, [{"type": "text", "text": HW_QUESTION_Q1, "quickReply": quick_reply(choices)}])
             return True
         if text != "やり切る！":
