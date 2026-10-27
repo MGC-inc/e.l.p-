@@ -128,7 +128,11 @@ def action_block(text):
     return "\n".join(lines), fs, rh
 
 
+REVIEW_HIDDEN = {"今川"}  # 先週の宿題の答え合わせに出さない人（2026-10-27 今川さん指示）
+
+
 def review(pdf, members, mem, res, pdca, cfg, n):
+    members = [m for m in members if m not in REVIEW_HIDDEN]
     heights = {m: action_block(pdca[m]["action"])[2] if (pdca.get(m) or {}).get("action") else ROW_H for m in members}
     pages, cur, used = [], [], 0.0
     for m in members:  # 宿題が長い人の行を高くした分、1ページに入る人数を減らす

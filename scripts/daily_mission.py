@@ -134,6 +134,7 @@ def perf_by_member_day(rows: list[dict]) -> tuple[dict, float]:
         rec["アポ数"] += prop_num(r, "アポ数") or 0
         rec["売上"] += sales
         rec["契約"] += prop_num(r, "契約") or 0
+        rec["商談"] += prop_num(r, "商談数") or 0
         rec["取消"] += (prop_num(r, "クーリン") or 0) + (prop_num(r, "審査落") or 0)
         if ((r["properties"].get("出勤状況") or {}).get("select") or {}).get("name") == "出勤":
             rec["出勤"] = 1.0
@@ -225,6 +226,14 @@ def week_window(today: dt.date) -> tuple[dt.date, dt.date]:
     return start, start + dt.timedelta(days=6)
 
 
+def expected_meetings(mine: dict, today: dt.date) -> int:
+    """商談一覧に今日の商談が登録されることは無いので、過去4週の同じ曜日の商談数の平均から、今日の商談数を見込む
+    （平均0.5件以上なら四捨五入、最低1件）。商談は土日に集中するため、実質「土日は商談の日」になる。"""
+    vals = [mine.get(today - dt.timedelta(days=7 * k), {}).get("商談", 0) for k in range(1, 5)]
+    avg = sum(vals) / 4
+    return max(1, round(avg)) if avg >= 0.5 else 0
+
+
 def build_mission(page: dict, today: dt.date, days: list[dt.date], by_day: dict, n_meet: int,
                   budgets: dict[str, float], team: dict) -> dict | None:
     name = prop_text(page, "メンバー")
@@ -263,6 +272,10 @@ def build_mission(page: dict, today: dt.date, days: list[dt.date], by_day: dict,
     if not base and avg_w:  # 月の目標は達成済み → 自分の平均ペースの少し上を今日の必達にする（記録更新）
         base, stretch = math.ceil(avg_w * STRETCH_RATIO), True
     factor, note = 1.0, ""
+    n_meet_inferred = False
+    if role == "クローザー" and not n_meet:  # 商談一覧に今日の商談が無ければ、同じ曜日の過去の商談数から見込む
+        n_meet = expected_meetings(mine, today)
+        n_meet_inferred = n_meet > 0
     if role == "クローザー":
         factor = MEETING_FACTOR.get(n_meet, MEETING_FACTOR_MANY) if n_meet else 1.0
         if n_meet:
@@ -360,7 +373,7 @@ def build_mission(page: dict, today: dt.date, days: list[dt.date], by_day: dict,
             "visit_today": int(prop_num(page, "今日やるべき訪問数") or 0), "visits_month": visits_month,
             "budget": prop_num(page, "今月予算万円") or 0, "week_apo": int(prop_num(page, "今週の必要アポ数") or 0),
             "week_visit": int(prop_num(page, "今週の必要訪問数") or 0), "money": money, "company": company, "sales_plan": sales_plan,
-            "contract_mode": contract_mode, "contract_today": contract_today, "c_done": c_done, "c_target": c_target, "c_week": c_week,
+            "n_meet_inferred": n_meet_inferred, "contract_mode": contract_mode, "contract_today": contract_today, "c_done": c_done, "c_target": c_target, "c_week": c_week,
             "appo_secondary": today_target if (contract_mode and n_meet == 1) else 0}
 
 
@@ -460,7 +473,8 @@ def render_card1(m: dict, today: dt.date, path: str) -> int:
         ax.text(14, y - 17, "契約", color=SUB, fontsize=30, fontweight="bold", ha="center", va="center")
         ax.text(52, y - 17, f"{m['contract_today']}", color=NAVY, fontsize=96, fontweight="bold", ha="right", va="center")
         ax.text(54, y - 19, "件", color=INK, fontsize=36, fontweight="bold", ha="left", va="center")
-        sub = f"今日の商談{m['n_meet']}件 → 契約{m['contract_today']}件を、取り切る"
+        sub = (f"今日の商談は約{m['n_meet']}件の見込み → 契約{m['contract_today']}件を、取り切る" if m["n_meet_inferred"]
+               else f"今日の商談{m['n_meet']}件 → 契約{m['contract_today']}件を、取り切る")
         ax.text(50, y - 26, sub, color=NAVY, fontsize=16.5, fontweight="bold", ha="center", va="center")
         if m["appo_secondary"]:
             ax.text(50, y - 30, f"商談が1件なので、空き時間でアポ{m['appo_secondary']}件も", color=SUB, fontsize=14, ha="center", va="center")
