@@ -1999,9 +1999,13 @@ def handle_admin_answer(event: dict, closer: dict) -> bool:
     if not users:
         line_reply(event["replyToken"], [{"type": "text", "text": f"回答はNotionに保存しましたが、{member}さんのLINEが見つからず送れませんでした。"}])
         return True
+    posted = plain(page, "投稿日時")
+    when = f"{md(posted)} {posted[11:16]}" if posted else "以前"
+    scene = f"（場面：{plain(page, '起きる場面')}）" if plain(page, "起きる場面") else ""
+    idea = f"\n\n【あなたが考えた解決案】\n{_clip(plain(page, '本人の解決案'), 300)}" if plain(page, "本人の解決案") else ""
     line_push(users[0]["line_user_id"], [{"type": "text", "text": (
-        f"💡 困ったメモへの回答です\n\n【あなたのメモ】\n{_clip(original, 200)}\n\n【回答】\n{answer}\n\n"
-        "メニューの『困ったメモを見返す』でいつでも見返せます。")}])
+        f"💡 {when}に送ってくれた困ったメモ{scene}への回答です\n\n【あなたのメモ】\n{_clip(original, 1500)}{idea}\n\n"
+        f"【今川さんからの回答】\n{answer}\n\nメニューの『困ったメモを見返す』でいつでも見返せます。")[:4900]}])
     line_reply(event["replyToken"], [{"type": "text", "text": f"{member}さんに回答を送りました。"}])
     return True
 
