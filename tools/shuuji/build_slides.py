@@ -270,8 +270,11 @@ def sales_history(pdf, agency, members, mem, cfg, n):
 RANK_MIN_FACE = 20  # 対面→アポ率ランキングの対象（対面がこれ未満の人は率がぶれるので外す）
 
 
+RANK_APPO_HIDDEN = {"今川"}  # アポを回らない人は、アポ数ランキングから外す。岡野・柚木・門田は入れる（2026-10-27 今川さん指示）
+
+
 def ranking_categories(mem, res):
-    field = [n for n in res if mem[n].get("is_manager") != "yes"]
+    field = [n for n in res if n not in RANK_APPO_HIDDEN]
     appointers = [n for n in field if mem[n]["role"] == "appointer"]
     closers = [n for n in res if mem[n]["role"] == "closer"]
     return [
@@ -440,13 +443,15 @@ def person(pdf, name, mem, res, pdca, cfg, n):
 
 
 # ---------- 7. みんなの学び ----------
-def learnings(pdf, mem, pdca, cfg, n):
-    items = [(nm, d.get("cause", "")) for nm, d in pdca.items() if d.get("cause")]
+def learnings(pdf, mem, pdca, cfg, n, agency=ALL):
+    # 代理店別の資料には、自社メンバーの学びだけを出す（全社版は全員分）。2026-10-27 今川さん指示:「全体の数字と自社分の詳細だけ」
+    items = [(nm, d.get("cause", "")) for nm, d in pdca.items()
+             if d.get("cause") and (agency == ALL or mem.get(nm, {}).get("agency") == agency)]
     if not items:
         return n
     pages = [items[i:i+6] for i in range(0, len(items), 6)]
     for pi, chunk in enumerate(pages):
-        fig = slide(pdf, "⑥ 先週のMTで出たみんなの学び", "全社" + (f"　{pi+1}/{len(pages)}" if len(pages) > 1 else ""), n); n += 1
+        fig = slide(pdf, "⑥ 先週のMTで出たみんなの学び", agency + (f"　{pi+1}/{len(pages)}" if len(pages) > 1 else ""), n); n += 1
         for i, (nm, txt) in enumerate(chunk):
             x, y = 0.035 + (i % 3) * 0.315, 0.47 - (i // 3) * 0.39
             card(fig, x, y, 0.3, 0.36, BG)
@@ -475,7 +480,7 @@ def send_guide(pdf, cfg, n):
         fig.text(0.115, y + 0.15, t, fontsize=21, fontweight="bold", color=NAVY, va="center")
         fig.text(0.115, y + 0.098, d, fontsize=14, color=INK, va="center")
         fig.text(0.115, y + 0.045, ex, fontsize=13, color=BLUE, va="center")
-    fig.text(0.035, 0.035, "送ったら「記録しました」と返ってくればOK。送り忘れた人には、水曜18時に1回だけリマインドが届きます。",
+    fig.text(0.035, 0.035, "送ったら「記録しました」と返ってくればOK。送り忘れた人には、水曜14:30（出していない人だけ）と木曜9:00にリマインドが届きます。",
              fontsize=13, color=SUB)
     save(pdf, fig)
     return n + 1
@@ -520,7 +525,7 @@ def build_deck(path, agency, members, mem, res, pdca, cfg):
         n = achievers(pdf, mem, res, pdca, cfg, n)
         for m in members:
             n = person(pdf, m, mem, res, pdca, cfg, n)
-        n = learnings(pdf, mem, pdca, cfg, n)
+        n = learnings(pdf, mem, pdca, cfg, n, agency)
         n = send_guide(pdf, cfg, n)
         week_flow(pdf, cfg, n)
 

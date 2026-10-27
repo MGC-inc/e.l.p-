@@ -340,12 +340,13 @@ def build_mission(page: dict, today: dt.date, days: list[dt.date], by_day: dict,
                "week_aim_each": math.ceil(rem_c * wk_share / team["n_closers"]) if rem_c and team.get("n_closers") else 0}
     # 今日の商談があるクローザーは、アポではなく「契約◯件」を今日の必達にする（商談があると、アポを回る時間がないため）。
     # 商談が1件だけなら時間に余裕があるので、アポ数も併記する（2件以上ならアポは追わない）
-    contract_mode, contract_today, c_done, c_target = False, 0, 0, 0
+    contract_mode, contract_today = False, 0
+    c_target = int(prop_num(page, "今月契約目標") or 0) if role == "クローザー" else 0
+    c_done = max(0, int(sum(v.get("契約", 0) - v.get("取消", 0) for v in mine.values()))) if role == "クローザー" else 0
+    c_rem = max(0, c_target - c_done)
+    c_week = math.ceil(c_rem * wk_share) if c_rem else 0  # 今週中にあと何件（期限までの残りのうち今週の分）
     if role == "クローザー" and n_meet >= 1:
         contract_mode = True
-        c_target = int(prop_num(page, "今月契約目標") or 0)
-        c_done = max(0, int(sum(v.get("契約", 0) - v.get("取消", 0) for v in mine.values())))
-        c_rem = max(0, c_target - c_done)
         rate = (prop_num(page, "契約率%_30日") or 28) / 100
         need = math.ceil(c_rem / max(1, len(s_to_deadline))) if c_rem else 0
         contract_today = min(n_meet, max(1, math.ceil(n_meet * rate), need))
@@ -359,7 +360,7 @@ def build_mission(page: dict, today: dt.date, days: list[dt.date], by_day: dict,
             "visit_today": int(prop_num(page, "今日やるべき訪問数") or 0), "visits_month": visits_month,
             "budget": prop_num(page, "今月予算万円") or 0, "week_apo": int(prop_num(page, "今週の必要アポ数") or 0),
             "week_visit": int(prop_num(page, "今週の必要訪問数") or 0), "money": money, "company": company, "sales_plan": sales_plan,
-            "contract_mode": contract_mode, "contract_today": contract_today, "c_done": c_done, "c_target": c_target,
+            "contract_mode": contract_mode, "contract_today": contract_today, "c_done": c_done, "c_target": c_target, "c_week": c_week,
             "appo_secondary": today_target if (contract_mode and n_meet == 1) else 0}
 
 
@@ -595,6 +596,12 @@ def render_card2(m: dict, today: dt.date, path: str) -> int:
                 color=NAVY, fontsize=22 if mo["remaining"] else 19, fontweight="bold", va="center")
         ax.text(93, y - 33.5, f"今週ここまで {man(mo['week_sales'])}", color=SUB, fontsize=13.5, ha="right", va="center")
         ax.text(5, y - 44, wk_text, color=RED if sp["days_left"] and len(sp["days_left"]) <= 2 else SUB, fontsize=14.5, fontweight="bold", va="center")
+        if m["c_target"]:
+            ax.text(5, y - 52, "あなたの契約件数", color=INK, fontsize=20, fontweight="bold", va="center")
+            ax.text(95, y - 52, f"今月 {m['c_done']}件 ／ 目標 {m['c_target']}件", color=INK, fontsize=19, fontweight="bold", ha="right", va="center")
+            ax.text(5, y - 58.5, (f"今週中に あと{m['c_week']}件" if m["c_week"] else "今月の契約目標は達成済み。上積みを頼んだ"),
+                    color=RED if m["c_week"] else GREEN, fontsize=20, fontweight="bold", va="center")
+            y -= 15
         y -= 51
 
     pct_b = co["sales"] / co["budget"] * 100 if co["budget"] else 0
@@ -681,6 +688,9 @@ def flex_message(m: dict, url1: str, h1: int, url2: str, h2: int, today: dt.date
         body2.append({"type": "text", "weight": "bold", "size": "md", "wrap": True, "color": "#1F3A5F",
                       "text": (f"あなたの今週の狙い +{man(mo['week_aim'])}／見越し目標まであと{man(mo['remaining'])}（今週の残りの土日{len(m['sales_plan']['week_days_left'])}日）" if mo["remaining"]
                                else "見越し目標は達成済み。記録更新を期待してる")})
+    if m["c_target"]:
+        body2.append({"type": "text", "size": "sm", "wrap": True, "weight": "bold", "color": "#1F3A5F",
+                      "text": f"契約 今月{m['c_done']}件／目標{m['c_target']}件、" + (f"今週中にあと{m['c_week']}件" if m["c_week"] else "目標は達成済み")})
     body2.append({"type": "text", "size": "sm", "wrap": True, "color": "#444444",
                   "text": f"チームは予算{man(m['company']['budget'])}に対して{man(m['company']['sales'])}。見越し目標{man(m['company']['goal'])}まであと{man(m['company']['remaining'])}、今週の狙い +{man(m['company']['week_aim'])}"})
     b2 = {"type": "bubble", "size": "mega",
