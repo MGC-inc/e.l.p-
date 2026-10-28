@@ -128,7 +128,14 @@ for r in csv.DictReader(open(f"{out}/manifest.csv", encoding="utf-8-sig")):
         ]}).encode(),
         headers={"Content-Type": "application/json", "Authorization": f"Bearer {tok}"},
     )
-    print(r["name"], urllib.request.urlopen(req).status)
+    for attempt in range(5):   # 429（短時間の送りすぎ）は少し待って送り直す。2026-10-21に途中で止まったため
+        try:
+            print(r["name"], urllib.request.urlopen(req).status)
+            break
+        except urllib.error.HTTPError as e:
+            if e.code != 429 or attempt == 4:
+                raise
+            time.sleep(2 ** (attempt + 1))
 
     if not test_to:
         try:

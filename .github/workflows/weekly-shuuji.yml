@@ -20,7 +20,29 @@ on:
     - cron: "0 23 * * 2"  # 火曜 23:00 UTC = 水曜 08:00 JST
 
 jobs:
+  # GitHubの定時実行は毎回2〜5時間遅れる（実績: 10:19〜13:20 JSTに起動）。遅いときは手動で本番配信するので、
+  # その後に遅れて起動した定時実行が同じ内容をもう一度送らないよう、今日すでに本番配信済みなら止める。
+  guard:
+    runs-on: ubuntu-latest
+    outputs:
+      skip: ${{ steps.check.outputs.skip }}
+    steps:
+      - id: check
+        env:
+          ELP_SUPABASE_URL: ${{ secrets.ELP_SUPABASE_URL }}
+          ELP_SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.ELP_SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          today=$(TZ=Asia/Tokyo date +%F)
+          last=$(curl -sf -H "apikey: $ELP_SUPABASE_SERVICE_ROLE_KEY" -H "Authorization: Bearer $ELP_SUPABASE_SERVICE_ROLE_KEY" \
+            "$ELP_SUPABASE_URL/storage/v1/object/weekly-pdca/delivered.txt" || true)
+          if [ "${{ github.event_name }}" = "schedule" ] && [ "$last" = "$today" ]; then
+            echo "今日（$today）は本番配信済みのため、定時実行を止めます"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+
   run:
+    needs: guard
+    if: needs.guard.outputs.skip != 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -96,6 +118,11 @@ jobs:
           # github.event_name==scheduleの場合は常に本番配信として扱う
           if [ "${{ github.event_name }}" = "schedule" ] || [ "${{ inputs.send_mode }}" = "production" ]; then
             python3 tools/shuuji/deliver.py out "${{ steps.publish.outputs.base_url }}"
+            # 本番配信した日を記録（上のguardが、遅れて起動した定時実行の二重配信を止めるのに使う）
+            TZ=Asia/Tokyo date +%F | curl -sf -X POST --data-binary @- \
+              -H "apikey: $ELP_SUPABASE_SERVICE_ROLE_KEY" -H "Authorization: Bearer $ELP_SUPABASE_SERVICE_ROLE_KEY" \
+              -H "Content-Type: text/plain" -H "x-upsert: true" \
+              "$ELP_SUPABASE_URL/storage/v1/object/weekly-pdca/delivered.txt"
           else
             python3 tools/shuuji/deliver.py out "${{ steps.publish.outputs.base_url }}" --test-to "$IMAGAWA_LINE_USER_ID"
           fi

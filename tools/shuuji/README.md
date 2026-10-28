@@ -56,9 +56,11 @@ pdca_reminder.py    (宿題の未提出者への催促LINE。判定はNotionの�
 「次にどうする」は当日のMTで手書き。数字の結果はPDF内の他の表に既に出ているため、
 テンプレでは聞かない。ユーザー指示）。
 
-毎週水曜9:00 JSTの無人実行は [`../../.github/workflows/weekly-shuuji.yml`](../../.github/workflows/weekly-shuuji.yml)
-が行う（Claude／LLMを一切経由しない。現時点では安全のため手動実行=`workflow_dispatch`のみ有効。
-scheduleを有効化する手順は運用.mdを参照）。
+毎週水曜8:00 JSTの無人実行は [`../../.github/workflows/weekly-shuuji.yml`](../../.github/workflows/weekly-shuuji.yml)
+が行う（Claude／LLMを一切経由しない）。ただしGitHubの定時実行は毎回2〜5時間遅れて起動する（実績10:19〜13:20 JST）。
+MTに間に合わないときは手動実行（`workflow_dispatch`・send_mode=production）で配信する。本番配信すると
+Supabase Storage `weekly-pdca/delivered.txt` に配信日が記録され、その日に遅れて起動した定時実行は配信せずに止まる
+（二重配信防止。2026-10-28追加）。LINEの429（短時間の送りすぎ）は待って送り直す。
 
 ## 要件
 
