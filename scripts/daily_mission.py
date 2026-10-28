@@ -659,6 +659,31 @@ def supabase_upload(local: str, remote: str) -> str:
     return f"{base}/storage/v1/object/public/{BUCKET}/{remote}"
 
 
+def sent_today(today: dt.date) -> set[str]:
+    """今日すでにカードを送った人。定時実行が遅れて手動で送った日に、あとから起動した定時実行が二重に送らないため。"""
+    base = os.environ["ELP_SUPABASE_URL"].rstrip("/")
+    key = os.environ["ELP_SUPABASE_SERVICE_ROLE_KEY"]
+    req = urllib.request.Request(f"{base}/storage/v1/object/{BUCKET}/{FOLDER}/{today:%Y%m%d}/sent.json",
+                                 headers={"apikey": key, "Authorization": f"Bearer {key}"})
+    try:
+        with urllib.request.urlopen(req, timeout=20) as r:
+            return set(json.loads(r.read()))
+    except urllib.error.HTTPError as e:
+        if e.code in (400, 404):  # まだ誰にも送っていない
+            return set()
+        raise
+
+
+def save_sent(today: dt.date, names: set[str]) -> None:
+    base = os.environ["ELP_SUPABASE_URL"].rstrip("/")
+    key = os.environ["ELP_SUPABASE_SERVICE_ROLE_KEY"]
+    req = urllib.request.Request(f"{base}/storage/v1/object/{BUCKET}/{FOLDER}/{today:%Y%m%d}/sent.json",
+                                 data=json.dumps(sorted(names), ensure_ascii=False).encode(), method="POST",
+                                 headers={"apikey": key, "Authorization": f"Bearer {key}",
+                                          "Content-Type": "application/json", "x-upsert": "true"})
+    urllib.request.urlopen(req, timeout=20).close()
+
+
 def sb_get(path: str) -> list:
     base = os.environ["ELP_SUPABASE_URL"].rstrip("/")
     key = os.environ["ELP_SUPABASE_SERVICE_ROLE_KEY"]
@@ -830,9 +855,13 @@ def main() -> int:
     ask_hw_day = today.weekday() >= 2   # 水曜のMT以降に、未登録の人へボタンを出す
     team["n_closers"] = len([p for p in active if prop_text(p, "役割") == "クローザー"])
     sent, failed, skipped = [], [], []
+    done = set() if args.dry_run else sent_today(today)
     for p in active:
         name = prop_text(p, "メンバー")
         if args.only and name != args.only:
+            continue
+        if name in done:
+            print(f"{name}: 今日は配信済みのため送りません")
             continue
         m = build_mission(p, today, days, by_day, meet.get(name, 0), budgets, team)
         if not m:
@@ -868,6 +897,12 @@ def main() -> int:
         res = line_push(to, [flex_message(m, url1, h1, url2, h2, today, homeworks.get(name),
                                           ask_hw_day and name not in homeworks and name not in NO_HOMEWORK)])
         (sent if res == 200 else failed).append(name if res == 200 else (name, res))
+        if res == 200:
+            done.add(name)
+            save_sent(today, done)
+    if done and not sent and not failed:
+        print("全員に配信済みでした（何も送っていません）")
+        return 0
     if admin and not args.dry_run and not args.only:
         line_push(admin, [{"type": "text", "text": (
             f"✅ 今日の任された数字カード: 配信前の数字確認OK\n・前日（{(today - dt.timedelta(days=1)).month}/{(today - dt.timedelta(days=1)).day}）までのNotion実績を読み込み\n"
