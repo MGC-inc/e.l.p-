@@ -22,6 +22,7 @@ import json
 import mimetypes
 import os
 import re
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -1698,7 +1699,8 @@ def hw_summary(d: dict) -> str:
 def notion_save_homework(member: str, week_key: str, d: dict) -> None:
     props = {
         "アクションプラン": {"rich_text": rt(f"{d['what']}（{d['when']}／{d['who']}）")},
-        "元メッセージ": {"rich_text": rt(hw_summary(d))},
+        "元メッセージ": {"rich_text": rt(hw_summary(d) if not d.get("source_text") else
+                                       f"{d['source_text']}\n\n【Botの読み取り結果（本人確認済み）】\n{hw_summary(d)}")},
     }
     if d.get("learn"):
         props["原因"] = {"rich_text": rt(d["learn"])}
@@ -1733,6 +1735,153 @@ def hw_ask_learn(reply: str, row: dict, d: dict) -> None:
                         "quickReply": quick_reply(["スキップ"])}])
 
 
+def hw_ask_targets(reply: str, row: dict, d: dict, name: str, prefix: str = "") -> None:
+    """④ 数字の目標。過去データのおすすめ・目標ペースをボタンで出す。"""
+    keep = {label for label, _ in hw_metrics_of(d)}
+    d["rec"] = {k: v for k, v in (recommended_targets(name) or {}).items() if k in keep}
+    d["pace"] = {k: v for k, v in goal_pace(name).items() if k in keep}
+    rec, pace = d["rec"], d["pace"]
+    if not rec and not pace:
+        hw_ask_number(reply, row, d, 0, prefix=prefix + "④ 今週の数字の目標です。過去データがまだ少ないので、1つずつ決めましょう。\n\n")
+        return
+    lines, buttons = [prefix + "④ 今週の数字の目標です。"], []
+    if rec:
+        lines.append("過去データに基づくあなたへのおすすめ：\n" + "・".join(f"{label}{rec[label]}" for label, _ in hw_metrics_of(d)))
+        buttons.append(HW_OK_PAST)
+    if pace:
+        lines.append("月の目標に必要な今週のペース：\n" + "・".join(f"{label}{pace[label]}" for label, _ in hw_metrics_of(d) if label in pace))
+        buttons.append(HW_OK_PACE)
+    if rec and pace:
+        lines.append("高い方を選ぶのがおすすめです。")
+    buttons.append(HW_CUSTOM)
+    flow_update(row, step="num_ok", data=d)
+    line_reply(reply, [{"type": "text", "text": "\n\n".join(lines), "quickReply": quick_reply(buttons)}])
+
+
+def hw_next(reply: str, row: dict, d: dict, name: str, choices: list, prefix: str = "") -> None:
+    """まだ決まっていない項目を、①宿題→②いつ→③誰と→④数字→⑤学び→確認 の順に聞く。
+    ボタンで1問ずつ答えた場合も、文面で送られた内容を読み取った場合も、同じ順で足りない所だけ聞く。"""
+    labels = [label for label, _ in hw_metrics_of(d)]
+    if not d.get("what"):
+        flow_update(row, step="what", data=d)
+        line_reply(reply, [{"type": "text", "text": prefix + "① 今週の宿題を1つ選んでください", "quickReply": quick_reply(choices)}])
+    elif not d.get("when"):
+        flow_update(row, step="when", data=d)
+        line_reply(reply, [{"type": "text", "text": prefix + "② いつやりますか？", "quickReply": quick_reply(HW_WHENS)}])
+    elif not d.get("who"):
+        flow_update(row, step="who", data=d)
+        line_reply(reply, [{"type": "text", "text": prefix + "③ 誰とやりますか？\n（名前を入力してもOKです）", "quickReply": quick_reply(HW_WHOS)}])
+    elif not any(d.get("t_" + label) is not None for label in labels):
+        hw_ask_targets(reply, row, d, name, prefix)
+    elif "learn" not in d:
+        hw_ask_learn(reply, row, d)
+    else:
+        missing = [label for label in labels if d.get("t_" + label) is None]
+        if missing:   # 文面に一部の数字しか無いときは、過去データのおすすめで埋めて確認で見せる（違えば「やり直す」）
+            rec = recommended_targets(name) or {}
+            for label in missing:
+                if rec.get(label) is not None:
+                    d["t_" + label] = rec[label]
+        flow_update(row, step="confirm", data=d)
+        note = ("\n※" + "・".join(missing) + "は書かれていなかったので、過去データのおすすめを入れています。") if missing else ""
+        line_reply(reply, [{"type": "text", "text": f"{prefix}{hw_summary(d)}{note}\n\n今週やり切れますか？",
+                            "quickReply": quick_reply(["やり切る！", "やり直す"])}])
+
+
+def hw_parse_text(text: str, labels: list) -> dict | None:
+    """文面で送られた宿題・数字の目標を、Geminiで項目ごとに読み取る。宿題の話でなければ {"is_homework": False}。
+    読み取れなかった（キー未設定・通信エラー）ときは None。"""
+    key = os.environ.get("GEMINI_API_KEY")
+    if not key:
+        return None
+    keys = {label: f"n{i}" for i, label in enumerate(labels)}   # 日本語のキーだと抜けることがあるため英数字のキーで聞く
+    nums = "、".join(f'"{keys[label]}": {label}の目標（数字かnull）' for label in labels)
+    prompt = (
+        "訪問販売の営業メンバーが、週次ミーティングで決めた「今週の宿題」と「今週の数字の目標」をLINEで送ってきました。"
+        "次のJSONだけを返してください。書かれていない項目は null にし、推測で埋めないでください。"
+        "what は本人の言葉をできるだけそのまま短く（1文。宿題が複数あれば「、」でつなぐ）。数字は今週の目標の数（日報の実績報告ではない）。"
+        "when・who は本文に書かれているときだけ入れる（「今週」はwhenに入れない）。\n"
+        '{"is_homework": 今週の宿題か数字の目標を伝える文ならtrue（日報・質問・雑談ならfalse）, '
+        '"what": 今週の宿題, "when": いつやるか, "who": 誰とやるか, ' + nums +
+        ', "learn": 先週の学び・反省}\n\n文面:\n' + text)
+    body = json.dumps({"contents": [{"parts": [{"text": prompt}]}],
+                       "generationConfig": {"temperature": 0, "responseMimeType": "application/json", "responseSchema": {
+                           "type": "OBJECT", "required": ["is_homework"], "properties": {
+                               "is_homework": {"type": "BOOLEAN"},
+                               **{k: {"type": "STRING", "nullable": True} for k in ("what", "when", "who", "learn")},
+                               **{keys[label]: {"type": "INTEGER", "nullable": True} for label in labels}},
+                           "propertyOrdering": ["is_homework", "what", "when", "who", *keys.values(), "learn"]},
+                                            "thinkingConfig": {"thinkingBudget": 0}}}).encode()
+    # 無料枠は1モデル1日あたりの回数が少ない（2.5-flashは20回／日。録音分析でも使う）ため、軽いモデルから順に試す
+    for model in ("gemini-2.5-flash-lite", "gemini-2.5-flash"):
+        parsed = _gemini_json(model, key, body)
+        if parsed is not False:
+            if parsed:
+                for label, k in keys.items():
+                    parsed[label] = parsed.pop(k, None)
+            return parsed
+    return None
+
+
+def _gemini_json(model: str, key: str, body: bytes):
+    """GeminiにJSONで答えさせる。回数制限で使えなければ False（次のモデルを試す）、それ以外の失敗は None。"""
+    req = urllib.request.Request(
+        f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}",
+        data=body, method="POST", headers={"Content-Type": "application/json"})
+    for attempt in range(2):
+        try:
+            with urllib.request.urlopen(req, timeout=20) as r:
+                out = json.loads(r.read())["candidates"][0]["content"]["parts"][0]["text"]
+            parsed = json.loads(out)
+            return parsed if isinstance(parsed, dict) else None
+        except urllib.error.HTTPError as e:
+            if e.code == 429 and attempt == 0:   # 短時間の回数制限なら、少し待って1回だけやり直す
+                time.sleep(3)
+                continue
+            print(f"homework parse error ({model}): {e}")
+            return False if e.code == 429 else None
+        except Exception as e:  # noqa: BLE001
+            print(f"homework parse error ({model}): {e}")
+            return None
+    return False
+
+
+def handle_homework_text(event: dict, closer: dict) -> bool:
+    """宿題・目標を文面で送ってきた人の内容を読み取り、足りない項目だけボタンで聞いて、確認してから登録する。
+    宿題の話ではなかったら False（ほかの処理に回す）。"""
+    uid, reply, text = event["source"]["userId"], event["replyToken"], event["message"]["text"].strip()
+    name, role = closer.get("closer_name") or "", closer.get("role") or "appointer"
+    choices = HW_CHOICES["closer" if role == "closer" else "appointer"]
+    labels = [label for label, _ in HW_METRICS if role == "closer" or label not in APPOINTER_SKIP_METRICS]
+    parsed = hw_parse_text(text, labels)
+    if parsed is None:   # 読み取りに失敗したときは、これまでどおりボタンへ案内する
+        line_reply(reply, [{"type": "text", "text": "宿題はボタンで登録します（質問に答えるだけで30秒）。下のボタンを押してください。",
+                            "quickReply": quick_reply([HW_TRIGGER])}])
+        return True
+    if not parsed.get("is_homework"):
+        return False
+
+    def clean(v):
+        v = ("" if v is None else str(v)).strip()
+        return "" if v.lower() in ("null", "none", "なし") else v[:200]
+
+    d = {"week": hw_week_key(closer), "metrics": labels, "source_text": text[:1500]}
+    for k in ("what", "when", "who"):
+        if clean(parsed.get(k)):
+            d[k] = clean(parsed.get(k))
+    for label in labels:
+        m = re.search(r"\d+", clean(parsed.get(label)).translate(str.maketrans("０１２３４５６７８９", "0123456789")))
+        if m:
+            d["t_" + label] = int(m.group(0))
+    d["learn"] = clean(parsed.get("learn"))   # 文面のときは学びを改めて聞かない
+    flow_start(uid, "homework", "parsed", d)
+    row = flow_active(uid, "homework")
+    if not row or row.get("expired"):
+        return False
+    hw_next(reply, row, d, name, choices, prefix="📝 送ってくれた内容を宿題として読み取りました。\n\n")
+    return True
+
+
 def handle_homework(event: dict, closer: dict) -> bool:
     uid, reply, text = event["source"]["userId"], event["replyToken"], event["message"]["text"].strip()
     name, role = closer.get("closer_name") or "", closer.get("role") or "appointer"
@@ -1749,7 +1898,7 @@ def handle_homework(event: dict, closer: dict) -> bool:
         line_reply(reply, [{"type": "text", "text": HW_EXPIRED_TEXT, "quickReply": quick_reply([HW_TRIGGER])}])
         return True
     step, d = row.get("result"), flow_data(row)
-    long_ok = step in ("what_free", "learn")
+    long_ok = step in ("what_free", "learn") or (step == "what" and d.get("source_text"))
     if len(text) > (300 if long_ok else 30):
         return False   # 長い文章は別の用件（日報など）なので横取りしない
 
@@ -1758,47 +1907,27 @@ def handle_homework(event: dict, closer: dict) -> bool:
             flow_update(row, step="what_free")
             line_reply(reply, [{"type": "text", "text": "宿題の内容を、そのまま送ってください。"}])
             return True
-        if text not in choices:
+        if text not in choices and not d.get("source_text"):   # 文面から始まった人は、宿題も文面で受け取る
             line_reply(reply, [{"type": "text", "text": "ボタンから選んでください。", "quickReply": quick_reply(choices)}])
             return True
         d["what"] = text
     elif step == "what_free":
         d["what"] = text
     if step in ("what", "what_free"):
-        flow_update(row, step="when", data=d)
-        line_reply(reply, [{"type": "text", "text": "② いつやりますか？", "quickReply": quick_reply(HW_WHENS)}])
+        hw_next(reply, row, d, name, choices)
         return True
 
     if step == "when":
-        if text not in HW_WHENS:
+        if text not in HW_WHENS and not d.get("source_text"):
             line_reply(reply, [{"type": "text", "text": "ボタンから選んでください。", "quickReply": quick_reply(HW_WHENS)}])
             return True
         d["when"] = text
-        flow_update(row, step="who", data=d)
-        line_reply(reply, [{"type": "text", "text": "③ 誰とやりますか？\n（名前を入力してもOKです）", "quickReply": quick_reply(HW_WHOS)}])
+        hw_next(reply, row, d, name, choices)
         return True
 
     if step == "who":
         d["who"] = text
-        keep = {label for label, _ in hw_metrics_of(d)}
-        d["rec"] = {k: v for k, v in (recommended_targets(name) or {}).items() if k in keep}
-        d["pace"] = {k: v for k, v in goal_pace(name).items() if k in keep}
-        rec, pace = d["rec"], d["pace"]
-        if not rec and not pace:
-            hw_ask_number(reply, row, d, 0, prefix="④ 今週の数字の目標です。過去データがまだ少ないので、1つずつ決めましょう。\n\n")
-            return True
-        lines, buttons = ["④ 今週の数字の目標です。"], []
-        if rec:
-            lines.append("過去データに基づくあなたへのおすすめ：\n" + "・".join(f"{label}{rec[label]}" for label, _ in hw_metrics_of(d)))
-            buttons.append(HW_OK_PAST)
-        if pace:
-            lines.append("月の目標に必要な今週のペース：\n" + "・".join(f"{label}{pace[label]}" for label, _ in hw_metrics_of(d) if label in pace))
-            buttons.append(HW_OK_PACE)
-        if rec and pace:
-            lines.append("高い方を選ぶのがおすすめです。")
-        buttons.append(HW_CUSTOM)
-        flow_update(row, step="num_ok", data=d)
-        line_reply(reply, [{"type": "text", "text": "\n\n".join(lines), "quickReply": quick_reply(buttons)}])
+        hw_next(reply, row, d, name, choices)
         return True
 
     if step == "num_ok":
@@ -1809,7 +1938,7 @@ def handle_homework(event: dict, closer: dict) -> bool:
                 v = base.get(label, rec.get(label, pace.get(label)))
                 if v is not None:
                     d["t_" + label] = v
-            hw_ask_learn(reply, row, d)
+            hw_next(reply, row, d, name, choices)
         elif text == HW_CUSTOM:
             hw_ask_number(reply, row, d, 0)
         else:
@@ -1827,14 +1956,12 @@ def handle_homework(event: dict, closer: dict) -> bool:
         if idx + 1 < len(hw_metrics_of(d)):
             hw_ask_number(reply, row, d, idx + 1)
         else:
-            hw_ask_learn(reply, row, d)
+            hw_next(reply, row, d, name, choices)
         return True
 
     if step == "learn":
         d["learn"] = "" if text == "スキップ" else event["message"]["text"].strip()
-        flow_update(row, step="confirm", data=d)
-        line_reply(reply, [{"type": "text", "text": f"{hw_summary(d)}\n\n今週やり切れますか？",
-                            "quickReply": quick_reply(["やり切る！", "やり直す"])}])
+        hw_next(reply, row, d, name, choices)
         return True
 
     if step == "confirm":
@@ -2796,19 +2923,14 @@ def handle_event(event: dict):
         pass  # 今月のアポ目標の宣言（開始・数字）。処理済み
     elif message_type == "text" and handle_feedback(event, closer):
         pass  # 分析結果へのフィードバック（開始・本文）。処理済み
-    elif (message_type == "text" and closer.get("pdca_pending_week")
-          and latest_pending_recording(line_user_id) is None
-          and re.search(r"[①②③]|宿題", event["message"]["text"])):
-        # 宿題はボタン式に一本化（2026-10-27）。テキストで書いて送られた場合は、ボタンへ案内するだけで保存しない
-        # 週次PDCAテンプレの返信待ち中は、通常の録音受付フローより優先して処理する。
-        # ただし「商談録音の確認フローが今まさに進行中（アポインター/お客様名/結果待ち等）」
-        # の場合は、その回答（お客様の苗字・結果ボタン・分析する/しないボタン等）まで
-        # PDCA返信として横取りしてしまうバグがあったため、録音確認フローが進行中では
-        # ないことを必ず確認してから初めてPDCA返信として扱う（ユーザー報告で修正。
-        # pdca_pending_week列が未追加の環境ではcloser.get()がNoneを返すだけで安全にスキップ）
-        line_reply(event["replyToken"], [{"type": "text", "text": (
-            "宿題はボタンで登録します（質問に答えるだけで30秒）。下のボタンを押してください。"),
-            "quickReply": quick_reply([HW_TRIGGER])}])
+    elif (message_type == "text" and latest_pending_recording(line_user_id) is None
+          and (re.search(r"宿題", event["message"]["text"])
+               or (closer.get("pdca_pending_week") and re.search(r"[①②③④]|目標", event["message"]["text"])))
+          and handle_homework_text(event, closer)):
+        # 宿題・数字の目標を文面で送ってきた場合は、Geminiで読み取って足りない項目だけボタンで聞き、確認してから登録する
+        # （2026-10-28 今川さん指示。ボタンが基本だが、文面の人も取りこぼさない）。宿題の話でなければ下の通常処理へ。
+        # 商談録音の確認フロー中（お客様名・結果ボタン待ち等）は、その回答を横取りしないよう対象外にする
+        pass
     elif message_type == "text":
         handle_text_message(event)
 
