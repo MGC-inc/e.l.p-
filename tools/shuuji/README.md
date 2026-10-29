@@ -36,6 +36,7 @@ pdca.csvへ反映される
 （3日後の土曜、まだpdca_pending_weekが残っている＝未回答の人だけに）
 pdca_reminder.py    (宿題の未提出者への催促LINE。判定はNotionの記録。.github/workflows/
                     weekly-pdca-reminder.yml が水14:30・木9:00・木18:00(今川さんへの一覧) JSTに自動実行)
+                    --stage guide は手動。本人のKPIページ(先週・4週推移)のリンク付きで宿題の決め方を3ステップで案内)
 ```
 
 **2026-10追記: 未回答者リマインドを追加した経緯**: 実データで、配信は全員にHTTP 200で

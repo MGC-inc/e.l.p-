@@ -14,12 +14,16 @@
   --stage 1       水 14:30 JST  MTのあと（BOT送信の締切11:15と、議事録の反映11:50のあと）。やさしく「届いていません」
   --stage 2       木 09:00 JST  木曜は「アポ中心」の日。今日の動きを決めるために、今日18時までに送ってもらう
   --stage report  木 18:00 JST  まだ出していない人を、代理店ごとに今川さんだけに知らせる（本人には送らない）
+  --stage guide   手動（今川さんの指示のとき）。宿題の決め方が分からない人向けに、本人のKPIページ（先週分・直近4週の推移）の
+                  リンクを付けて「先週の数字を見る→もったいない所を1つ選ぶ→今週やることを決める」を順に案内する
   催促は本人あてに最大2回まで。それでも出ない人は、リーダー／今川さんが声をかける（マニュアル/週次MT.md）
 
 環境変数: DEAL_LINE_CHANNEL_ACCESS_TOKEN, ELP_SUPABASE_URL, ELP_SUPABASE_SERVICE_ROLE_KEY, NOTION_TOKEN,
-IMAGAWA_LINE_USER_ID（reportの送り先）
+IMAGAWA_LINE_USER_ID（reportの送り先）, DEAL_LINE_CHANNEL_SECRET（guideのKPIリンクの署名。line-webhook/api/kpi.pyと同じ）
 """
 import datetime
+import hashlib
+import hmac
 import json
 import os
 import sys
@@ -35,8 +39,10 @@ NO_REMINDER = {"今川", "藤江"}  # 今川＝管理者本人／藤江＝週次
 
 dry = "--dry-run" in sys.argv
 stage = sys.argv[sys.argv.index("--stage") + 1] if "--stage" in sys.argv else "2"
-if stage not in ("1", "2", "report"):
-    sys.exit("--stage は 1 / 2 / report のどれか")
+if stage not in ("1", "2", "report", "guide"):
+    sys.exit("--stage は 1 / 2 / report / guide のどれか")
+KPI_BASE_URL = os.environ.get("KPI_BASE_URL", "https://e-l-p-iyiyiyi.vercel.app")   # webhook.pyと同じ
+KPI_TOKEN_TTL_SECONDS = 48 * 3600
 
 
 def sb(method: str, path: str, data: dict | None = None):
@@ -83,7 +89,33 @@ def template(role: str) -> str:
     return ("①先週の振り返り・学び\n\n\n②今週の宿題を1つ（いつ・誰と・何を）\n\n\n③今週の目標（数字で。日曜までの分）\n" + targets)
 
 
+def kpi_url(name: str, view: str) -> str:
+    """本人専用のKPIページURL（48時間有効）。webhook.pyのmake_kpi_tokenと同じ署名。"""
+    exp = int(datetime.datetime.now(datetime.timezone.utc).timestamp()) + KPI_TOKEN_TTL_SECONDS
+    sig = hmac.new(os.environ["DEAL_LINE_CHANNEL_SECRET"].encode(), f"kpi:{name}:{exp}".encode(),
+                   hashlib.sha256).hexdigest()[:32]
+    return f"{KPI_BASE_URL}/api/kpi?token={urllib.parse.quote(name)}.{exp}.{sig}&view={view}"
+
+
 def message(stage: str, name: str, role: str, label: str) -> str:
+    if stage == "guide":
+        example = ("・対話からのアポ率が低い → 木曜に、アポが取れている人の同行に入って、取り切り方を見て学ぶ\n"
+                   "・訪問数が足りない → 毎日、昼までに◯件回ってから休憩する"
+                   if role != "closer" else
+                   "・商談からの契約率が低い → 毎日、自分の録音を1本聞き返して、断られた場面の切り返しを直す\n"
+                   "・クーリングオフが多い → 契約の場でご主人の同意を必ず取る（電話でもOK）")
+        return (f"📝{name}さん、今週（{label}）の宿題がまだ登録されていません。\n"
+                "宿題の決め方を、3ステップでご案内します。\n\n"
+                "① まず、先週の自分の数字を見る\n"
+                f"▼先週のKPI（どこで数字が落ちているか）\n{kpi_url(name, 'week')}\n"
+                f"▼直近4週の推移\n{kpi_url(name, 'trend')}\n"
+                "（リンクは48時間有効です）\n\n"
+                "② 先週の反省点を1つ選ぶ\n"
+                "平均より低い所、先週うまくいかなかった所の中から、一番もったいない所を1つだけ。\n\n"
+                "③ その反省点を改善するために、今週どんなアクションを起こすかを1つ決める\n"
+                "「いつ・誰と・何をするか」まで決めてください。例：\n" + example + "\n\n"
+                "決まったら、下の「宿題を登録する」ボタンを押して、質問に答えるだけです（約30秒）。\n"
+                "文章で「宿題：〜　いつ：〜　誰と：〜　訪問◯・アポ◯」と送ってもOKです。")
     if stage == "1":
         return (f"📝{name}さん、今週（{label}）の宿題がまだ届いていません。\n\n"
                 "今朝の週次MTで決めた「宿題」と「数字の目標」を、下のボタンから登録してください。質問に答えるだけで30秒です。")
