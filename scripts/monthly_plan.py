@@ -33,8 +33,8 @@ import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
-from monthly_budget_floor import (BUDGET_DB, NOTION_VERSION_V2, PERFORMANCE_DB, load_env,  # noqa: E402
-                                  notion, prop_text, query_all)
+from monthly_budget_floor import (BUDGET_DB, KPI_DB, NOTION_VERSION_V1, NOTION_VERSION_V2,  # noqa: E402
+                                  PERFORMANCE_DB, load_env, notion, prop_text, query_all)
 
 try:
     import jpholiday
@@ -107,7 +107,13 @@ def main() -> None:
     ap.add_argument("--exclude", default="", help="配分しないメンバー（カンマ区切り）")
     ap.add_argument("--asof", help="実績を読む最終日（YYYY-MM-DD）。省略時は前月末")
     ap.add_argument("--out", help="結果JSONの保存先")
+    ap.add_argument("--set", default="", help="個別の指定（例: 福本=85,宮腰=岡野-10,今川=+10%%）")
+    ap.add_argument("--min", type=float, help="個人予算の最低額（万円）。省略時はアポ1件分＝契約1件あたりの金額（折半後）")
+    ap.add_argument("--smooth", type=float, default=0.8, help="差の縮め方（1=そのまま、小さいほど平らに）")
+    ap.add_argument("--as-closer", default="", help="今月からクローザーとして見る人（カンマ区切り。例: 福本）")
     ap.add_argument("--write-budget", action="store_true", help="💰予算と達成率に翌月の予算行を書く")
+    ap.add_argument("--write-kpi", action="store_true",
+                    help="📊KPI逆算データに翌月の予算と月目標（クローザー=契約数、アポインター=アポ数）を書く")
     args = ap.parse_args()
     load_env()
 
@@ -175,31 +181,54 @@ def main() -> None:
         perf[n] = max(0.0, sum(vals) / len(vals)) if vals else 0.0
     b_sum, p_sum = sum(budgets_prev[n] for n in members), sum(perf.values())
     weight = {n: BUDGET_WEIGHT * budgets_prev[n] / b_sum + (PERF_WEIGHT * perf[n] / p_sum if p_sum else 0) for n in members}
-    w_sum = sum(weight.values())
-    alloc = {n: args.total * weight[n] / w_sum for n in members}
-    floor = {n: max(0.0, monthly[(n, prev)]["実質売上（万円）"]) for n in members}
-    for _ in range(10):   # 前月の実質売上を下限にして、残りを他の人で按分し直す
-        fixed = {n for n in members if alloc[n] < floor[n] - 1e-6}
-        if not fixed:
-            break
-        rest = args.total - sum(floor[n] for n in fixed)
+    weight = {n: w ** args.smooth for n, w in weight.items()}   # 突出した人が出ないよう、差を少し縮める
+    min_budget = args.min if args.min is not None else round(c_price, 1)   # アポ1件分（契約1件の折半）
+    # 個別の指定: 「福本=85」固定／「今川=+10%」計算値から増減／「宮腰=岡野-10」他の人から差を付ける
+    rules = {}
+    for item in filter(None, (x.strip() for x in args.set.split(","))):
+        k, v = item.split("=", 1)
+        rules[k.strip()] = v.strip()
+    base_alloc = {n: args.total * weight[n] / sum(weight.values()) for n in members}
+    alloc = dict(base_alloc)
+    at_min: set[str] = set()   # 一度最低額に張り付いた人は、そのまま最低額で固定する（行ったり来たりしないように）
+    for _ in range(50):
+        fixed = {}
+        for n, v in rules.items():
+            if n not in alloc:
+                continue
+            if v.endswith("%"):
+                fixed[n] = base_alloc[n] * (1 + float(v[:-1]) / 100)
+            elif any(o in v for o in members if o != n):
+                other = next(o for o in members if o != n and v.startswith(o))
+                fixed[n] = alloc[other] + float(v[len(other):] or 0)
+            else:
+                fixed[n] = float(v)
+        at_min |= {n for n in members if n not in fixed and alloc[n] < min_budget - 1e-6}
+        for n in at_min:
+            if n not in fixed:
+                fixed[n] = min_budget
         free = [n for n in members if n not in fixed]
+        rest = args.total - sum(fixed.values())
         fw = sum(weight[n] for n in free)
-        for n in fixed:
-            alloc[n] = floor[n]
-        for n in free:
-            alloc[n] = rest * weight[n] / fw
+        new_alloc = {**{n: rest * weight[n] / fw for n in free}, **fixed}
+        if all(abs(new_alloc[n] - alloc[n]) < 0.01 for n in members):
+            alloc = new_alloc
+            break
+        alloc = new_alloc
     alloc = {n: round(v, 1) for n, v in alloc.items()}
     drift = round(args.total - sum(alloc.values()), 1)
     if members and drift:
-        top = max(members, key=lambda n: alloc[n])
+        top = max((n for n in members if n not in rules), key=lambda n: alloc[n])
         alloc[top] = round(alloc[top] + drift, 1)
 
     # ---- 稼働日（会社の暦）
     t_days = company_days(t_first, t_last)
     out_members = []
     for n in members:
-        is_closer = "クローザー" in role.get(n, "")
+        as_closer = n in {x.strip() for x in args.as_closer.split(",") if x.strip()}
+        is_closer = "クローザー" in role.get(n, "") or as_closer
+        if as_closer and "クローザー" not in role.get(n, ""):
+            role[n] = f"クローザー（{target[5:].lstrip('0')}月から）"
         start = max(p_first, first_seen.get(n, p_first))
         p_days = company_days(start, min(p_last, asof))
         exp_days, per_day = {}, {}
@@ -242,6 +271,12 @@ def main() -> None:
             closer_side = deals * (r["商談→契約率"] or 0) if is_closer else 0
             return (appointer_side + closer_side) * price * r["残る率"]
 
+        if as_closer and tgt.get("有効商談数", 0) < 3:
+            # クローザーデビューで商談の実績が無い人: 予算からアポ側の見込みを引いた分を、全社の契約率・残る率で逆算する
+            need_sales = max(0.0, alloc[n] - tgt["アポ数"] * apo2con * price * (1 - cancel))
+            tgt["契約数"] = max(1, round(need_sales / (price * (1 - c_cancel)))) if price else 1
+            tgt["有効商談数"] = max(1, round(tgt["契約数"] / c_close)) if c_close else tgt["契約数"]
+            rates["商談→契約率"] = c_close
         deals_t = tgt.get("有効商談数", 0)
         proj = sales(tgt["アポ数"], deals_t, rates)
         out_members.append({
@@ -352,6 +387,19 @@ def main() -> None:
                 notion("POST", "/pages", {"parent": {"type": "data_source_id", "data_source_id": BUDGET_DB},
                                           "properties": props}, NOTION_VERSION_V2)
                 print("追加:", n, alloc[n])
+    if args.write_kpi:
+        by_name = {m["name"]: m for m in out_members}
+        for p in query_all(f"/databases/{KPI_DB}/query", None, NOTION_VERSION_V1):
+            m = by_name.get(prop_text(p, "メンバー"))
+            if not m:
+                continue
+            props = {"今月予算万円": {"number": m["budget"]}}
+            if prop_text(p, "役割") == "クローザー":
+                props["今月契約目標"] = {"number": m["targets"].get("契約数", 1)}
+            else:
+                props["今月アポ目標概算"] = {"number": m["targets"]["アポ数"]}
+            notion("PATCH", f"/pages/{p['id']}", {"properties": props}, NOTION_VERSION_V1)
+            print("KPI:", m["name"], props)
 
 
 if __name__ == "__main__":
