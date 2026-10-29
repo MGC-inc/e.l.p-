@@ -112,6 +112,8 @@ def main() -> None:
     ap.add_argument("--smooth", type=float, default=0.8, help="差の縮め方（1=そのまま、小さいほど平らに）")
     ap.add_argument("--as-closer", default="", help="今月からクローザーとして見る人（カンマ区切り。例: 福本）")
     ap.add_argument("--write-budget", action="store_true", help="💰予算と達成率に翌月の予算行を書く")
+    ap.add_argument("--publish", action="store_true",
+                    help="LINE Botの「今月のアクションプランを登録する」が読む計画JSONをSupabase Storage（非公開）に置く")
     ap.add_argument("--write-kpi", action="store_true",
                     help="📊KPI逆算データに翌月の予算と月目標（クローザー=契約数、アポインター=アポ数）を書く")
     args = ap.parse_args()
@@ -351,6 +353,15 @@ def main() -> None:
     if args.out:
         with open(args.out, "w", encoding="utf-8") as f:
             json.dump(result, f, ensure_ascii=False, indent=1)
+    if args.publish:   # line-webhook/api/webhook.py の AP_PLAN_PATH と同じ場所
+        import urllib.request
+        url = os.environ["ELP_SUPABASE_URL"].rstrip("/") + f"/storage/v1/object/deal-recordings/plans/{target}.json"
+        key = os.environ["ELP_SUPABASE_SERVICE_ROLE_KEY"]
+        req = urllib.request.Request(url, data=json.dumps(result, ensure_ascii=False).encode(), method="POST",
+                                     headers={"apikey": key, "Authorization": f"Bearer {key}",
+                                              "Content-Type": "application/json", "x-upsert": "true"})
+        urllib.request.urlopen(req, timeout=30).close()
+        print(f"計画JSONを公開しました（Bot用・非公開バケット）: plans/{target}.json")
 
     print(f"{target}の計画（実績は{asof}まで）／全社予算{args.total:.0f}万 → 配分合計{sum(alloc.values()):.1f}万")
     print(f"翌月の会社の稼働日: 土日祝{t_days['heavy']}日・平日{t_days['light']}日／全社: 契約1件あたり{c_price:.1f}万・"
