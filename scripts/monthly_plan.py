@@ -112,6 +112,7 @@ def main() -> None:
     ap.add_argument("--smooth", type=float, default=0.8, help="差の縮め方（1=そのまま、小さいほど平らに）")
     ap.add_argument("--as-closer", default="", help="今月からクローザーとして見る人（カンマ区切り。例: 福本）")
     ap.add_argument("--write-budget", action="store_true", help="💰予算と達成率に翌月の予算行を書く")
+    ap.add_argument("--lock", help="確定済みの計画JSON。予算と目標はこれを使い、実績・見込み・改善ポイントだけ最新にする（MT前日の集計用）")
     ap.add_argument("--publish", action="store_true",
                     help="LINE Botの「今月のアクションプランを登録する」が読む計画JSONをSupabase Storage（非公開）に置く")
     ap.add_argument("--write-kpi", action="store_true",
@@ -223,12 +224,18 @@ def main() -> None:
         top = max((n for n in members if n not in rules), key=lambda n: alloc[n])
         alloc[top] = round(alloc[top] + drift, 1)
 
+    locked = {}
+    if args.lock:   # 確定済みの予算・目標で固定する（MT前日に実績だけ最新にするとき）
+        locked = {m["name"]: m for m in json.load(open(args.lock, encoding="utf-8"))["members"]}
+        members = [n for n in members if n in locked] + [n for n in locked if n not in members and n in budgets_prev]
+        alloc = {n: locked[n]["budget"] for n in members}
+
     # ---- 稼働日（会社の暦）
     t_days = company_days(t_first, t_last)
     out_members = []
     for n in members:
         as_closer = n in {x.strip() for x in args.as_closer.split(",") if x.strip()}
-        is_closer = "クローザー" in role.get(n, "") or as_closer
+        is_closer = "クローザー" in role.get(n, "") or as_closer or bool(locked.get(n, {}).get("is_closer"))
         if as_closer and "クローザー" not in role.get(n, ""):
             role[n] = f"クローザー（{target[5:].lstrip('0')}月から）"
         start = max(p_first, first_seen.get(n, p_first))
@@ -279,12 +286,17 @@ def main() -> None:
             tgt["契約数"] = max(1, round(need_sales / (price * (1 - c_cancel)))) if price else 1
             tgt["有効商談数"] = max(1, round(tgt["契約数"] / c_close)) if c_close else tgt["契約数"]
             rates["商談→契約率"] = c_close
+        if n in locked:
+            tgt = dict(locked[n]["targets"])
+            if locked[n].get("is_closer") and rates.get("商談→契約率") is None:
+                rates["商談→契約率"] = c_close
         deals_t = tgt.get("有効商談数", 0)
         proj = sales(tgt["アポ数"], deals_t, rates)
         out_members.append({
             "name": n, "role": role.get(n, ""), "agency": agency.get(n, ""), "is_closer": is_closer,
             "budget_prev": budgets_prev[n], "budget": alloc[n], "perf_avg3": round(perf[n], 1),
             "prev": {f: round(monthly[(n, prev)][f], 1) for f in FIELDS + ["稼働日"]},
+            "current": {f: round(monthly[(n, target)][f], 1) for f in FIELDS + ["稼働日"]},   # 計画月の実績（asofまで）
             "prev_budget_achv": round(monthly[(n, prev)]["実質売上（万円）"] / budgets_prev[n], 3) if budgets_prev[n] else None,
             "days": {"heavy": round(exp_days["heavy"], 1), "light": round(exp_days["light"], 1), "total": round(days_total, 1)},
             "targets": tgt, "rates": {k: (round(v, 4) if v is not None else None) for k, v in rates.items()},

@@ -34,6 +34,8 @@ line-webhook/api/webhook.py の handle_pdca_reply が受け取り、
 pdca.csvへ反映される
         ↓
 （3日後の土曜、まだpdca_pending_weekが残っている＝未回答の人だけに）
+build_monthly_slides.py (月次MTのスライド。scripts/monthly_plan.py の計画JSONから、先月の全社結果・予算との差を
+                    どこの改善で埋めるか・予算配分・目標・1人1枚の改善ポイント・アクションプランの登録方法)
 pdca_reminder.py    (宿題の未提出者への催促LINE。判定はNotionの記録。.github/workflows/
                     weekly-pdca-reminder.yml が水14:30・木9:00・木18:00(今川さんへの一覧) JSTに自動実行)
                     --stage guide は手動。本人のKPIページ(先週・4週推移)のリンク付きで宿題の決め方を3ステップで案内)
