@@ -2,7 +2,7 @@
 
 「ユメイク営業分析bot」宛てのメッセージを受け付ける。
 
-- 初回メッセージの送信者は、LINE表示名がKNOWN_CLOSERS/KNOWN_APPOINTERSに
+- 初回メッセージの送信者は、LINE表示名がKNOWN_CLOSERS/KNOWN_APPOINTERS/KNOWN_ADMINSに
   一致すれば即座に本登録される。一致しない場合はあいさつメッセージで
   お名前（苗字）→クローザー/アポインター/管理者の役割、の2問で自己登録してもらう
   （closer_line_users.role）。
@@ -21,9 +21,12 @@ import hmac
 import json
 import mimetypes
 import os
+import re
+import time
 import urllib.error
+import urllib.parse
 import urllib.request
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler
 
 LINE_CHANNEL_SECRET = os.environ["DEAL_LINE_CHANNEL_SECRET"]
@@ -31,8 +34,77 @@ LINE_CHANNEL_ACCESS_TOKEN = os.environ["DEAL_LINE_CHANNEL_ACCESS_TOKEN"]
 SUPABASE_URL = os.environ["DEAL_SUPABASE_URL"]
 SUPABASE_SERVICE_ROLE_KEY = os.environ["DEAL_SUPABASE_SERVICE_ROLE_KEY"]
 
+# 「今日の目標を見る」リッチメニュー用（任意設定。未設定でも録音受付フローは動く）。
+# NOTION_TOKENのセットアップ: 商談分析運用.md セクション6-6参照。
+NOTION_TOKEN = os.environ.get("NOTION_TOKEN")
+NOTION_VERSION = "2022-06-28"
+# 「📊 個人別KPI逆算データ（参照用）」DBのdatabase_id（固定値・秘密情報ではない）
+KPI_DATABASE_ID = "5f110c1c-b977-4054-9b00-5b3ce27d3493"
+# 「DB 商談分析＆アポ分析（契約案件一覧）」DBのdatabase_id（固定値・秘密情報ではない）
+DEAL_DATABASE_ID = "aa496718-e62f-4a70-818d-953492cad435"
+# 「📉 営業部 実績DB」のdatabase_id（固定値・秘密情報ではない）。日報の「備考」欄から
+# 前日共有した内容を拾うために使う（要Notionインテグレーション共有。他の2DBとは別）
+PERFORMANCE_DATABASE_ID = "f11afda4-a39d-4139-8e12-817d3f70267b"
+# 「📝 週次PDCA記録DB」のdata_source_id（固定値・秘密情報ではない）。週次MT用PDF
+# （tools/shuuji）のLINE返信から書き込む。要Notionインテグレーション共有（他の3DBとは別）。
+# PERFORMANCE_DATABASE_IDと同じく複数データソース対応版のため、両方とも
+# /v1/data_sources/{id}/query・Notion-Version 2025-09-03を使う（他の2DBとは形式が違う）
+PDCA_DATABASE_ID = "17f23c69-8a24-429a-8957-6b5490a87680"
+NOTION_VERSION_V2 = "2025-09-03"
+GOAL_BUTTON_TEXT = "今日の目標を見る"
+ANALYSIS_BUTTON_TEXT = "直近の商談分析結果を見る"
+# 単日KPIダッシュボード（Webページ、line-webhook/api/kpi.py）への入口テキスト。
+# 「今日の目標を見る」（テキスト1通で完結）とは意図的に分離している（ユーザー指示:
+# 見れる内容を切り分けたい）。こちらは行動量（実績/残り）・転換率（本日/基準/差）を
+# 表形式でビジュアルに見せるページへのリンクをReply APIで返す（フェーズ1。週間・月間・
+# ランキング等は未実装）。
+KPI_BUTTON_TEXT = "KPIを見る"
+KPI_TOKEN_TTL_SECONDS = 48 * 3600
+KPI_BASE_URL = os.environ.get("KPI_BASE_URL", "https://e-l-p-iyiyiyi.vercel.app")
+# ⚔️営業ステータスの評価基準を知りたい時にテキストで送ってもらう合言葉（低コスト運用:
+# リッチメニューのボタンは増やさず、この文字列を送るとReply APIで基準一覧を返すだけにする）
+STATUS_DEFINITION_TEXT = "評価基準"
+# scripts/deal_bot_richmenu.py が作成するクローザー専用メニューの名前（IDで固定せず
+# 名前で引くことで、デザインを作り直してIDが変わっても追従できるようにする）
+CLOSER_RICHMENU_NAME = "営業分析BOT クローザー用"
+# LINEのReply APIは応答メッセージとして扱われ、料金プランのメッセージ配信数には
+# カウントされない（LINE Developers公式ドキュメントで確認済み。2026-09時点）。
+# そのため既定はfalseで、連打時も毎回Notionから最新値を取り直して返す。
+# 仕様変更等でカウント対象になった場合のみ環境変数で true にする
+# （1ユーザー1日1回に制限し、2回目以降は直近の内容を再送する）。
+REPLY_COUNTS_TOWARD_QUOTA = os.environ.get("REPLY_COUNTS_TOWARD_QUOTA", "false").lower() == "true"
+JST = timezone(timedelta(hours=9))
+
+# 「分析する」を選んだあとの返信。「次回の分析対象です」だけだと、いつ返ってくるのか分からず催促されるため、
+# 結果がこのトークに届くこと・いつ頃かを伝える（日次の商談録音分析Routineは毎晩21時ごろ実行。時刻を変えたらここも直す）
+ANALYSIS_ACCEPTED_TEXT = ("受け付けました。分析は毎晩21時ごろにまとめて行い、結果はこのトークにお送りします。"
+                          "届くまで少しお待ちください。")
 RESULT_OPTIONS = ["契約", "保留", "失注", "クーリングオフ", "審査落ち", "キャンセル"]
-PENDING_STATUSES = "awaiting_appointer,awaiting_customer,awaiting_result,awaiting_confirm"
+# correcting_* は「修正」フローの途中状態（CORRECTABLE_FIELDS参照）。
+# queued（複数録音が同時進行した際の待機中）はここに含めない
+# （latest_pending_recording に拾われると、先の録音への回答が誤って
+# 待機中の録音に書き込まれてしまうため、意図的に対象外にしている）
+PENDING_STATUSES = ("awaiting_appointer,awaiting_closer,awaiting_customer,awaiting_result,awaiting_confirm,"
+                    "correcting_choose_field,correcting_appointer,correcting_closer,correcting_customer,correcting_result")
+
+# 「修正」コマンドで修正できる項目。キーはユーザーに見せる日本語ラベル、値は
+# deal_recordingsの列名。以下で定義する順（アポインター→お客様名→結果と同じ順）で
+# クイックリプライのボタンを並べる
+CORRECTABLE_FIELDS = {"アポインター": "appointer", "クローザー": "closer_name", "お客様名": "customer_name", "結果": "result"}
+CORRECTION_TRIGGER_TEXT = "修正"
+# 「編集」「やり直し」など、修正のつもりで送られる言葉も「修正」として扱う
+# （これらを質問への答え（アポインター名・お客様名）として保存してしまっていた。2026-10-22）
+CORRECTION_WORDS = {"修正", "編集", "訂正", "やり直し", "やりなおし", "やり直す", "間違えた", "まちがえた",
+                    "間違い", "取り消し", "取消", "取消し", "戻る", "戻して", "直して"}
+SELF_LABEL_PREFIX = "自分"             # 「自分（岡野）」＝この録音を送った本人（アポインター欄・クローザー欄のボタン）
+EVENT_APPOINTER_LABEL = "催事"          # 名簿に人としては居ない催事枠
+OTHER_APPOINTER_LABEL = "その他の人"
+FIX_LABEL = "修正"
+# 質問への答えではない言葉（名前として保存しない）。ボタンの文言（前の質問のボタンを打ち直した場合など）も含める
+NOT_A_NAME_WORDS = CORRECTION_WORDS | {SELF_LABEL_PREFIX, EVENT_APPOINTER_LABEL, OTHER_APPOINTER_LABEL, *RESULT_OPTIONS,"分析", "分析して", "分析する", "分析しない", "はい", "いいえ", "ok", "OK", "了解",
+                                      "分からない", "わからない", "分かりません", "わかりません", "なし", "不明"}
+SENTENCE_HINT = re.compile(r"(です|ます|ください|ですか|でした|ました|して|とは|フィードバック|アポインター|クローザー|"
+                           r"分析|確認|録音|修正|編集|[。、？?！!\n])")
 
 # クローザー（自分で商談録音をbotに送る役割）。LINEの表示名が一致すれば初回メッセージで
 # 自動的にクローザーとして認識される（今川さんの手動承認を待たずに録音を送れる）。
@@ -64,7 +136,26 @@ KNOWN_APPOINTERS = {
     "平井": "平井",
     "山川": "山川",
     "田村": "田村", "田村征大": "田村", "田村 征大": "田村",
+    "鈴木 虎春": "鈴木虎春", "鈴木虎春": "鈴木虎春",
+    "依田": "依田", "依田 弦": "依田", "依田弦": "依田",
+    "村田 旭": "村田旭", "村田旭": "村田旭",
 }
+
+# 管理者（週次のチーム全体の結果だけ受け取る役割）。通常は人数が少ないため空でよい。
+# クローザー・アポインターと同様、LINE表示名が一致すれば即座に本登録される（role="admin"）。
+KNOWN_ADMINS = {}
+
+# 役割ごとの登録完了メッセージ。手動登録フロー（handle_registration）と自動一致登録
+# （handle_event、KNOWN_CLOSERS等にLINE表示名が完全一致した場合）の両方から参照する。
+ROLE_WELCOME_MESSAGES = {
+    "closer": "登録完了しました。以後、商談録音をMP3形式のファイルで送信してください。",
+    "appointer": "登録完了しました。毎週、実績をお送りします。",
+    "admin": "登録完了しました。毎週、チーム全体の実績をお送りします。",
+}
+
+# ---- KNOWN_CLOSERS/KNOWN_APPOINTERS/KNOWN_ADMINSの追加・削除 ----
+# 手で編集せず scripts/add_closer.py・scripts/remove_closer.py を使うこと
+# （Claude操作マニュアル.md セクション9参照）。
 
 
 # ---- LINE API ----------------------------------------------------------
@@ -107,6 +198,23 @@ def quick_reply(labels: list) -> dict:
         {"type": "action", "action": {"type": "message", "label": label, "text": label}}
         for label in labels
     ]}
+
+
+def link_closer_richmenu(line_user_id: str) -> None:
+    """役割がクローザーに確定したユーザーに、2ボタン（今日の目標＋直近の商談分析結果）の
+    専用リッチメニューを個別リンクする。アポインター・管理者は全員向けデフォルト
+    （今日の目標を見るのみ）のままでよいため、ここは呼ばない。
+    scripts/deal_bot_richmenu.py が未実行・メニュー未作成の場合は何もしない
+    （登録フロー自体は失敗させない）。
+    """
+    try:
+        menus = json.loads(_line_request("https://api.line.me/v2/bot/richmenu/list", "GET")).get("richmenus", [])
+        target = next((m for m in menus if m.get("name") == CLOSER_RICHMENU_NAME), None)
+        if not target:
+            return
+        _line_request(f"https://api.line.me/v2/bot/user/{line_user_id}/richmenu/{target['richMenuId']}", "POST")
+    except (urllib.error.HTTPError, urllib.error.URLError, json.JSONDecodeError):
+        pass  # メニュー未作成・API一時エラー等。登録フロー自体は継続させる
 
 
 # ---- Supabase (PostgREST + Storage) ------------------------------------
@@ -163,9 +271,14 @@ def register_unknown_sender(line_user_id: str) -> dict:
     if not closer_name:
         closer_name = KNOWN_APPOINTERS.get(key)
         role = "appointer" if closer_name else None
+    if not closer_name:
+        closer_name = KNOWN_ADMINS.get(key)
+        role = "admin" if closer_name else None
 
     row = {"line_user_id": line_user_id, "display_name": display_name, "closer_name": closer_name, "role": role}
     created = sb("POST", "closer_line_users", [row])
+    if role == "closer":
+        link_closer_richmenu(line_user_id)
     return created[0] if created else row
 
 
@@ -178,16 +291,2193 @@ def latest_pending_recording(line_user_id: str):
     return rows[0] if rows else None
 
 
+def oldest_queued_recording(line_user_id: str):
+    """複数録音が同時進行した際、先の録音の確認が終わった後に次を出すためのFIFO。"""
+    rows = sb(
+        "GET",
+        f"deal_recordings?line_user_id=eq.{line_user_id}"
+        f"&status=eq.queued&order=received_at.asc&limit=1&select=*",
+    )
+    return rows[0] if rows else None
+
+
+def resume_status(row: dict) -> str:
+    """アポインター・お客様名・結果のうち、どこまで確定しているかから次に聞くべき
+    質問（= 戻るべきstatus）を機械的に求める。「修正」フローで途中の項目だけを
+    書き換えた後も、それ以外の項目の確定状況だけを見て正しい位置に戻れるように
+    するためのロジック（修正した項目によって分岐を手で書き分けない、確実な方法）。
+    """
+    if not row.get("appointer"):
+        return "awaiting_appointer"
+    if not row.get("closer_name"):
+        return "awaiting_closer"
+    if not row.get("customer_name"):
+        return "awaiting_customer"
+    if not row.get("result"):
+        return "awaiting_result"
+    return "awaiting_confirm"
+
+
+def recording_label(row: dict) -> str:
+    """質問文の先頭に付ける「どの録音についての質問か」のラベル。
+    お客様名が確定していればそれを使い（最も分かりやすいため）、まだ分からない
+    段階（アポインター回答前）は受信時刻を使う（録音ごとに一意で、本人が
+    「さっき送った録音」を思い出す手がかりにもなる。複数録音が同時進行していても
+    取り違えないようにするためのユーザー指示への対応）。
+    """
+    customer_name = row.get("customer_name")
+    if customer_name:
+        return customer_name
+    try:
+        ts = datetime.fromisoformat(row["received_at"]).astimezone(JST)
+        return f"{ts:%H:%M}の録音"
+    except (KeyError, ValueError, TypeError):
+        return "この録音"
+
+
+def labeled_text(row: dict, question: str) -> str:
+    return f"【{recording_label(row)}】{question}"
+
+
+def prompt_messages_for_status(status: str, row: dict) -> list:
+    if status == "awaiting_appointer":
+        return [appointer_question_message(row)]
+    if status == "awaiting_closer":
+        return [closer_question_message(row)]
+    if status == "awaiting_customer":
+        return [{"type": "text", "text": labeled_text(row, "お客様の苗字を入力してください（例: 杉浦。「邸」は付けなくてOK）"),
+                 "quickReply": quick_reply([FIX_LABEL])}]
+    if status == "awaiting_result":
+        return [{"type": "text", "text": labeled_text(row, "商談の結果は？"),
+                 "quickReply": quick_reply(with_fix(RESULT_OPTIONS))}]
+    if status == "awaiting_confirm":
+        return [{"type": "text", "text": labeled_text(row, "この商談を分析しますか？"),
+                 "quickReply": quick_reply(with_fix(["分析する", "分析しない"]))}]
+    return []
+
+
+def _strip_spaces(text: str) -> str:
+    return text.replace(" ", "").replace("　", "")
+
+
+def match_known_name(text: str, *name_dicts: dict) -> str | None:
+    """お客様名・アポインター名等の自由記入テキストから、既知の氏名表記（姓のみ・
+    姓名・スペースあり/なし等）を正規化した姓（KNOWN_CLOSERS/KNOWN_APPOINTERS等の
+    値）に変換する。LINE表示名の自動一致登録（register_unknown_sender）と同じ
+    辞書を使い、フルネームで返信されても苗字を特定できるようにする。
+    一致しなければNoneを返す（呼び出し側で元のテキストにフォールバックする）。
+    """
+    key = text.strip()
+    combined: dict[str, str] = {}
+    for d in name_dicts:
+        combined.update(d)
+
+    if key in combined:
+        return combined[key]
+
+    stripped_key = _strip_spaces(key)
+    stripped_lookup = {_strip_spaces(k): v for k, v in combined.items()}
+    if stripped_key in stripped_lookup:
+        return stripped_lookup[stripped_key]
+
+    # 辞書に無い氏名表記（例: 新しいメンバーのフルネーム）でも、既知の姓で始まって
+    # いれば姓を特定できる（姓名の間にスペースが無いケースの救済）
+    known_surnames = sorted(set(combined.values()), key=len, reverse=True)
+    for surname in known_surnames:
+        if stripped_key.startswith(surname):
+            return surname
+
+    return None
+
+
+
+POLITE_TAIL = re.compile(r"(でした|ですね|です|だよ|さん|くん|君|ちゃん)$")
+
+
+def strip_polite(text: str) -> str:
+    """「巻田です」「巻田さん」→「巻田」。名前の答えに付く丁寧な語尾だけを外す（全部消えるなら外さない）。"""
+    t = _strip_spaces(text)
+    t2 = POLITE_TAIL.sub("", t)
+    return t2 or t
+
+
+def looks_like_person_name(text: str) -> bool:
+    """人の名前（苗字）らしいか。文章・質問・命令を名前として保存しないための判定。"""
+    t = _strip_spaces(text)
+    if not t or t in NOT_A_NAME_WORDS or SENTENCE_HINT.search(t):
+        return False
+    return re.fullmatch(r"[\u3040-\u30ff\u4e00-\u9fffA-Za-z]{1,6}", t) is not None
+
+
+def self_label(name: str | None) -> str:
+    return f"{SELF_LABEL_PREFIX}（{name}）" if name else SELF_LABEL_PREFIX
+
+
+def is_self_answer(text: str) -> bool:
+    return _strip_spaces(text).startswith(SELF_LABEL_PREFIX)
+
+
+def resolve_appointer(text: str, sender_name: str | None) -> tuple[str | None, str | None]:
+    """アポインターの答えを名前にする。(名前, 受け取れなかった理由)。理由があるときは何も保存しない。
+    「自分（○○）」は、この録音を送った本人（sender_name）がアポを取った、という意味。"""
+    t = _strip_spaces(text)
+    if t.endswith(("邸", "様")):  # 「岡野邸」のようにお客様名を答えてしまった（語尾を外す前に判定）
+        return None, "customer"
+    if is_self_answer(t) and sender_name:
+        return sender_name, None
+    t = strip_polite(t)
+    text = t
+    if t == EVENT_APPOINTER_LABEL:
+        return EVENT_APPOINTER_LABEL, None
+    if t == OTHER_APPOINTER_LABEL:
+        return None, "other"
+    known = match_known_name(text, KNOWN_CLOSERS, KNOWN_APPOINTERS)
+    if known and len(t) <= 8 and not SENTENCE_HINT.search(t) and t not in NOT_A_NAME_WORDS:
+        return known, None
+    if looks_like_person_name(text):  # 名簿に無い新しい人でも、名前らしければ受け取る（下で必ずオウム返しする）
+        return t, None
+    return None, "sentence"
+
+
+def resolve_closer(text: str, sender_name: str | None) -> tuple[str | None, str | None]:
+    """クローザー（商談をした人）の答えを名前にする。クローザーは名簿（KNOWN_CLOSERS）にある人だけ受け取る
+    （新しいクローザーは scripts/add_closer.py で名簿に入れる）。"""
+    t = _strip_spaces(text)
+    if t.endswith(("邸", "様")):
+        return None, "customer"
+    if is_self_answer(t) and sender_name:
+        return sender_name, None
+    t = strip_polite(t)
+    if t == OTHER_APPOINTER_LABEL:
+        return None, "other"
+    known = match_known_name(t, KNOWN_CLOSERS)
+    if known and len(t) <= 8 and not SENTENCE_HINT.search(t) and t not in NOT_A_NAME_WORDS:
+        return known, None
+    if looks_like_person_name(t):
+        return None, "unknown_closer"  # 名前らしいがクローザーの名簿に無い
+    return None, "sentence"
+
+
+def check_customer_answer(text: str) -> str | None:
+    """お客様の苗字として受け取れない理由（受け取れるときはNone）。"""
+    t = strip_polite(text)
+    if not t or t in NOT_A_NAME_WORDS or SENTENCE_HINT.search(t) or len(t) > 12:
+        return "sentence"
+    return None
+
+
+def appointer_buttons(sender_name: str | None) -> list[str]:
+    """アポインターの質問に出すボタン。「自分（送った人）」＋この人が最近答えたアポインター＋催事＋その他。
+    名前を打たせずに選べるようにして、文章や別の項目を入れてしまう間違いを減らす（LINEのボタンは最大13個）。"""
+    from collections import Counter
+    valid = set(KNOWN_CLOSERS.values()) | set(KNOWN_APPOINTERS.values())
+    counts: Counter = Counter()
+    try:
+        who = f"line_user_id=in.({','.join(u['line_user_id'] for u in sb('GET', 'closer_line_users?closer_name=eq.' + urllib.parse.quote(sender_name) + '&select=line_user_id') or [])})&" if sender_name else ""
+        for r in sb("GET", f"deal_recordings?{who}appointer=not.is.null&select=appointer&order=received_at.desc&limit=80") or []:
+            a = r.get("appointer")
+            if a in valid and a != sender_name:
+                counts[a] += 1
+    except Exception as e:  # ボタンが作れなくても質問自体は出す
+        print(f"appointer_buttons error: {e}")
+    names = [n for n, _ in counts.most_common(9)]
+    return [self_label(sender_name), *names, EVENT_APPOINTER_LABEL, OTHER_APPOINTER_LABEL][:13]
+
+
+def closer_buttons(sender_name: str | None) -> list[str]:
+    """クローザーの質問に出すボタン。「自分（送った人）」＋名簿のクローザー全員（他の人の録音を送る場合のため）。"""
+    others = [n for n in dict.fromkeys(KNOWN_CLOSERS.values()) if n != sender_name]
+    return [self_label(sender_name), *others][:12] + [OTHER_APPOINTER_LABEL]
+
+
+def sender_of(row: dict) -> str | None:
+    """この録音を送った人（LINEの送信者）の名前。クローザー欄に答えが入るまで、row側のclosers_nameは使えない。"""
+    if row.get("_sender"):
+        return row["_sender"]
+    try:
+        return (find_closer(row["line_user_id"]) or {}).get("closer_name")
+    except Exception:
+        return None
+
+
+APPOINTER_QUESTION = ("アポインター（アポを取った人）は誰ですか？\n下のボタンから選んでください。"
+                      "自分で取ったアポなら「{self}」を押してください。")
+CLOSER_QUESTION = ("クローザー（商談をした人）は誰ですか？\n下のボタンから選んでください。"
+                   "自分が商談した録音なら「{self}」、他の人の録音を送った場合はその人を選んでください。")
+
+
+def appointer_question_message(row: dict, prefix: str = "") -> dict:
+    sender = sender_of(row)
+    return {"type": "text",
+            "text": labeled_text(row, prefix + APPOINTER_QUESTION.format(self=self_label(sender))),
+            "quickReply": quick_reply(appointer_buttons(sender))}
+
+
+def closer_question_message(row: dict, prefix: str = "") -> dict:
+    sender = sender_of(row)
+    return {"type": "text",
+            "text": labeled_text(row, prefix + CLOSER_QUESTION.format(self=self_label(sender))),
+            "quickReply": quick_reply(with_fix(closer_buttons(sender)))}
+
+
+def with_fix(labels: list) -> list:
+    """各ステップのボタンに「修正」を足す（間違えたとき、文字を打たずに直せるように）。"""
+    return [*labels, FIX_LABEL] if FIX_LABEL not in labels else labels
+
+
+def reject_message(row: dict, what: str, reason: str, text: str) -> list:
+    """質問の答えとして受け取れなかったときの返事。何も保存していないことを必ず伝える。"""
+    shown = text.strip().replace("\n", " ")[:20]
+    sender = sender_of(row)
+    if what in ("appointer", "closer"):
+        who = "アポインター（アポを取った人）" if what == "appointer" else "クローザー（商談をした人）"
+        if reason == "other":
+            body = f"{who}の苗字だけを入力してください（例: 巻田）。"
+        elif reason == "customer":
+            body = (f"「{shown}」はお客様のお名前のようです。ここで聞いているのは{who}です。\n"
+                    "ボタンから選ぶか、人の苗字だけを入力してください。\n（今回の入力は保存していません）")
+        elif reason == "unknown_closer":
+            body = (f"「{shown}」はクローザーの名簿にありません（今回の入力は保存していません）。\n"
+                    "ボタンから選んでください。新しいクローザーの場合は今川さんに連絡してください。")
+        else:
+            body = (f"「{shown}」は{who}の名前として受け取れませんでした（今回の入力は保存していません）。\n"
+                    "ボタンから選ぶか、人の苗字だけを入力してください。")
+        labels = appointer_buttons(sender) if what == "appointer" else with_fix(closer_buttons(sender))
+        return [{"type": "text", "text": labeled_text(row, body), "quickReply": quick_reply(labels)}]
+    body = (f"「{shown}」はお客様の苗字として受け取れませんでした（今回の入力は保存していません）。\n"
+            "お客様の苗字だけを入力してください（例: 杉浦。「邸」は付けなくてOKです）。\n"
+            "前の答えを直したいときは、下の「修正」を押してください。")
+    return [{"type": "text", "text": labeled_text(row, body), "quickReply": quick_reply([FIX_LABEL])}]
+
+
 def to_customer_label(text: str) -> str:
     text = text.strip()
-    if not text or text.endswith("邸"):
-        return text
-    return f"{text}邸"
+    # フルネームで返信された場合（スペース区切り）は姓部分だけを使う
+    # （例: 「小川 太郎」→「小川邸」。スペース無しの「小川太郎」は姓名の境目が
+    # 判別できないため、従来どおりそのまま使う）
+    first_token = _strip_spaces(text.split(" ")[0].split("　")[0]) if (" " in text or "　" in text) else text
+    if not first_token or first_token.endswith("邸"):
+        return first_token
+    return f"{first_token}邸"
+
+
+# ---- Notion（📊 個人別KPI逆算データ（参照用）） ----------------------------
+# 「通知本文（LINE配信用）」等はNotion側の数式（formula）プロパティで、Notion公式
+# REST APIでしか計算結果の文字列を取得できない（Notion MCP経由では参照URLしか
+# 返らず中身が読めない）。そのためこのbotだけは他の処理と違い、Notion REST APIを
+# 直接叩く（tools/roadmap/sync_notion_to_json.py と同じ方式）。
+
+def notion_query_member(member_name: str) -> dict | None:
+    """「📊 個人別KPI逆算データ（参照用）」DBから、メンバー名が完全一致する1行を取得する。
+    NOTION_TOKEN未設定、または該当行がなければNone。
+    """
+    if not NOTION_TOKEN:
+        return None
+    body = json.dumps({
+        "filter": {"property": "メンバー", "title": {"equals": member_name}},
+        "page_size": 1,
+    }).encode()
+    req = urllib.request.Request(
+        f"https://api.notion.com/v1/databases/{KPI_DATABASE_ID}/query",
+        data=body, method="POST",
+        headers={
+            "Authorization": f"Bearer {NOTION_TOKEN}",
+            "Notion-Version": NOTION_VERSION,
+            "Content-Type": "application/json",
+        },
+    )
+    with urllib.request.urlopen(req, timeout=20) as r:
+        results = json.loads(r.read()).get("results", [])
+    return results[0] if results else None
+
+
+def notion_formula_text(page: dict, prop_name: str) -> str:
+    prop = page.get("properties", {}).get(prop_name) or {}
+    formula = prop.get("formula") or {}
+    return (formula.get("string") or "").strip()
+
+
+def notion_richtext_plain(page: dict, prop_name: str) -> str:
+    prop = page.get("properties", {}).get(prop_name) or {}
+    return "".join(t.get("plain_text", "") for t in prop.get("rich_text", []))
+
+
+def notion_query_recent_performance(member_name: str, before_date_iso: str, limit: int = 30) -> list[dict]:
+    """「📉 営業部 実績DB」から、指定メンバーの指定日より前の実績行を新しい順にlimit件取得する。
+    ⚔️営業ステータス（行動力・アポ力・継続力）と「前回共有した内容」の算出に共用する
+    （1回のクエリにまとめてNotion APIの呼び出し回数を抑える）。NOTION_TOKEN未設定・
+    DB未共有時は空リスト（呼び出し側で静かにスキップされる）。
+    """
+    if not NOTION_TOKEN:
+        return []
+    body = json.dumps({
+        "filter": {
+            "and": [
+                {"property": "メンバー", "select": {"equals": member_name}},
+                {"property": "実績日", "date": {"before": before_date_iso}},
+            ]
+        },
+        "sorts": [{"property": "実績日", "direction": "descending"}],
+        "page_size": limit,
+    }).encode()
+    # 「📉 営業部 実績DB」は複数データソース対応版に移行済みのため、他DBと違い
+    # 旧来の /v1/databases/{id}/query + Notion-Version 2022-06-28 では404になる
+    # （tools/shuuji/notion_to_csv.py実装時に実データで発見）。
+    # /v1/data_sources/{id}/query + 新しいNotion-Versionを使う
+    # （PERFORMANCE_DATABASE_IDの値そのものがdatabase_idではなくdata_source_idだったため、
+    # IDはそのまま使い、エンドポイントとバージョンだけ変える）
+    req = urllib.request.Request(
+        f"https://api.notion.com/v1/data_sources/{PERFORMANCE_DATABASE_ID}/query",
+        data=body, method="POST",
+        headers={
+            "Authorization": f"Bearer {NOTION_TOKEN}",
+            "Notion-Version": NOTION_VERSION_V2,
+            "Content-Type": "application/json",
+        },
+    )
+    with urllib.request.urlopen(req, timeout=20) as r:
+        return json.loads(r.read()).get("results", [])
+
+
+def latest_remark_from_rows(rows: list[dict]) -> str | None:
+    """直近の実績行から、非空の「備考」を持つ最初の1件を返す（＝前回報告時の共有内容。
+    何日前であっても直近のものをそのまま返す。例: 水曜にタップしたら日曜の備考が返る）。
+    """
+    for row in rows:
+        remark = notion_richtext_plain(row, "備考")
+        if remark:
+            return remark
+    return None
+
+
+def formula_number(page: dict, prop_name: str) -> float:
+    prop = page.get("properties", {}).get(prop_name) or {}
+    formula = prop.get("formula") or {}
+    return formula.get("number") or 0
+
+
+def raw_number(page: dict, prop_name: str) -> float:
+    prop = page.get("properties", {}).get(prop_name) or {}
+    return prop.get("number") or 0
+
+
+def row_number(row: dict, prop_name: str) -> float:
+    """実績DBの1行から、数値プロパティ（formula・number どちらでも）を取り出す。"""
+    prop = row.get("properties", {}).get(prop_name) or {}
+    if "formula" in prop:
+        return (prop.get("formula") or {}).get("number") or 0
+    return prop.get("number") or 0
+
+
+def row_date_iso(row: dict) -> str | None:
+    date_prop = (row.get("properties", {}).get("実績日") or {}).get("date") or {}
+    start = date_prop.get("start")
+    return start[:10] if start else None
+
+
+def is_working_row(row: dict) -> bool:
+    """「出勤状況」が休みの日は行動量・継続力の計算対象から外す（未入力の過去データは
+    出勤扱いとして残す）。"""
+    select = (row.get("properties", {}).get("出勤状況") or {}).get("select")
+    name = select.get("name") if select else None
+    return name != "休み"
+
+
+def stdev(values: list[float]) -> float:
+    n = len(values)
+    if n < 2:
+        return 0.0
+    mean_v = sum(values) / n
+    return (sum((v - mean_v) ** 2 for v in values) / n) ** 0.5
+
+
+def stars_text(value: float, bands: list[tuple[float, int]]) -> str:
+    """valueがband閾値以上の中で最大のstar数を採用する（bandsは昇順の(閾値, star数)）。
+    どの閾値も満たさなければ最低保証の1つ星にする。"""
+    count = 1
+    for threshold, n in bands:
+        if value >= threshold:
+            count = n
+    return "⭐" * count + "☆" * (5 - count)
+
+
+def cv_of(values: list[float]) -> float | None:
+    """変動係数（標準偏差 ÷ 平均）を返す。データが3件未満、または平均が0以下なら
+    None（呼び出し側でこの指標を除外する）。"""
+    if len(values) < 3:
+        return None
+    mean_v = sum(values) / len(values)
+    if mean_v <= 0:
+        return None
+    return stdev(values) / mean_v
+
+
+# クローザーの継続力（稼働日率＝出勤日のうち訪問・アポ・商談のどれかをした日の割合）の★
+# 50%未満★1・50〜69%★2・70〜84%★3・85〜94%★4・95%以上★5（週5日出勤なら5日全部で★5、4日で★3）
+CLOSER_CONTINUITY_BANDS = [(0, 1), (50, 2), (70, 3), (85, 4), (95, 5)]
+
+
+def build_status_block(page: dict, recent_rows: list[dict], role: str, now: datetime) -> str:
+    """⚔️ 営業ステータス（ユーザー指示によるゲーム性付与）。**全項目、直近1週間
+    （過去7日・出勤日のみ）の実績DB生データから算出する**。各項目は
+    「項目名（説明）」→改行→「★の数（実数）」の2行形式で表示する
+    （ユーザー指示: 「項目（説明）改行／★★★（〇％OR〇件）の形式」）。
+    - 行動力（週間アポ数）: 週間アポ数の合計（2件以下★1・3〜5件★2・6〜9件★3・
+      10〜13件★4・14件以上★5。役割問わず共通）
+    - 商談力・商談化力（ユーザー指示: アポインター側は「商談化力」という名称にする）:
+      - クローザー＝商談力（週間商談数）: 週間商談数の合計（1件以下★1・2件★2・3件★3・4件★4・
+        5件以上★5）
+      - アポインター＝商談化力（商談作成率）: Σ有効商談作成数 ÷ Σアポ数（%）
+        （5%以下★1・15%以下★2・25%以下★3・40%以下★4・41%以上★5）
+    - 「決め切る力」（ユーザー指示: アポインターは`アポ力`・クローザーは`クロージング力`と
+      呼び名を分けるが、どちらも同じ考え方＝直近1週間の転換率で評価する）:
+      - クローザー＝クロージング力（契約率）: Σ契約 ÷ Σ商談数（%）
+      - アポインター＝アポ力（アポ率）: Σアポ数 ÷ Σ対話数（%）
+      - 両方とも同じ閾値を使う（10%以下★1・15%以下★2・30%以下★3・40%以下★4・
+        41%以上★5。まだアポ力側の実データで検証していないため、必要なら調整する）
+    - 継続力（クローザー＝稼働日率）: 出勤日のうち訪問・アポ・商談のどれかをした日の割合。商談の日に訪問が
+      減るのは正常なので、アポインターと同じ「波の無さ」では測らない（ユーザー指示）
+    - 継続力（アポインター＝安定度）: 訪問数・商談数・契約（週間・出勤日）それぞれの変動係数
+      （標準偏差÷平均）から「安定度%」= (1 - 変動係数の平均) × 100（0〜100にクランプ）
+      に変換して表示する（ユーザー指示: 変動係数は直感的でないため数値化し直す）。
+      安定度10%未満★1・10〜39%★2・40〜59%★3・60〜79%★4・80%以上★5。
+      対象データが1つも無ければ中間評価（3つ星）にする
+    """
+    is_closer = role == "closer"
+    week_ago_iso = (now.date() - timedelta(days=7)).isoformat()
+    week_rows = [r for r in recent_rows if (row_date_iso(r) or "") >= week_ago_iso]
+    week_working_rows = [r for r in week_rows if is_working_row(r)]
+
+    # 行動力: 週間アポ数合計（役割問わず共通）
+    weekly_apo = sum(row_number(r, "アポ数") for r in week_working_rows)
+    action = stars_text(weekly_apo, [(0, 1), (3, 2), (6, 3), (10, 4), (14, 5)])
+    action_line = f"行動力（週間アポ数）\n{action}（{int(weekly_apo)}件）"
+
+    if is_closer:
+        weekly_deals = sum(row_number(r, "商談数") for r in week_working_rows)
+        deal = stars_text(weekly_deals, [(0, 1), (2, 2), (3, 3), (4, 4), (5, 5)])
+        deal_line = f"商談力（週間商談数）\n{deal}（{int(weekly_deals)}件）"
+    else:
+        valid_deals = sum(row_number(r, "有効商談作成数") for r in week_working_rows)
+        deal_rate = (100 * valid_deals / weekly_apo) if weekly_apo > 0 else 0
+        deal = stars_text(deal_rate, [(0, 1), (6, 2), (16, 3), (26, 4), (41, 5)])
+        deal_line = f"商談化力（商談作成率）\n{deal}（{round(deal_rate)}%）"
+
+    # 「決め切る力」: クローザー＝クロージング力（契約率）、アポインター＝アポ力（アポ率）
+    # 呼び名は違うが同じ閾値で評価する（ユーザー指示）
+    close_bands = [(0, 1), (11, 2), (16, 3), (31, 4), (41, 5)]
+    if is_closer:
+        weekly_contracts = sum(row_number(r, "契約") for r in week_working_rows)
+        weekly_deals_for_close = sum(row_number(r, "商談数") for r in week_working_rows)
+        close_rate = (100 * weekly_contracts / weekly_deals_for_close) if weekly_deals_for_close > 0 else 0
+        close = stars_text(close_rate, close_bands)
+        close_line = f"クロージング力（契約率）\n{close}（{round(close_rate)}%）"
+    else:
+        weekly_taiwa = sum(row_number(r, "対話数") for r in week_working_rows)
+        apo_rate = (100 * weekly_apo / weekly_taiwa) if weekly_taiwa > 0 else 0
+        apo_power = stars_text(apo_rate, close_bands)
+        close_line = f"アポ力（アポ率）\n{apo_power}（{round(apo_rate)}%）"
+
+    if is_closer:
+        # クローザーは商談に入った日は訪問が減るのが正常なので、日ごとの訪問数の波では測らない。
+        # 「出勤日のうち、訪問・アポ・商談のどれかをした日の割合」＝稼働が途切れていないかで測る（ユーザー指示）
+        def did_work(r: dict) -> bool:
+            return any(row_number(r, c) > 0 for c in ("訪問数", "アポ数", "商談数"))
+
+        def status(r: dict) -> str:
+            sel = (r.get("properties", {}).get("出勤状況") or {}).get("select")
+            return sel.get("name", "") if sel else ""
+        # 出勤状況が空欄で活動も0の行は、休みの入力漏れと区別できないので判定しない
+        judged = [r for r in week_working_rows if status(r) or did_work(r)]
+        if judged:
+            active = sum(1 for r in judged if did_work(r))
+            active_pct = round(100 * active / len(judged))
+            cont = stars_text(active_pct, CLOSER_CONTINUITY_BANDS)
+            cont_line = f"継続力（稼働日率）\n{cont}（{active_pct}%・{active}/{len(judged)}日）"
+        else:
+            cont_line = "継続力（稼働日率）\n⭐⭐⭐☆☆（データ不足）"
+        return "\n\n".join([
+            "⚔️ 営業ステータス", action_line, deal_line, close_line, cont_line,
+            f"※基準の詳細は「{STATUS_DEFINITION_TEXT}」と送ってください",
+        ])
+
+    visit_vals = [row_number(r, "訪問数") for r in week_working_rows]
+    deal_vals = [row_number(r, "商談数") for r in week_working_rows]
+    contract_vals = [row_number(r, "契約") for r in week_working_rows]
+    cvs = [c for c in (cv_of(visit_vals), cv_of(deal_vals), cv_of(contract_vals)) if c is not None]
+    if cvs:
+        avg_cv = sum(cvs) / len(cvs)
+        stability_pct = max(0, min(100, round((1 - avg_cv) * 100)))
+        cont = stars_text(stability_pct, [(0, 1), (10, 2), (40, 3), (60, 4), (80, 5)])
+        cont_line = f"継続力（安定度）\n{cont}（{stability_pct}%）"
+    else:
+        cont_line = "継続力（安定度）\n⭐⭐⭐☆☆（データ不足）"
+
+    return "\n\n".join([
+        "⚔️ 営業ステータス",
+        action_line,
+        deal_line,
+        close_line,
+        cont_line,
+        f"※基準の詳細は「{STATUS_DEFINITION_TEXT}」と送ってください",
+    ])
+
+
+def build_status_definition_text(role: str) -> str:
+    """「評価基準」と送られた時にReply APIで返す、⚔️営業ステータス各項目の
+    ★の付け方一覧（build_status_blockの閾値と一致させる。低コスト運用: リッチメニューの
+    ボタンを増やす代わりに、この合言葉テキストで確認できるようにした）。
+    """
+    is_closer = role == "closer"
+    if is_closer:
+        deal_def = "商談力（週間商談数）\n1件以下★1・2件★2・3件★3・4件★4・5件以上★5"
+        close_def = "クロージング力（契約率＝契約÷商談数）\n10%以下★1・15%以下★2・30%以下★3・40%以下★4・41%以上★5"
+    else:
+        deal_def = "商談化力（商談作成率＝有効商談作成数÷アポ数）\n5%以下★1・15%以下★2・25%以下★3・40%以下★4・41%以上★5"
+        close_def = "アポ力（アポ率＝アポ数÷対話数）\n10%以下★1・15%以下★2・30%以下★3・40%以下★4・41%以上★5"
+
+    return "\n\n".join([
+        "⚔️ 営業ステータスの評価基準",
+        "行動力（週間アポ数）\n2件以下★1・3〜5件★2・6〜9件★3・10〜13件★4・14件以上★5",
+        deal_def,
+        close_def,
+        ("継続力（稼働日率＝出勤日のうち訪問・アポ・商談のどれかをした日の割合。商談の日に訪問が減っても下がりません）\n"
+         "50%未満★1・50〜69%★2・70〜84%★3・85〜94%★4・95%以上★5") if is_closer else
+        ("継続力（安定度＝訪問数・商談数・契約の波の無さを0〜100%に変換）\n"
+         "10%未満★1・10〜39%★2・40〜59%★3・60〜79%★4・80%以上★5"),
+        "※すべて直近1週間（出勤日のみ）の実績が対象です",
+    ])
+
+
+def handle_status_definition_request(event: dict, closer: dict):
+    """「評価基準」テキストへの応答。Reply APIのみ使用（配信数を消費しない）。"""
+    reply_token = event["replyToken"]
+    role = closer.get("role") or ""
+    line_reply(reply_token, [{"type": "text", "text": build_status_definition_text(role)}])
+
+
+# ③の数値目標。ラベルはtools/shuuji/deliver.pyのテンプレ文言と完全一致させる
+# （アポインター向けテンプレは商談数・契約数に自アポ/他アポの区別がなく、その場合は
+# _自アポ列にそのまま入れ、_他アポは0扱いにする＝webhook.py側の役割分岐は不要にしている）
+PDCA_TARGET_LABELS = {
+    "訪問数": "訪問数目標",
+    "アポ数": "アポ数目標",
+    "商談数（自アポ）": "商談数目標_自アポ",
+    "商談数（他アポ）": "商談数目標_他アポ",
+    "契約数（自アポ）": "契約数目標_自アポ",
+    "契約数（他アポ）": "契約数目標_他アポ",
+    "商談数": "商談数目標_自アポ",
+    "契約数": "契約数目標_自アポ",
+}
+
+
+# 記入テンプレの見出し（新旧）。①②の行の残りは本文として拾うため、見出しをコピーしたまま
+# 返信されても本文に混ざらないよう取り除く（tools/shuuji/deliver.pyのテンプレと揃える）
+PDCA_PROMPTS = [
+    "先週の振り返り・学び（うまくいったこと／いかなかったことと、その理由）", "先週の振り返り・学び",
+    "今週の宿題を1つ（いつ・誰と・何を）", "今週の目標（数字で。日曜までの分）",
+    "なぜ低いと思いますか？（原因）", "良くするために、今週何をしますか？（いつ・誰と・何を）", "今週の目標（数字で）",
+]
+
+
+def strip_pdca_prompts(text: str) -> str:
+    for p in PDCA_PROMPTS:
+        text = text.replace(p, "")
+    return text.strip()
+
+
+def first_int(value: str) -> int | None:
+    """「180(14/16/17日 3日間稼働)」→180。全角数字も読む。最初の数字だけを使う
+    （以前は行内の数字を全部つなげていたため1801416173のような値が保存されていた）。"""
+    m = re.search(r"\d+", value.translate(str.maketrans("０１２３４５６７８９", "0123456789")))
+    return int(m.group()) if m else None
+
+
+def parse_pdca_reply(text: str) -> tuple[str, str, dict[str, int]]:
+    """週次PDCAテンプレ返信（①原因／②アクションプラン／③今週の数値目標）を解析する。
+    「①」「②」「③」の行を目印に、その後ろの文字を各項目とする。書式が多少崩れても
+    （行が増える・数字と全角/半角が混ざる等）壊れず動くよう、大まかな目印判定に留める。
+    ①が見つからなければ原因は空、②が見つからなければアクションプラン全体を
+    残りのテキストとして拾う（本人の入力を極力活かし、無言で捨てない）。③は
+    「ラベル：数字」の行だけを拾い、読めない行があってもスキップするだけで処理は止めない。
+    """
+    lines = text.splitlines()
+    cause_lines: list[str] = []
+    action_lines: list[str] = []
+    targets: dict[str, int] = {}
+    section = None
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith(("①", "1)", "1.", "1、")):
+            section = "cause"
+            rest = strip_pdca_prompts(stripped.lstrip("①123456789).、. "))
+            if rest:
+                cause_lines.append(rest)
+            continue
+        if stripped.startswith(("②", "2)", "2.", "2、")):
+            section = "action"
+            rest = strip_pdca_prompts(stripped.lstrip("②123456789).、. "))
+            if rest:
+                action_lines.append(rest)
+            continue
+        if stripped.startswith(("③", "3)", "3.", "3、")):
+            section = "targets"
+            continue
+        if section == "cause" and stripped:
+            cause_lines.append(stripped)
+        elif section == "action" and stripped:
+            action_lines.append(stripped)
+        elif section == "targets" and stripped:
+            sep = "：" if "：" in stripped else (":" if ":" in stripped else None)
+            if not sep:
+                continue
+            label, _, value = stripped.partition(sep)
+            prop_name = PDCA_TARGET_LABELS.get(label.strip())
+            number = first_int(value)
+            if prop_name and number is not None:
+                targets[prop_name] = number
+    cause = "\n".join(cause_lines).strip()
+    action = "\n".join(action_lines).strip()
+    if not cause and not action and not targets:
+        # ①②③の目印が見つからなかった場合、全文をアクションプランとして残す
+        # （本人が書いた内容を消さない。原因欄は空のまま）
+        action = text.strip()
+    return cause, action, targets
+
+
+def notion_create_pdca_page(member_name: str, week_start_iso: str, cause: str, action: str,
+                             targets: dict[str, int], raw_text: str) -> None:
+    """「📝 週次PDCA記録DB」に1行作成する。NOTION_TOKEN未設定時は何もしない。"""
+    if not NOTION_TOKEN:
+        return
+    title = f"{member_name}_{week_start_iso}"
+    properties = {
+        "タイトル": {"title": [{"text": {"content": title}}]},
+        "氏名": {"select": {"name": member_name}},
+        "週初日": {"date": {"start": week_start_iso}},
+        "原因": {"rich_text": [{"text": {"content": cause[:2000]}}]},
+        "アクションプラン": {"rich_text": [{"text": {"content": action[:2000]}}]},
+        "元メッセージ": {"rich_text": [{"text": {"content": raw_text[:2000]}}]},
+    }
+    for prop_name, value in targets.items():
+        properties[prop_name] = {"number": value}
+    body = json.dumps({
+        "parent": {"type": "data_source_id", "data_source_id": PDCA_DATABASE_ID},
+        "properties": properties,
+    }).encode()
+    req = urllib.request.Request(
+        "https://api.notion.com/v1/pages", data=body, method="POST",
+        headers={
+            "Authorization": f"Bearer {NOTION_TOKEN}",
+            "Notion-Version": NOTION_VERSION_V2,
+            "Content-Type": "application/json",
+        },
+    )
+    with urllib.request.urlopen(req, timeout=20):
+        pass
+
+
+def handle_pdca_reply(event: dict, closer: dict):
+    """週次PDCAテンプレへの返信を受け取り、Notionに保存する。
+    tools/shuuji/deliver.pyが配信時にSupabase closer_line_users.pdca_pending_weekへ
+    対象週の月曜日をセットしており、ここではそれが立っている間だけテンプレ返信として扱う
+    （通常の録音受付フロー等より先に判定する。handle_eventの分岐順に注意）。
+    """
+    reply_token = event["replyToken"]
+    text = event["message"]["text"]
+    member_name = closer.get("closer_name") or ""
+    week_start_iso = closer["pdca_pending_week"]
+
+    cause, action, targets = parse_pdca_reply(text)
+    try:
+        notion_create_pdca_page(member_name, week_start_iso, cause, action, targets, text)
+    except (urllib.error.HTTPError, urllib.error.URLError, json.JSONDecodeError):
+        line_reply(reply_token, [{
+            "type": "text",
+            "text": "記入内容の保存に失敗しました。お手数ですが、今川さんに一言伝えてください。",
+        }])
+        return
+
+    sb("PATCH", f"closer_line_users?id=eq.{closer['id']}", {"pdca_pending_week": None})
+    line_reply(reply_token, [{
+        "type": "text",
+        "text": "ありがとうございます、記録しました！来週のMTで振り返ります。",
+    }])
+
+
+def notion_query_latest_deal(closer_name: str) -> dict | None:
+    """「DB 商談分析＆アポ分析（契約案件一覧）」DBから、指定クローザーの
+    直近の商談日時1件を取得する。NOTION_TOKEN未設定、または該当行がなければNone。
+    """
+    if not NOTION_TOKEN:
+        return None
+    body = json.dumps({
+        "filter": {"property": "クローザー", "select": {"equals": closer_name}},
+        "sorts": [{"property": "商談日時", "direction": "descending"}],
+        "page_size": 1,
+    }).encode()
+    req = urllib.request.Request(
+        f"https://api.notion.com/v1/databases/{DEAL_DATABASE_ID}/query",
+        data=body, method="POST",
+        headers={
+            "Authorization": f"Bearer {NOTION_TOKEN}",
+            "Notion-Version": NOTION_VERSION,
+            "Content-Type": "application/json",
+        },
+    )
+    with urllib.request.urlopen(req, timeout=20) as r:
+        results = json.loads(r.read()).get("results", [])
+    return results[0] if results else None
+
+
+def notion_title_text(page: dict, prop_name: str) -> str:
+    prop = page.get("properties", {}).get(prop_name) or {}
+    return "".join(t.get("plain_text", "") for t in prop.get("title", []))
+
+
+def notion_status_name(page: dict, prop_name: str) -> str:
+    prop = page.get("properties", {}).get(prop_name) or {}
+    status = prop.get("status")
+    return status.get("name", "") if status else ""
+
+
+def notion_rollup_status(page: dict, prop_name: str) -> str | None:
+    """「在籍状況(名簿参照)」のような show_unique ロールアップ（selectの配列）から
+    先頭の選択肢名を取り出す。未設定・空配列ならNone。
+    """
+    prop = page.get("properties", {}).get(prop_name) or {}
+    rollup = prop.get("rollup") or {}
+    for item in rollup.get("array", []):
+        select = item.get("select")
+        if select and select.get("name"):
+            return select["name"]
+    return None
+
+
+def notion_query_month_deals(role_prop: str, name: str, month_start_iso: str) -> list[dict]:
+    """「DB 商談分析＆アポ分析（契約案件一覧）」DBから、今月分（商談日時が月初以降）の
+    本人の行を全件取得する。`role_prop`は"クローザー"または"アポインター"（本人の役割に
+    応じてどちらの列で絞り込むかを切り替える）。契約/成約の集計に使う。
+    """
+    if not NOTION_TOKEN:
+        return []
+    body = json.dumps({
+        "filter": {
+            "and": [
+                {"property": role_prop, "select": {"equals": name}},
+                {"property": "商談日時", "date": {"on_or_after": month_start_iso}},
+            ]
+        },
+        "page_size": 100,
+    }).encode()
+    req = urllib.request.Request(
+        f"https://api.notion.com/v1/databases/{DEAL_DATABASE_ID}/query",
+        data=body, method="POST",
+        headers={
+            "Authorization": f"Bearer {NOTION_TOKEN}",
+            "Notion-Version": NOTION_VERSION,
+            "Content-Type": "application/json",
+        },
+    )
+    with urllib.request.urlopen(req, timeout=20) as r:
+        return json.loads(r.read()).get("results", [])
+
+
+def count_contracts(deal_rows: list[dict]) -> tuple[int, int]:
+    """月間の(契約件数, 成約件数)を返す。ユーザー指示: 「クーリングオフが来た場合、
+    契約数に一旦カウントした上で、契約と成約を分けて出力」。
+    - 契約（gross）: 結果が「契約」または「クーリングオフ」の件数
+      （クーリングオフ発生時は結果が「契約」から「クーリングオフ」に書き換わるため、
+      両方を合算することで「一旦契約になった件数」を保つ）
+    - 成約（net）: 結果が今も「契約」のままの件数（クーリングオフで取り消された分を除く）
+    """
+    gross = sum(1 for r in deal_rows if notion_status_name(r, "結果") in ("契約", "クーリングオフ"))
+    net = sum(1 for r in deal_rows if notion_status_name(r, "結果") == "契約")
+    return gross, net
+
+
+def contract_target(page: dict, role: str) -> int:
+    """契約目標(月)。クローザーは`今月契約目標`の実数、アポインターは
+    `今月予算万円 ÷ 65万円`（契約単価60〜70万円の中間値。ユーザー指示）で概算する。"""
+    if role == "closer":
+        t = raw_number(page, "今月契約目標")
+        return int(round(t)) if t else 0
+    budget = raw_number(page, "今月予算万円")
+    return max(1, round(budget / 65)) if budget > 0 else 0
+
+
+def build_progress_block(page: dict, role: str, gross_contracts: int, net_contracts: int) -> str:
+    """📊 進捗（訪問・アポ・契約/成約の週/月の目標・実績・達成率）。
+    契約行はNotion数式ではなく、その場で「DB 商談分析＆アポ分析」を集計して出す
+    （クーリングオフを契約/成約に分けて出すため。notion_query_month_deals参照）。
+    """
+    visit_w_target = formula_number(page, "今週の必要訪問数")
+    visit_w_actual = raw_number(page, "今週実績訪問数")
+    visit_w_pct = round(100 * visit_w_actual / visit_w_target) if visit_w_target > 0 else 0
+    visit_m_actual = raw_number(page, "今月訪問実績")
+    visit_m_target = visit_m_actual + raw_number(page, "今月残り訪問数概算")
+    visit_m_pct = round(100 * visit_m_actual / visit_m_target) if visit_m_target > 0 else 0
+
+    apo_w_target = formula_number(page, "今週の必要アポ数")
+    apo_w_actual = raw_number(page, "今週実績アポ数")
+    apo_w_pct = round(100 * apo_w_actual / apo_w_target) if apo_w_target > 0 else 0
+    apo_line = f"アポ: 週{int(apo_w_actual)}/{int(apo_w_target)}件({apo_w_pct}%)"
+    if role == "appointer":
+        apo_m_target = raw_number(page, "今月アポ目標概算")
+        apo_m_actual = raw_number(page, "今月アポ実績")
+        apo_m_pct = round(100 * apo_m_actual / apo_m_target) if apo_m_target > 0 else 0
+        apo_line += f"　月{int(apo_m_actual)}/{int(apo_m_target)}件({apo_m_pct}%)"
+
+    target = contract_target(page, role)
+    pct = round(100 * net_contracts / target) if target > 0 else 0
+    cooling = gross_contracts - net_contracts
+    cooling_note = f"（うちクーリングオフ{cooling}件）" if cooling > 0 else ""
+    contract_line = f"契約: 月{gross_contracts}件{cooling_note}／成約{net_contracts}/{target}件({pct}%)"
+
+    return (
+        "📊 進捗\n"
+        f"訪問: 週{int(visit_w_actual)}/{int(visit_w_target)}件({visit_w_pct}%)　"
+        f"月{int(visit_m_actual)}/{int(visit_m_target)}件({visit_m_pct}%)\n"
+        f"{apo_line}\n"
+        f"{contract_line}"
+    )
 
 
 # ---- イベント処理 ---------------------------------------------------------
 
-def handle_audio_message(event: dict, closer: dict):
+# ---- 分析結果へのフィードバック（2026-10-22 ユーザー指示） ----
+# 分析結果のLINEに付く「フィードバック 〇〇邸」ボタン（または同じ文言の送信）で開始し、
+# 次に送った1通を、Notion「商談案件一覧」の該当ページ「フィードバック」列に追記する。
+# 状態は deal_recordings の status='awaiting_feedback' の行で持つ（storage_pathは'feedback'の目印）。
+# 日次Routine（商談録音分析スキル）が未報告分をまとめて今川さんに通知し、フィードバック報告済みを立てる。
+FEEDBACK_TRIGGER = "フィードバック"
+FEEDBACK_EXPIRE_MINUTES = 60
+FEEDBACK_ASK_TEXT = ("{customer}の分析結果へのご意見ですね。次のメッセージで、具体的に教えてください。\n\n"
+                     "・どの部分の評価か（採点／フェーズ別の★／断り文句／話者割合／次に試す一言 など）\n"
+                     "・どう的外れか、実際はどうだったか\n"
+                     "・意図してやったことがマイナス評価になっていれば、その狙いも")
+FEEDBACK_THANKS_TEXT = "ご意見ありがとうございます！いただいた内容は、今後の分析の改善に活かします。"
+
+
+def notion_page_id_of(url: str | None) -> str | None:
+    m = re.search(r"([0-9a-f]{32})(?:\?|$)", (url or "").replace("-", ""))
+    return m.group(1) if m else None
+
+
+def recent_analyzed_deals(closer: dict) -> list[dict]:
+    """その人が送った、またはクローザーとして関わった、分析済みの直近の商談（新しい順）。"""
+    name = closer.get("closer_name")
+    cond = f"line_user_id.eq.{closer['line_user_id']}"
+    if name:
+        cond += f",closer_name.eq.{urllib.parse.quote(name)}"
+    rows = sb("GET", f"deal_recordings?or=({cond})&status=eq.done&notion_url=not.is.null"
+                     "&order=received_at.desc&limit=30&select=id,customer_name,closer_name,notion_url,received_at") or []
+    seen, out = set(), []
+    for r in rows:  # 同じ商談の録音が複数あっても1件にまとめる
+        if r["customer_name"] in seen:
+            continue
+        seen.add(r["customer_name"])
+        out.append(r)
+    return out
+
+
+def notion_append_feedback(page_id: str, who: str, text: str) -> None:
+    if not NOTION_TOKEN:
+        raise RuntimeError("NOTION_TOKEN未設定")
+    headers = {"Authorization": f"Bearer {NOTION_TOKEN}", "Notion-Version": NOTION_VERSION_V2,
+               "Content-Type": "application/json"}
+    req = urllib.request.Request(f"https://api.notion.com/v1/pages/{page_id}", headers=headers)
+    with urllib.request.urlopen(req, timeout=20) as r:
+        page = json.loads(r.read())
+    old = "".join(t.get("plain_text", "") for t in page["properties"].get("フィードバック", {}).get("rich_text", []))
+    today = datetime.now(timezone(timedelta(hours=9))).strftime("%m/%d")
+    new = (old + "\n" if old else "") + f"【{who} {today}】{text}"
+    chunks = [{"text": {"content": new[i:i + 1900]}} for i in range(0, len(new), 1900)][:100]
+    body = json.dumps({"properties": {"フィードバック": {"rich_text": chunks},
+                                       "フィードバック報告済み": {"checkbox": False}}}).encode()
+    req = urllib.request.Request(f"https://api.notion.com/v1/pages/{page_id}", data=body, method="PATCH", headers=headers)
+    with urllib.request.urlopen(req, timeout=20):
+        pass
+
+
+def handle_feedback(event: dict, closer: dict) -> bool:
+    """フィードバックの開始・本文受け取りを処理する。処理したらTrue（他の分岐に回さない）。"""
+    line_user_id = event["source"]["userId"]
+    reply_token = event["replyToken"]
+    text = event["message"]["text"].strip()
+    if latest_pending_recording(line_user_id) is not None:
+        return False  # 録音の確認フロー中は、その回答を優先する
+
+    waiting = sb("GET", f"deal_recordings?line_user_id=eq.{line_user_id}&status=eq.awaiting_feedback"
+                        "&order=received_at.desc&limit=1&select=*") or []
+    if text.startswith(FEEDBACK_TRIGGER):
+        deals = recent_analyzed_deals(closer)
+        target = text[len(FEEDBACK_TRIGGER):].strip(" 　:：")
+        match = next((d for d in deals if target and d["customer_name"] == to_customer_label(target)), None)
+        if not match:
+            if not deals:
+                line_reply(reply_token, [{"type": "text", "text": "フィードバックの対象になる分析済みの商談が見つかりませんでした。"}])
+                return True
+            line_reply(reply_token, [{
+                "type": "text", "text": "どの商談の分析結果についてですか？ボタンから選んでください。",
+                "quickReply": quick_reply([f"{FEEDBACK_TRIGGER} {d['customer_name']}" for d in deals[:13]])}])
+            return True
+        for w in waiting:  # 前の待ち状態は閉じる
+            sb("PATCH", f"deal_recordings?id=eq.{w['id']}", {"status": "feedback_cancelled"})
+        sb("POST", "deal_recordings", {"line_user_id": line_user_id, "customer_name": match["customer_name"],
+                                      "closer_name": match.get("closer_name"), "notion_url": match["notion_url"],
+                                      "storage_path": "feedback", "status": "awaiting_feedback"})
+        line_reply(reply_token, [{"type": "text", "text": FEEDBACK_ASK_TEXT.format(customer=match["customer_name"])}])
+        return True
+
+    if not waiting:
+        return False
+    row = waiting[0]
+    received = datetime.fromisoformat(row["received_at"].replace("Z", "+00:00"))
+    if datetime.now(timezone.utc) - received > timedelta(minutes=FEEDBACK_EXPIRE_MINUTES):
+        sb("PATCH", f"deal_recordings?id=eq.{row['id']}", {"status": "feedback_expired"})
+        return False  # 時間が経ちすぎた待ち状態は、通常のメッセージとして扱う
+    page_id = notion_page_id_of(row.get("notion_url"))
+    try:
+        notion_append_feedback(page_id, closer.get("closer_name") or "不明", text)
+    except Exception as e:
+        print(f"feedback save error: {e}")
+        line_reply(reply_token, [{"type": "text", "text": "保存に失敗しました。お手数ですが、今川さんに一言伝えてください。"}])
+        return True
+    sb("PATCH", f"deal_recordings?id=eq.{row['id']}", {"status": "feedback_done"})
+    line_reply(reply_token, [{"type": "text", "text": FEEDBACK_THANKS_TEXT}])
+    return True
+
+
+
+# ---- 毎朝の「今日の任された数字」カード（scripts/daily_mission.py）の「今日やる！」ボタン ----
+# 宣言すると守りたくなる（一貫性）。返信だけで記録はしない（Reply APIは配信数に数えない）
+DECLARE_TEXT = "今日やる！"
+
+
+def handle_declaration(event: dict, closer: dict):
+    name = closer.get("closer_name") or ""
+    line_reply(event["replyToken"], [{"type": "text", "text": (
+        f"{name}さん、宣言を受け取りました。🔥\n"
+        "今日の数字は、あなたが任された数字です。最初の1件を、午前中に。\n"
+        "終わったら、日報でその数字を報告してください。待っています。")}])
+
+
+
+# ---- 毎朝カードからの「今月の進み具合を見る」と「目標を上げる」（scripts/daily_mission.py） ----
+KPI_MONTH_TEXT = "今月の進み具合を見る"
+TARGET_TRIGGER = "目標を上げる"
+TARGET_EXPIRE_MINUTES = 60
+
+
+def handle_kpi_month_request(event: dict, closer: dict):
+    """朝のカードの「今月の進み具合を見る」。朝は今日の日報が無く単日KPIが空になるため、
+    前日までの累計が入る月間ビューと、直近4週の推移ビューを返す。"""
+    member_name = closer.get("closer_name")
+    if not member_name:
+        line_reply(event["replyToken"], [{"type": "text", "text": "お名前が未登録のため表示できません。"}])
+        return
+    token = make_kpi_token(member_name)
+    base = f"{KPI_BASE_URL}/api/kpi?token={token}"
+    line_reply(event["replyToken"], [{"type": "text", "text": (
+        f"📊 {member_name}さんの今月の進み具合（48時間有効なリンクです）\n"
+        f"・今月の累計（前日まで）\n{base}&view=month\n"
+        f"・直近4週の推移\n{base}&view=trend")}])
+
+
+def notion_set_declared_target(member_name: str, value: int, month: str) -> None:
+    page = notion_query_member(member_name)
+    if page is None:
+        raise RuntimeError("KPIデータの行が見つかりません")
+    body = json.dumps({"properties": {"宣言アポ目標": {"number": value},
+                                       "宣言月": {"rich_text": [{"text": {"content": month}}]}}}).encode()
+    req = urllib.request.Request(f"https://api.notion.com/v1/pages/{page['id']}", data=body, method="PATCH",
+                                 headers={"Authorization": f"Bearer {NOTION_TOKEN}", "Notion-Version": NOTION_VERSION,
+                                          "Content-Type": "application/json"})
+    with urllib.request.urlopen(req, timeout=20):
+        pass
+
+
+def handle_target(event: dict, closer: dict) -> bool:
+    """今月のアポ目標を、本人が宣言し直す。処理したらTrue。
+    状態は deal_recordings の status='awaiting_target' の行で持つ（storage_pathは'target'の目印）。"""
+    line_user_id = event["source"]["userId"]
+    reply_token = event["replyToken"]
+    text = event["message"]["text"].strip()
+    if latest_pending_recording(line_user_id) is not None:
+        return False
+    name = closer.get("closer_name") or ""
+    now = datetime.now(JST)
+    waiting = sb("GET", f"deal_recordings?line_user_id=eq.{line_user_id}&status=eq.awaiting_target"
+                        "&order=received_at.desc&limit=1&select=*") or []
+
+    if text == TARGET_TRIGGER:
+        for w in waiting:
+            sb("PATCH", f"deal_recordings?id=eq.{w['id']}", {"status": "target_cancelled"})
+        try:
+            page = notion_query_member(name)
+        except Exception:
+            page = None
+        cur = int(raw_number(page, "今月アポ目標概算") or 0) if page else 0
+        done = int(raw_number(page, "今月アポ実績") or 0) if page else 0
+        ideas = sorted({max(cur + 1, done + 2), max(cur + 2, round(done * 1.2) + 1), max(cur + 3, round(done * 1.5) + 1)})
+        sb("POST", "deal_recordings", {"line_user_id": line_user_id, "storage_path": "target", "status": "awaiting_target",
+                                      "customer_name": str(cur)})
+        line_reply(reply_token, [{"type": "text",
+            "text": (f"{name}さん、いいですね。今月のアポ目標は今{cur}件、ここまで{done}件。\n"
+                     "いくつを目指しますか？数字だけ送ってください（下のボタンでも選べます）。\n"
+                     "宣言した数字が、明日の朝からのカードの目標になります。"),
+            "quickReply": quick_reply([f"{n}件" for n in ideas][:13])}])
+        return True
+
+    if not waiting:
+        return False
+    row = waiting[0]
+    received = datetime.fromisoformat(row["received_at"].replace("Z", "+00:00"))
+    if datetime.now(timezone.utc) - received > timedelta(minutes=TARGET_EXPIRE_MINUTES):
+        sb("PATCH", f"deal_recordings?id=eq.{row['id']}", {"status": "target_expired"})
+        return False
+    m = re.fullmatch(r"\s*(\d{1,3})\s*件?\s*", text.translate(str.maketrans("０１２３４５６７８９", "0123456789")))
+    if not m:
+        if len(text) > 12:
+            return False  # 長い文章は別の用件（日報・フィードバック等）なので横取りしない
+        line_reply(reply_token, [{"type": "text", "text": "数字だけ送ってください（例: 30）。やめるときは何も送らなくて大丈夫です。"}])
+        return True
+    value, cur = int(m.group(1)), int(row.get("customer_name") or 0)
+    if value <= cur:
+        line_reply(reply_token, [{"type": "text", "text": f"今の目標は{cur}件です。それより大きい数字を送ってください。"}])
+        return True
+    try:
+        notion_set_declared_target(name, value, now.strftime("%Y-%m"))
+    except Exception as e:
+        print(f"declared target save error: {e}")
+        line_reply(reply_token, [{"type": "text", "text": "保存に失敗しました。お手数ですが、今川さんに一言伝えてください。"}])
+        return True
+    sb("PATCH", f"deal_recordings?id=eq.{row['id']}", {"status": "target_done"})
+    line_reply(reply_token, [{"type": "text", "text": (
+        f"宣言、受け取りました。今月のアポ目標は{value}件です。🔥\n"
+        "自分で決めた数字。みんなで見てるので、一緒に超えにいきましょう。\n明日の朝のカードから、この数字で出します。")}])
+    return True
+
+
+
+# ---- 新メニュー（困ったメモ・宿題の登録・うまくいったトーク・有力な共有・契約後の案件確認） ----
+# 状態は deal_recordings のマーカー行（storage_path=種類、status='awaiting_種類'）で持つ。
+# 手順は result 列、途中の入力は customer_name 列（JSON）、NotionページIDは notion_url 列に入れる。
+TROUBLE_TRIGGER = "困ったメモ"
+TROUBLE_REVIEW_TEXT = "困ったメモを見返す"
+TALK_TEXT = "全員の商談のうまくいったトーク"
+SHARE_TEXT = "最近の有力な共有"
+POST_CONTRACT_TEXT = "契約後の案件確認"
+HW_TRIGGER = "宿題を登録する"
+MENU_TEXTS = {GOAL_BUTTON_TEXT, KPI_BUTTON_TEXT, ANALYSIS_BUTTON_TEXT, STATUS_DEFINITION_TEXT, DECLARE_TEXT,
+              KPI_MONTH_TEXT, TARGET_TRIGGER, TROUBLE_TRIGGER, TROUBLE_REVIEW_TEXT, TALK_TEXT, SHARE_TEXT,
+              POST_CONTRACT_TEXT, HW_TRIGGER}
+FLOW_EXPIRE_MINUTES = 60
+TROUBLE_DB = "406da094-9999-81ca-ab25-ff9f1b7933f5"   # 🆘 困ったメモ
+TALK_DB = "406da094-9999-81e7-8615-d19651c1f165"     # 🗣 うまくいったトーク集（scripts/talk_share_sync.py が作る）
+LEARN_DB = "1390f330-7195-4624-a22f-a2af7361e179"     # 📚 学び・共有ログDB
+COOLING_OFF_DAYS = 8
+
+
+def cancel_flows(line_user_id: str) -> None:
+    """メニューが押されたら、途中だった質問（フィードバック・目標・宿題・困ったメモ）は閉じる。"""
+    sb("PATCH", f"deal_recordings?line_user_id=eq.{line_user_id}&storage_path=in.(feedback,target,homework,trouble)"
+                "&status=like.awaiting*", {"status": "flow_cancelled"})
+
+
+def flow_start(line_user_id: str, kind: str, step: str, data: dict | None = None, page_id: str | None = None) -> None:
+    cancel_flows(line_user_id)
+    sb("POST", "deal_recordings", {"line_user_id": line_user_id, "storage_path": kind, "status": f"awaiting_{kind}",
+                                  "result": step, "customer_name": json.dumps(data or {}, ensure_ascii=False),
+                                  "notion_url": page_id})
+
+
+def flow_active(line_user_id: str, kind: str) -> dict | None:
+    rows = sb("GET", f"deal_recordings?line_user_id=eq.{line_user_id}&storage_path=eq.{kind}"
+                     f"&status=eq.awaiting_{kind}&order=received_at.desc&limit=1&select=*") or []
+    if not rows:
+        return None
+    received = datetime.fromisoformat(rows[0]["received_at"].replace("Z", "+00:00"))
+    if datetime.now(timezone.utc) - received > timedelta(minutes=FLOW_EXPIRE_MINUTES):
+        sb("PATCH", f"deal_recordings?id=eq.{rows[0]['id']}", {"status": f"{kind}_expired"})
+        return {"expired": True}   # 呼び出し側で「時間が空いたので…」と返す（無言にしない）
+    return rows[0]
+
+
+def flow_update(row: dict, step: str | None = None, data: dict | None = None, status: str | None = None) -> None:
+    patch = {}
+    if step is not None:
+        patch["result"] = step
+    if data is not None:
+        patch["customer_name"] = json.dumps(data, ensure_ascii=False)
+    if status is not None:
+        patch["status"] = status
+    if patch:
+        sb("PATCH", f"deal_recordings?id=eq.{row['id']}", patch)
+
+
+def flow_data(row: dict) -> dict:
+    try:
+        return json.loads(row.get("customer_name") or "{}")
+    except json.JSONDecodeError:
+        return {}
+
+
+def notion_call(method: str, path: str, body=None, version: str = NOTION_VERSION) -> dict:
+    if not NOTION_TOKEN:
+        raise RuntimeError("NOTION_TOKEN未設定")
+    req = urllib.request.Request(
+        "https://api.notion.com/v1/" + path, method=method,
+        data=json.dumps(body).encode() if body is not None else None,
+        headers={"Authorization": f"Bearer {NOTION_TOKEN}", "Notion-Version": version, "Content-Type": "application/json"})
+    with urllib.request.urlopen(req, timeout=20) as r:
+        return json.loads(r.read())
+
+
+def rt(text: str) -> list:
+    """Notionのrich_text（1ブロック2000字まで）。原文をそのまま、長ければ分けて入れる。"""
+    return [{"text": {"content": text[i:i + 1900]}} for i in range(0, len(text), 1900)][:100] or [{"text": {"content": ""}}]
+
+
+def plain(page: dict, name: str) -> str:
+    p = (page.get("properties") or {}).get(name) or {}
+    t, v = p.get("type"), p.get(p.get("type"))
+    if t in ("title", "rich_text"):
+        return "".join(x.get("plain_text", "") for x in v or [])
+    if t in ("select", "status"):
+        return (v or {}).get("name", "")
+    if t == "multi_select":
+        return "、".join(x.get("name", "") for x in v or [])
+    if t == "date":
+        return ((v or {}).get("start") or "")
+    if t == "url":
+        return v or ""
+    if t == "number":
+        return "" if v is None else str(v)
+    return ""
+
+
+def md(date_iso: str) -> str:
+    """2026-10-25... → 10/25"""
+    try:
+        d = date.fromisoformat(date_iso[:10])
+        return f"{d.month}/{d.day}"
+    except ValueError:
+        return ""
+
+
+# ---------- 困ったメモ ----------
+# 原文は要約せずそのままNotion「🆘 困ったメモ」に残す。本人にはまず自分で解決策を考えてもらい、
+# 解決に向かわなかったものだけ「回答待ち」にする。今川さんへは毎晩21時にまとめて送る（scripts/trouble_digest.py）。
+SCENES = ["入り・アポトーク", "ヒアリング", "価格提示", "切り返し", "クロージング", "その他"]
+TROUBLE_ASK_TEXT = "どんな内容でお困りですか？\nここにテキストで送ってください。"
+TROUBLE_IDEA_TEXT = ("メモしました。\n\nまずは自分で考えてみましょう。\n"
+                     "この困りごとを解決するために、自分なら何を試せそうですか？思いつくことをそのまま送ってください。")
+TROUBLE_CHECK_TEXT = "いい視点です。それを実際にやってみると、この困りごとは解決に向かいそうですか？"
+EXPIRED_TEXT = "時間が空いたので、もう一度メニューからボタンを押して登録してください。"
+HW_EXPIRED_TEXT = "時間が空いたので、もう一度下のボタンを押して登録してください。"
+
+
+def trouble_wait_text(role: str, scene: str | None = None) -> str:
+    where = "全員の商談のうまくいったトーク" if role == "closer" else "最近の有力な共有"
+    head = f"「{scene}」の場面ですね。\n" if scene else ""
+    return (f"{head}回答待ちとして残しました。\n次の終礼（19:30）で、解決策を一緒に考えます。\n"
+            "回答はあとから、メニューの『困ったメモを見返す』でも見られます。\n\n"
+            f"それまでの間、同じ場面でうまくいっている人の例はメニューの『{where}』で見られます。")
+
+
+def trouble_create(name: str, text: str) -> str:
+    now = datetime.now(JST)
+    page = notion_call("POST", "pages", {"parent": {"database_id": TROUBLE_DB}, "properties": {
+        "メモ": {"title": rt(f"{name} {now.strftime('%m/%d %H:%M')}")},
+        "原文": {"rich_text": rt(text)},
+        "投稿者": {"select": {"name": name}},
+        "投稿日時": {"date": {"start": now.isoformat(timespec="seconds")}},
+        "状態": {"select": {"name": "自己解決中"}},
+    }})
+    return page["id"]
+
+
+def trouble_patch(page_id: str, props: dict) -> None:
+    notion_call("PATCH", f"pages/{page_id}", {"properties": props})
+
+
+def handle_trouble_review(event: dict, closer: dict) -> None:
+    name = closer.get("closer_name") or ""
+    res = notion_call("POST", f"databases/{TROUBLE_DB}/query", {
+        "filter": {"property": "投稿者", "select": {"equals": name}},
+        "sorts": [{"property": "投稿日時", "direction": "descending"}], "page_size": 8})["results"]
+    blocks = []
+    for p in res:
+        state = plain(p, "状態")
+        mark = {"解決": "✅解決", "自己解決": "✅自己解決", "回答待ち": "⏳回答待ち"}.get(state, "📝考え中")
+        original = plain(p, "原文")
+        b = f"■ {md(plain(p, '投稿日時'))} {mark}\n{original if len(original) <= 200 else original[:200] + '…'}"
+        if plain(p, "本人の解決案"):
+            b += f"\n【自分の解決案】{plain(p, '本人の解決案')[:150]}"
+        if plain(p, "回答"):
+            b += f"\n【回答】{plain(p, '回答')[:400]}"
+        blocks.append(b)
+    text = (f"🆘 {name}さんの困ったメモ（新しい順・本人だけに表示）\n\n" + "\n\n".join(blocks) if blocks
+            else "まだ困ったメモはありません。\nメニューの『困ったメモ』から残せます。")
+    try:
+        shared = notion_call("POST", f"databases/{TROUBLE_DB}/query", {"filter": {"and": [
+            {"property": "全員に共有OK", "checkbox": {"equals": True}}, {"property": "状態", "select": {"equals": "解決"}},
+            {"property": "投稿者", "select": {"does_not_equal": name}}]},
+            "sorts": [{"property": "投稿日時", "direction": "descending"}], "page_size": 3})["results"]
+    except Exception:
+        shared = []
+    if shared:
+        text += "\n\n――――――\n💡 みんなの解決済みQ&A（共有OKのもの・名前なし）\n\n" + "\n\n".join(
+            f"Q. {_clip(plain(p, '原文'), 150)}\nA. {_clip(plain(p, '回答'), 250)}" for p in shared)
+    line_reply(event["replyToken"], [{"type": "text", "text": text[:4900]}])
+
+
+def handle_trouble(event: dict, closer: dict) -> bool:
+    uid, reply, text = event["source"]["userId"], event["replyToken"], event["message"]["text"].strip()
+    name, role = closer.get("closer_name") or "", closer.get("role") or ""
+    if text == TROUBLE_TRIGGER:
+        flow_start(uid, "trouble", "text")
+        line_reply(reply, [{"type": "text", "text": TROUBLE_ASK_TEXT}])
+        return True
+    row = flow_active(uid, "trouble")
+    if not row or latest_pending_recording(uid) is not None:
+        return False
+    if row.get("expired"):
+        line_reply(reply, [{"type": "text", "text": EXPIRED_TEXT, "quickReply": quick_reply([TROUBLE_TRIGGER])}])
+        return True
+    step, page_id = row.get("result"), row.get("notion_url")
+    if step == "text":
+        try:
+            page_id = trouble_create(name or "不明", event["message"]["text"])  # 原文はstripせずそのまま
+        except Exception as e:
+            print(f"trouble create error: {e}")
+            line_reply(reply, [{"type": "text", "text": "保存に失敗しました。お手数ですが、今川さんに一言伝えてください。"}])
+            return True
+        flow_update(row, step="idea")
+        sb("PATCH", f"deal_recordings?id=eq.{row['id']}", {"notion_url": page_id})
+        line_reply(reply, [{"type": "text", "text": TROUBLE_IDEA_TEXT, "quickReply": quick_reply(["思いつかない"])}])
+        return True
+    if step == "idea":
+        if text == "思いつかない":
+            flow_update(row, step="scene")
+            line_reply(reply, [{"type": "text", "text": "では、この困りごとが一番起きるのは、どの場面ですか？",
+                                "quickReply": quick_reply(SCENES)}])
+            return True
+        trouble_patch(page_id, {"本人の解決案": {"rich_text": rt(event["message"]["text"])}})
+        flow_update(row, step="check")
+        line_reply(reply, [{"type": "text", "text": TROUBLE_CHECK_TEXT,
+                            "quickReply": quick_reply(["解決に向かいそう", "まだ解決できない"])}])
+        return True
+    if step == "scene":
+        if len(text) > 30:
+            return False
+        trouble_patch(page_id, {"起きる場面": {"rich_text": rt(text)}, "状態": {"select": {"name": "回答待ち"}}})
+        flow_update(row, status="trouble_done")
+        line_reply(reply, [{"type": "text", "text": trouble_wait_text(role, text)}])
+        return True
+    if step == "check":
+        if text == "解決に向かいそう":
+            trouble_patch(page_id, {"状態": {"select": {"name": "自己解決"}}})
+            flow_update(row, status="trouble_done")
+            line_reply(reply, [{"type": "text", "text": "その調子です。やってみた結果は、また『困ったメモ』で残してください。"}])
+            return True
+        if text == "まだ解決できない":
+            trouble_patch(page_id, {"状態": {"select": {"name": "回答待ち"}}})
+            flow_update(row, status="trouble_done")
+            line_reply(reply, [{"type": "text", "text": trouble_wait_text(role)}])
+            return True
+        if len(text) > 15:
+            return False
+        line_reply(reply, [{"type": "text", "text": TROUBLE_CHECK_TEXT,
+                            "quickReply": quick_reply(["解決に向かいそう", "まだ解決できない"])}])
+        return True
+    return False
+
+
+# ---------- 宿題の登録（ボタンで答える） ----------
+HW_OTHER = "その他（自分で書く）"
+HW_CHOICES = {
+    "appointer": ["アポ取りトークのロープレ", "訪問の入りのセリフ練習", "断られた場面の切り返し練習",
+                  "できてる人に同行して学ぶ", "自分の録音を聞き返して直す", "訪問数を増やす", HW_OTHER],
+    "closer": ["価格提示と切り返しの練習", "ヒアリングの掘り下げ練習", "クロージングの練習",
+               "録音を聞き返して改善", "他の人の商談に同行して学ぶ", "契約後フォローの徹底", HW_OTHER],
+}
+HW_WHENS = ["木曜", "金曜", "木・金", "毎日", "土日"]
+HW_WHOS = ["ひとりで", "リーダーと", "同じ代理店の仲間と"]
+HW_METRICS = [("訪問数", "訪問数目標"), ("アポ数", "アポ数目標"), ("商談数", "商談数目標_自アポ"), ("契約数", "契約数目標_自アポ")]
+APPOINTER_SKIP_METRICS = {"商談数"}   # アポインターは商談数を聞かない（実績DBでは0のため、おすすめが意味をなさない）
+
+
+def hw_metrics_of(d: dict) -> list:
+    """この人に聞く数字の項目。宿題登録の開始時に役割から決めて d["metrics"] に入れておく。"""
+    labels = d.get("metrics") or [label for label, _ in HW_METRICS]
+    return [m for m in HW_METRICS if m[0] in labels]
+HW_DEFAULT_OPTS = {"訪問数": [20, 40, 60, 80], "アポ数": [3, 5, 8, 10], "商談数": [1, 2, 3, 5], "契約数": [0, 1, 2, 3]}
+HW_QUESTION_Q1 = "📝 今週の宿題を登録します（約30秒・全5問）\n\n① 今週の宿題を1つ選んでください"
+
+
+def recommended_targets(member: str) -> dict | None:
+    """過去4週間の実績（出勤日）から、週あたりの平均を出す。データが無ければNone。"""
+    today = datetime.now(JST).date()
+    try:
+        rows = notion_query_recent_performance(member, today.isoformat(), limit=60)
+    except Exception as e:
+        print(f"recommend error: {e}")
+        return None
+    rows = [r for r in rows if is_working_row(r) and (row_date_iso(r) or "") >= (today - timedelta(days=28)).isoformat()]
+    if not rows:
+        return None
+    first = min(date.fromisoformat(row_date_iso(r)) for r in rows)
+    weeks = min(4, max(1, -(-((today - first).days + 1) // 7)))
+    prop = {"訪問数": "訪問数", "アポ数": "アポ数", "商談数": "商談数", "契約数": "契約"}
+    return {label: int(round(sum(row_number(r, prop[label]) for r in rows) / weeks)) for label, _ in HW_METRICS}
+
+
+HW_PACE_PROPS = {"訪問数": "今週の必要訪問数", "アポ数": "今週の必要アポ数", "商談数": "今週やるべき有効商談数", "契約数": "今週やるべき契約数"}
+HW_OK_PAST, HW_OK_PACE, HW_CUSTOM = "過去データの数字でOK", "目標ペースでOK", "自分で決める"
+
+
+def kpi_num(page: dict, prop_name: str) -> float | None:
+    """KPIデータの数値（number・数式・ロールアップのどれでも）。無ければNone。"""
+    p = (page.get("properties") or {}).get(prop_name) or {}
+    t = p.get("type")
+    if t == "number":
+        return p.get("number")
+    if t == "formula":
+        return (p.get("formula") or {}).get("number")
+    if t == "rollup":
+        return (p.get("rollup") or {}).get("number")
+    return None
+
+
+def goal_pace(member: str) -> dict:
+    """月目標から逆算した今週の必要数（📊個人別KPI逆算データ）。取れない項目は入れない。"""
+    try:
+        page = notion_query_member(member)
+    except Exception as e:
+        print(f"pace error: {e}")
+        return {}
+    if not page:
+        return {}
+    out = {}
+    for label, prop in HW_PACE_PROPS.items():
+        v = kpi_num(page, prop)
+        if v is not None and v >= 0:
+            out[label] = int(-(-v // 1))   # 切り上げ
+    return out
+
+
+def hw_options(label: str, rec: int | None, pace: int | None = None) -> list[str]:
+    if rec is None and pace is not None:
+        rec = pace
+    if rec is None:
+        return [str(n) for n in HW_DEFAULT_OPTS[label]]
+    if pace is not None and pace != rec:
+        return [str(n) for n in sorted({rec, pace, max(rec, pace) + max(1, round(max(rec, pace) * 0.2))})]
+    if rec <= 5:
+        return [str(n) for n in range(max(0, rec - 1), rec + 3)]
+    return [str(n) for n in sorted({round(rec * 0.8), rec, round(rec * 1.2), round(rec * 1.5)})]
+
+
+def hw_week_key(closer: dict) -> str:
+    if closer.get("pdca_pending_week"):
+        return closer["pdca_pending_week"]
+    today = datetime.now(JST).date()
+    return (today - timedelta(days=today.weekday() + 7)).isoformat()   # 先週の月曜（tools/shuuji/deliver.pyと同じ）
+
+
+def hw_summary(d: dict) -> str:
+    nums = "・".join(f"{label}{d.get('t_' + label, '-')}" for label, _ in hw_metrics_of(d))
+    s = f"宿題：{d.get('what')}\nいつ：{d.get('when')}／誰と：{d.get('who')}\n数字：{nums}"
+    if d.get("learn"):
+        s += f"\n先週の学び：{d['learn']}"
+    return s
+
+
+def notion_save_homework(member: str, week_key: str, d: dict) -> None:
+    props = {
+        "アクションプラン": {"rich_text": rt(f"{d['what']}（{d['when']}／{d['who']}）")},
+        "元メッセージ": {"rich_text": rt(hw_summary(d) if not d.get("source_text") else
+                                       f"{d['source_text']}\n\n【Botの読み取り結果（本人確認済み）】\n{hw_summary(d)}")},
+    }
+    if d.get("learn"):
+        props["原因"] = {"rich_text": rt(d["learn"])}
+    for label, prop in hw_metrics_of(d):
+        if d.get("t_" + label) is not None:
+            props[prop] = {"number": int(d["t_" + label])}
+    found = notion_call("POST", f"data_sources/{PDCA_DATABASE_ID}/query", {"filter": {"and": [
+        {"property": "氏名", "select": {"equals": member}}, {"property": "週初日", "date": {"equals": week_key}}]},
+        "page_size": 1}, NOTION_VERSION_V2)["results"]
+    if found:   # 同じ週にもう行がある（議事録の反映など）ときは、重複させず上書きする
+        notion_call("PATCH", f"pages/{found[0]['id']}", {"properties": props}, NOTION_VERSION_V2)
+        return
+    notion_call("POST", "pages", {"parent": {"type": "data_source_id", "data_source_id": PDCA_DATABASE_ID}, "properties": {
+        "タイトル": {"title": rt(f"{member}_{week_key}")}, "氏名": {"select": {"name": member}},
+        "週初日": {"date": {"start": week_key}}, **props}}, NOTION_VERSION_V2)
+
+
+def hw_ask_number(reply: str, row: dict, d: dict, idx: int, prefix: str = "") -> None:
+    label = hw_metrics_of(d)[idx][0]
+    rec = (d.get("rec") or {}).get(label)
+    pace = (d.get("pace") or {}).get(label)
+    flow_update(row, step=f"num{idx}", data=d)
+    hint = "（" + "／".join(x for x in [f"過去データ：{rec}" if rec is not None else "",
+                                       f"目標ペース：{pace}" if pace is not None else ""] if x) + "）" if (rec is not None or pace is not None) else ""
+    line_reply(reply, [{"type": "text", "text": f"{prefix}{label}の目標は？{hint}\n数字を送るか、ボタンで選んでください。",
+                        "quickReply": quick_reply(hw_options(label, rec, pace))}])
+
+
+def hw_ask_learn(reply: str, row: dict, d: dict) -> None:
+    flow_update(row, step="learn", data=d)
+    line_reply(reply, [{"type": "text", "text": "⑤ 先週の学びがあれば、一言どうぞ。\n（うまくいったこと／いかなかったこと、その理由。なければスキップ）",
+                        "quickReply": quick_reply(["スキップ"])}])
+
+
+def hw_ask_targets(reply: str, row: dict, d: dict, name: str, prefix: str = "") -> None:
+    """④ 数字の目標。過去データのおすすめ・目標ペースをボタンで出す。"""
+    keep = {label for label, _ in hw_metrics_of(d)}
+    d["rec"] = {k: v for k, v in (recommended_targets(name) or {}).items() if k in keep}
+    d["pace"] = {k: v for k, v in goal_pace(name).items() if k in keep}
+    rec, pace = d["rec"], d["pace"]
+    if not rec and not pace:
+        hw_ask_number(reply, row, d, 0, prefix=prefix + "④ 今週の数字の目標です。過去データがまだ少ないので、1つずつ決めましょう。\n\n")
+        return
+    lines, buttons = [prefix + "④ 今週の数字の目標です。"], []
+    if rec:
+        lines.append("過去データに基づくあなたへのおすすめ：\n" + "・".join(f"{label}{rec[label]}" for label, _ in hw_metrics_of(d)))
+        buttons.append(HW_OK_PAST)
+    if pace:
+        lines.append("月の目標に必要な今週のペース：\n" + "・".join(f"{label}{pace[label]}" for label, _ in hw_metrics_of(d) if label in pace))
+        buttons.append(HW_OK_PACE)
+    if rec and pace:
+        lines.append("高い方を選ぶのがおすすめです。")
+    buttons.append(HW_CUSTOM)
+    flow_update(row, step="num_ok", data=d)
+    line_reply(reply, [{"type": "text", "text": "\n\n".join(lines), "quickReply": quick_reply(buttons)}])
+
+
+def hw_next(reply: str, row: dict, d: dict, name: str, choices: list, prefix: str = "") -> None:
+    """まだ決まっていない項目を、①宿題→②いつ→③誰と→④数字→⑤学び→確認 の順に聞く。
+    ボタンで1問ずつ答えた場合も、文面で送られた内容を読み取った場合も、同じ順で足りない所だけ聞く。"""
+    labels = [label for label, _ in hw_metrics_of(d)]
+    if not d.get("what"):
+        flow_update(row, step="what", data=d)
+        line_reply(reply, [{"type": "text", "text": prefix + "① 今週の宿題を1つ選んでください", "quickReply": quick_reply(choices)}])
+    elif not d.get("when"):
+        flow_update(row, step="when", data=d)
+        line_reply(reply, [{"type": "text", "text": prefix + "② いつやりますか？", "quickReply": quick_reply(HW_WHENS)}])
+    elif not d.get("who"):
+        flow_update(row, step="who", data=d)
+        line_reply(reply, [{"type": "text", "text": prefix + "③ 誰とやりますか？\n（名前を入力してもOKです）", "quickReply": quick_reply(HW_WHOS)}])
+    elif not any(d.get("t_" + label) is not None for label in labels):
+        hw_ask_targets(reply, row, d, name, prefix)
+    elif "learn" not in d:
+        hw_ask_learn(reply, row, d)
+    else:
+        missing = [label for label in labels if d.get("t_" + label) is None]
+        if missing:   # 文面に一部の数字しか無いときは、過去データのおすすめで埋めて確認で見せる（違えば「やり直す」）
+            rec = recommended_targets(name) or {}
+            for label in missing:
+                if rec.get(label) is not None:
+                    d["t_" + label] = rec[label]
+        flow_update(row, step="confirm", data=d)
+        note = ("\n※" + "・".join(missing) + "は書かれていなかったので、過去データのおすすめを入れています。") if missing else ""
+        line_reply(reply, [{"type": "text", "text": f"{prefix}{hw_summary(d)}{note}\n\n今週やり切れますか？",
+                            "quickReply": quick_reply(["やり切る！", "やり直す"])}])
+
+
+def hw_parse_text(text: str, labels: list) -> dict | None:
+    """文面で送られた宿題・数字の目標を、Geminiで項目ごとに読み取る。宿題の話でなければ {"is_homework": False}。
+    読み取れなかった（キー未設定・通信エラー）ときは None。"""
+    key = os.environ.get("GEMINI_API_KEY")
+    if not key:
+        return None
+    keys = {label: f"n{i}" for i, label in enumerate(labels)}   # 日本語のキーだと抜けることがあるため英数字のキーで聞く
+    nums = "、".join(f'"{keys[label]}": {label}の目標（数字かnull）' for label in labels)
+    prompt = (
+        "訪問販売の営業メンバーが、週次ミーティングで決めた「今週の宿題」と「今週の数字の目標」をLINEで送ってきました。"
+        "次のJSONだけを返してください。書かれていない項目は null にし、推測で埋めないでください。"
+        "what は本人の言葉をできるだけそのまま短く（1文。宿題が複数あれば「、」でつなぐ）。数字は今週の目標の数（日報の実績報告ではない）。"
+        "when・who は本文に書かれているときだけ入れる（「今週」はwhenに入れない）。\n"
+        '{"is_homework": 今週の宿題か数字の目標を伝える文ならtrue（日報・質問・雑談ならfalse）, '
+        '"what": 今週の宿題, "when": いつやるか, "who": 誰とやるか, ' + nums +
+        ', "learn": 先週の学び・反省}\n\n文面:\n' + text)
+    body = json.dumps({"contents": [{"parts": [{"text": prompt}]}],
+                       "generationConfig": {"temperature": 0, "responseMimeType": "application/json", "responseSchema": {
+                           "type": "OBJECT", "required": ["is_homework"], "properties": {
+                               "is_homework": {"type": "BOOLEAN"},
+                               **{k: {"type": "STRING", "nullable": True} for k in ("what", "when", "who", "learn")},
+                               **{keys[label]: {"type": "INTEGER", "nullable": True} for label in labels}},
+                           "propertyOrdering": ["is_homework", "what", "when", "who", *keys.values(), "learn"]},
+                                            "thinkingConfig": {"thinkingBudget": 0}}}).encode()
+    # 無料枠は1モデル1日あたりの回数が少ない（2.5-flashは20回／日。録音分析でも使う）ため、軽いモデルから順に試す
+    for model in ("gemini-2.5-flash-lite", "gemini-2.5-flash"):
+        parsed = _gemini_json(model, key, body)
+        if parsed is not False:
+            if parsed:
+                for label, k in keys.items():
+                    parsed[label] = parsed.pop(k, None)
+            return parsed
+    return None
+
+
+def _gemini_json(model: str, key: str, body: bytes):
+    """GeminiにJSONで答えさせる。回数制限で使えなければ False（次のモデルを試す）、それ以外の失敗は None。"""
+    req = urllib.request.Request(
+        f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}",
+        data=body, method="POST", headers={"Content-Type": "application/json"})
+    for attempt in range(2):
+        try:
+            with urllib.request.urlopen(req, timeout=20) as r:
+                out = json.loads(r.read())["candidates"][0]["content"]["parts"][0]["text"]
+            parsed = json.loads(out)
+            return parsed if isinstance(parsed, dict) else None
+        except urllib.error.HTTPError as e:
+            if e.code == 429 and attempt == 0:   # 短時間の回数制限なら、少し待って1回だけやり直す
+                time.sleep(3)
+                continue
+            print(f"homework parse error ({model}): {e}")
+            return False if e.code == 429 else None
+        except Exception as e:  # noqa: BLE001
+            print(f"homework parse error ({model}): {e}")
+            return None
+    return False
+
+
+def handle_homework_text(event: dict, closer: dict) -> bool:
+    """宿題・目標を文面で送ってきた人の内容を読み取り、足りない項目だけボタンで聞いて、確認してから登録する。
+    宿題の話ではなかったら False（ほかの処理に回す）。"""
+    uid, reply, text = event["source"]["userId"], event["replyToken"], event["message"]["text"].strip()
+    name, role = closer.get("closer_name") or "", closer.get("role") or "appointer"
+    choices = HW_CHOICES["closer" if role == "closer" else "appointer"]
+    labels = [label for label, _ in HW_METRICS if role == "closer" or label not in APPOINTER_SKIP_METRICS]
+    parsed = hw_parse_text(text, labels)
+    if parsed is None:   # 読み取りに失敗したときは、これまでどおりボタンへ案内する
+        line_reply(reply, [{"type": "text", "text": "宿題はボタンで登録します（質問に答えるだけで30秒）。下のボタンを押してください。",
+                            "quickReply": quick_reply([HW_TRIGGER])}])
+        return True
+    if not parsed.get("is_homework"):
+        return False
+
+    def clean(v):
+        v = ("" if v is None else str(v)).strip()
+        return "" if v.lower() in ("null", "none", "なし") else v[:200]
+
+    d = {"week": hw_week_key(closer), "metrics": labels, "source_text": text[:1500]}
+    for k in ("what", "when", "who"):
+        if clean(parsed.get(k)):
+            d[k] = clean(parsed.get(k))
+    for label in labels:
+        m = re.search(r"\d+", clean(parsed.get(label)).translate(str.maketrans("０１２３４５６７８９", "0123456789")))
+        if m:
+            d["t_" + label] = int(m.group(0))
+    d["learn"] = clean(parsed.get("learn"))   # 文面のときは学びを改めて聞かない
+    flow_start(uid, "homework", "parsed", d)
+    row = flow_active(uid, "homework")
+    if not row or row.get("expired"):
+        return False
+    hw_next(reply, row, d, name, choices, prefix="📝 送ってくれた内容を宿題として読み取りました。\n\n")
+    return True
+
+
+def handle_homework(event: dict, closer: dict) -> bool:
+    uid, reply, text = event["source"]["userId"], event["replyToken"], event["message"]["text"].strip()
+    name, role = closer.get("closer_name") or "", closer.get("role") or "appointer"
+    choices = HW_CHOICES["closer" if role == "closer" else "appointer"]
+    metric_labels = [label for label, _ in HW_METRICS if role == "closer" or label not in APPOINTER_SKIP_METRICS]
+    if text == HW_TRIGGER:
+        plan = member_month_plan(name)   # 月次MTの改善ポイントがあれば、先に見せて宿題の選択肢にも足す
+        q1 = hw_choices_for(plan, choices) if plan else choices
+        flow_start(uid, "homework", "what", {"week": hw_week_key(closer), "metrics": metric_labels, "choices": q1})
+        msgs = [{"type": "text", "text": hw_plan_intro(plan)}] if plan else []
+        line_reply(reply, msgs + [{"type": "text", "text": HW_QUESTION_Q1, "quickReply": quick_reply(q1)}])
+        return True
+    row = flow_active(uid, "homework")
+    if not row or latest_pending_recording(uid) is not None:
+        return False
+    if row.get("expired"):
+        line_reply(reply, [{"type": "text", "text": HW_EXPIRED_TEXT, "quickReply": quick_reply([HW_TRIGGER])}])
+        return True
+    step, d = row.get("result"), flow_data(row)
+    choices = d.get("choices") or choices
+    long_ok = step in ("what_free", "learn") or (step == "what" and d.get("source_text"))
+    if len(text) > (300 if long_ok else 30):
+        return False   # 長い文章は別の用件（日報など）なので横取りしない
+
+    if step == "what":
+        if text == HW_OTHER:
+            flow_update(row, step="what_free")
+            line_reply(reply, [{"type": "text", "text": "宿題の内容を、そのまま送ってください。"}])
+            return True
+        if text not in choices and not d.get("source_text"):   # 文面から始まった人は、宿題も文面で受け取る
+            line_reply(reply, [{"type": "text", "text": "ボタンから選んでください。", "quickReply": quick_reply(choices)}])
+            return True
+        d["what"] = text
+    elif step == "what_free":
+        d["what"] = text
+    if step in ("what", "what_free"):
+        hw_next(reply, row, d, name, choices)
+        return True
+
+    if step == "when":
+        if text not in HW_WHENS and not d.get("source_text"):
+            line_reply(reply, [{"type": "text", "text": "ボタンから選んでください。", "quickReply": quick_reply(HW_WHENS)}])
+            return True
+        d["when"] = text
+        hw_next(reply, row, d, name, choices)
+        return True
+
+    if step == "who":
+        d["who"] = text
+        hw_next(reply, row, d, name, choices)
+        return True
+
+    if step == "num_ok":
+        rec, pace = d.get("rec") or {}, d.get("pace") or {}
+        if text in (HW_OK_PAST, HW_OK_PACE, "この数字でOK"):
+            base = pace if text == HW_OK_PACE else rec
+            for label, _ in hw_metrics_of(d):   # 目標ペースに無い項目は過去データで埋める
+                v = base.get(label, rec.get(label, pace.get(label)))
+                if v is not None:
+                    d["t_" + label] = v
+            hw_next(reply, row, d, name, choices)
+        elif text == HW_CUSTOM:
+            hw_ask_number(reply, row, d, 0)
+        else:
+            line_reply(reply, [{"type": "text", "text": "ボタンから選んでください。", "quickReply": quick_reply(
+                [x for x, ok in ((HW_OK_PAST, rec), (HW_OK_PACE, pace), (HW_CUSTOM, True)) if ok])}])
+        return True
+
+    if step and step.startswith("num") and step[3:].isdigit():
+        idx = int(step[3:])
+        m = re.fullmatch(r"\s*(\d{1,4})\s*", text.translate(str.maketrans("０１２３４５６７８９", "0123456789")))
+        if not m:
+            line_reply(reply, [{"type": "text", "text": "数字だけ送ってください（例：5）。"}])
+            return True
+        d["t_" + hw_metrics_of(d)[idx][0]] = int(m.group(1))
+        if idx + 1 < len(hw_metrics_of(d)):
+            hw_ask_number(reply, row, d, idx + 1)
+        else:
+            hw_next(reply, row, d, name, choices)
+        return True
+
+    if step == "learn":
+        d["learn"] = "" if text == "スキップ" else event["message"]["text"].strip()
+        hw_next(reply, row, d, name, choices)
+        return True
+
+    if step == "confirm":
+        if text == "やり直す":
+            flow_start(uid, "homework", "what", {"week": d.get("week") or hw_week_key(closer), "metrics": metric_labels})
+            line_reply(reply, [{"type": "text", "text": HW_QUESTION_Q1, "quickReply": quick_reply(choices)}])
+            return True
+        if text != "やり切る！":
+            line_reply(reply, [{"type": "text", "text": "今週やり切れますか？", "quickReply": quick_reply(["やり切る！", "やり直す"])}])
+            return True
+        try:
+            notion_save_homework(name, d.get("week") or hw_week_key(closer), d)
+        except Exception as e:
+            print(f"homework save error: {e}")
+            line_reply(reply, [{"type": "text", "text": "保存に失敗しました。お手数ですが、今川さんに一言伝えてください。"}])
+            return True
+        flow_update(row, status="homework_done")
+        sb("PATCH", f"closer_line_users?id=eq.{closer['id']}", {"pdca_pending_week": None})
+        line_reply(reply, [{"type": "text", "text": "宣言、受け取りました！🔥\n来週のMTで『やった／やってない』を聞きます。今週、やり切りましょう。"}])
+        return True
+    return False
+
+
+# ---------- Flexカード ----------
+def _t(text: str, size: str = "sm", color: str | None = None, weight: str | None = None, margin: str | None = None) -> dict:
+    node = {"type": "text", "text": text or " ", "size": size, "wrap": True}
+    if color:
+        node["color"] = color
+    if weight:
+        node["weight"] = weight
+    if margin:
+        node["margin"] = margin
+    return node
+
+
+def _clip(text: str, n: int) -> str:
+    return text if len(text) <= n else text[:n] + "…"
+
+
+def flex_bubble(label: str, label_color: str, title: str, body_lines: list[dict], source: str, url: str | None) -> dict:
+    bubble = {"type": "bubble", "size": "mega",
+              "header": {"type": "box", "layout": "vertical", "paddingAll": "12px", "backgroundColor": label_color,
+                         "contents": [_t(label, "sm", "#FFFFFF", "bold")]},
+              "body": {"type": "box", "layout": "vertical", "spacing": "md",
+                       "contents": [_t(title, "md", None, "bold"), *body_lines]},
+              "footer": {"type": "box", "layout": "vertical", "spacing": "sm",
+                         "contents": [_t("出典：" + source, "xs", "#666666")]}}
+    if url:
+        bubble["footer"]["contents"].append({"type": "button", "style": "link", "height": "sm",
+                                             "action": {"type": "uri", "label": "分析ページを開く", "uri": url}})
+    return bubble
+
+
+def flex_message(alt: str, bubbles: list[dict]) -> dict:
+    return {"type": "flex", "altText": alt, "contents": {"type": "carousel", "contents": bubbles}}
+
+
+TALK_PHASES = ["入り・信頼構築", "ヒアリング", "課題の言語化", "提案", "価格提示", "反論処理", "クロージング"]
+TALK_PHASE_PREFIX = "トーク｜"
+TALK_ALL = "すべての場面"
+
+
+def handle_talk_share(event: dict, closer: dict) -> None:
+    """まず場面を選んでもらう（場面は商談分析のAIが付けたもの）。"""
+    line_reply(event["replyToken"], [{"type": "text", "text": "🗣 全員の商談のうまくいったトーク\nどの場面のトークを見ますか？",
+                                      "quickReply": quick_reply([TALK_PHASE_PREFIX + x for x in TALK_PHASES + [TALK_ALL]])}])
+
+
+def handle_talk_phase(event: dict, closer: dict) -> bool:
+    text = event["message"]["text"].strip()
+    if not text.startswith(TALK_PHASE_PREFIX):
+        return False
+    phase = text[len(TALK_PHASE_PREFIX):]
+    if phase not in TALK_PHASES + [TALK_ALL]:
+        return False
+    try:
+        picked, days = [], 14
+        for days in (14, 60):   # 直近2週間に無ければ2か月分から探す
+            cond = [{"property": "商談日", "date": {"on_or_after": (datetime.now(JST).date() - timedelta(days=days)).isoformat()}},
+                    {"property": "採点", "number": {"is_not_empty": True}}]
+            if phase != TALK_ALL:
+                cond.append({"property": "フェーズ", "select": {"equals": phase}})
+            res = notion_call("POST", f"databases/{TALK_DB}/query", {"filter": {"and": cond},
+                "sorts": [{"property": "採点", "direction": "descending"}, {"property": "商談日", "direction": "descending"}],
+                "page_size": 40})["results"]
+            picked, per_deal = [], {}
+            for p in res:
+                key = plain(p, "取込キー").split("#")[0]
+                if per_deal.get(key, 0) >= 2 or plain(p, "トーク") == "（引用なし）":
+                    continue
+                per_deal[key] = per_deal.get(key, 0) + 1
+                picked.append(p)
+                if len(picked) == 5:
+                    break
+            if picked:
+                break
+    except Exception as e:
+        print(f"talk phase error: {e}")
+        line_reply(event["replyToken"], [{"type": "text", "text": "一時的に取得できませんでした。少し待ってからもう一度お試しください。"}])
+        return True
+    others = quick_reply([TALK_PHASE_PREFIX + x for x in TALK_PHASES + [TALK_ALL] if x != phase])
+    if not picked:
+        line_reply(event["replyToken"], [{"type": "text", "quickReply": others, "text": (
+            f"「{phase}」のうまくいったトークは、まだありません。\n毎晩21時ごろの商談分析で良いトークが見つかると、ここに追加されます。")}])
+        return True
+    bubbles = []
+    for p in picked:
+        who, cust = plain(p, "クローザー"), plain(p, "お客様名")
+        score, when = plain(p, "採点"), md(plain(p, "商談日"))
+        reason = plain(p, "理由")
+        body = [_t("なぜ効いたか", "xs", "#888888", margin="md"), _t(_clip(reason, 120), "sm")] if reason else []
+        t = plain(p, "時刻")
+        if t:
+            body.append(_t(f"商談中の時刻：{t}", "xs", "#888888"))
+        bubbles.append(flex_bubble(f"{plain(p, 'フェーズ') or '全般'}｜採点 {score}点", "#C0392B", _clip(plain(p, "トーク"), 110),
+                                   body, f"{who}さん／{when} {cust}の商談分析（{score}点）", plain(p, "分析ページ")))
+    span = "直近2週間" if days == 14 else "直近2か月（2週間に無かったため）"
+    line_reply(event["replyToken"], [
+        {"type": "text", "text": f"🗣 全員の商談のうまくいったトーク｜{phase}（{span}・採点の高い順）\n横にスワイプで見られます。"},
+        {**flex_message(f"うまくいったトーク｜{phase}", bubbles), "quickReply": others}])
+    return True
+
+
+def appointer_names() -> set:
+    names = set(KNOWN_APPOINTERS.values())
+    try:
+        names |= {r["closer_name"] for r in sb("GET", "closer_line_users?role=eq.appointer&select=closer_name") or []
+                  if r.get("closer_name")}
+    except Exception:
+        pass
+    return names
+
+
+SHARE_SHOW = 3          # 1回に出す件数（重くしない。商談ページを読むのはこの件数まで）
+SHARE_DAYS = 21
+# 汎用性が低い（その場所・その家だけの話）ものは下げる／試す価値が高い（真似できる行動・言い回し）ものは上げる
+SHARE_LOCAL_WORDS = ("エリア", "地域", "山の", "団地", "マンション", "この家", "近所")
+SHARE_TRY_TYPES = ("刺さったトーク", "良かった切り返し", "真似して良かった", "パターン検証", "先輩の同行")
+
+
+def share_score(p: dict) -> int:
+    title, cats, types = plain(p, "学び（一文要約）"), plain(p, "カテゴリ"), plain(p, "共有タイプ")
+    score = 2 * len(plain(p, "重要度"))
+    if "成功事例" in cats:
+        score += 2
+    if any(t in types for t in SHARE_TRY_TYPES):
+        score += 1
+    if "「" in title:                      # 具体的な言い回しがある＝そのまま試せる
+        score += 1
+    if any(w in title for w in SHARE_LOCAL_WORDS) or "エリア特徴" in types:
+        score -= 2
+    if "ツール" in cats or "業務改善" in cats:
+        score -= 1
+    return score
+
+
+def _bigrams(text: str) -> set:
+    t = re.sub(r"\s", "", text)
+    return {t[i:i + 2] for i in range(len(t) - 1)}
+
+
+def similar(a: str, b: str) -> bool:
+    x, y = _bigrams(a), _bigrams(b)
+    return bool(x and y) and len(x & y) / len(x | y) >= 0.4
+
+
+def handle_share(event: dict, closer: dict) -> None:
+    """アポインターの最近の有力な共有。重要度・汎用性・試す価値で点数を付けて上位から3件、新しい順に出す。
+    似た内容と同じ人は1件まで。押すたびに前回までに見せたものを外し、出し切ったら最初に戻る。"""
+    uid = event["source"]["userId"]
+    since = (datetime.now(JST).date() - timedelta(days=SHARE_DAYS)).isoformat()
+    res = notion_call("POST", f"databases/{LEARN_DB}/query", {
+        "filter": {"property": "報告日", "date": {"on_or_after": since}},
+        "sorts": [{"property": "報告日", "direction": "descending"}], "page_size": 100})["results"]
+    names = appointer_names()
+    pool = [p for p in res if plain(p, "報告者") in names and plain(p, "学び（一文要約）")]
+    seen_rows = sb("GET", f"deal_recordings?line_user_id=eq.{uid}&storage_path=eq.share_seen&limit=1&select=*") or []
+    seen = set(json.loads(seen_rows[0]["customer_name"] or "[]")) if seen_rows else set()
+    fresh = [p for p in pool if p["id"] not in seen]
+    restarted = False
+    if len(fresh) < SHARE_SHOW and pool:   # 出し切ったら最初から
+        fresh, seen, restarted = pool, set(), True
+    fresh.sort(key=lambda p: plain(p, "報告日"), reverse=True)   # 同点なら新しい方を先に
+    fresh.sort(key=lambda p: -share_score(p))
+    chosen = []
+    for p in fresh:
+        title = plain(p, "学び（一文要約）")
+        if any(plain(c, "報告者") == plain(p, "報告者") or similar(plain(c, "学び（一文要約）"), title) for c in chosen):
+            continue
+        chosen.append(p)
+        if len(chosen) == SHARE_SHOW:
+            break
+    if not chosen:
+        line_reply(event["replyToken"], [{"type": "text", "text": (
+            "直近3週間で共有できる事項は、まだありません。\n日報の共有が入ると、ここに追加されます。")}])
+        return
+    chosen.sort(key=lambda p: plain(p, "報告日"), reverse=True)   # 表示は新しい順
+    bubbles = []
+    for p in chosen:
+        who, when = plain(p, "報告者"), md(plain(p, "報告日"))
+        deal_url, source = None, f"{who}さんの日報の共有（{when}）"
+        rel = (p["properties"].get("紐づく商談") or {}).get("relation") or []
+        if rel:
+            try:
+                deal = notion_call("GET", f"pages/{rel[0]['id']}")
+                source = f"{who}さん／{when} {plain(deal, 'お客様名')}の商談分析より"
+                deal_url = deal.get("url")
+            except Exception:
+                pass
+        bubbles.append(flex_bubble(f"{plain(p, 'カテゴリ') or '共有'}｜{plain(p, '重要度') or '⭐'}", "#2C3E50",
+                                   _clip(plain(p, "学び（一文要約）"), 140), [], source, deal_url))
+    seen |= {p["id"] for p in chosen}
+    data = {"customer_name": json.dumps(sorted(seen))}
+    if seen_rows:
+        sb("PATCH", f"deal_recordings?id=eq.{seen_rows[0]['id']}", data)
+    else:
+        sb("POST", "deal_recordings", {"line_user_id": uid, "storage_path": "share_seen", "status": "share_seen", **data})
+    head = "📣 アポインターの最近の有力な共有（直近3週間・重要度と真似しやすさで選んだ3件）"
+    if restarted:
+        head += "\n※新しい共有を出し切ったので、最初から表示しています"
+    line_reply(event["replyToken"], [
+        {"type": "text", "text": head + "\nもう一度押すと、別の共有が出ます。"},
+        flex_message("最近の有力な共有", bubbles)])
+
+
+def deal_signed_iso(p: dict) -> str:
+    """契約日。未入力の行（平松邸など）は商談日を代わりに使う。"""
+    return (plain(p, "契約日") or plain(p, "商談日時"))[:10]
+
+
+BUILD_DONE_PREFIX = "完工報告 "
+
+
+def handle_post_contract(event: dict, closer: dict) -> None:
+    """未完了案件の確認。「契約」のうち、完工確認済みのチェックが付いていない案件を期間を区切らず全部出す。
+    （当面は完工まで。入金は追わない。完工日は予定日として入ることがあるため、完了はチェックで確認する）"""
+    if closer.get("role") != "closer":
+        line_reply(event["replyToken"], [{"type": "text", "text": "この機能はクローザー限定です。"}])
+        return
+    name = closer.get("closer_name") or ""
+    today = datetime.now(JST).date().isoformat()
+    rows, cur = [], None
+    while True:
+        d = notion_call("POST", f"databases/{DEAL_DATABASE_ID}/query", {"filter": {"and": [
+            {"property": "クローザー", "select": {"equals": name}}, {"property": "結果", "status": {"equals": "契約"}},
+            {"property": "完工確認済み", "checkbox": {"equals": False}}]},
+            "page_size": 100, **({"start_cursor": cur} if cur else {})})
+        rows += d["results"]
+        if not d.get("has_more") or len(rows) >= 300:
+            break
+        cur = d["next_cursor"]
+    if not rows:
+        line_reply(event["replyToken"], [{"type": "text", "text": "完工まで確認できていない契約案件はありません。"}])
+        return
+    rows.sort(key=lambda p: (plain(p, "完工日")[:10] or "9999", deal_signed_iso(p)))
+    overdue = [p for p in rows if plain(p, "完工日")[:10] and plain(p, "完工日")[:10] < today]
+
+    def line(p: dict) -> str:
+        amount = plain(p, "売上金額")
+        money = f"{float(amount) / 10000:g}万円" if amount else "金額未入力"
+        built = plain(p, "完工日")[:10]
+        work = ("完工日未定" if not built else f"完工予定{md(built)}" if built >= today
+                else f"⚠完工予定{md(built)}を過ぎています")
+        analyzed = ("✅分析済み " + (plain(p, "録音分析ページ") or p.get("url", ""))) if p["properties"]["分析済み"]["checkbox"] \
+            else "⚠未分析（録音を送ると分析できます）"
+        return f"・{plain(p, 'お客様名')}｜{md(deal_signed_iso(p))}契約｜{money}｜{work}\n  {analyzed}"
+
+    text = (f"📋 {name}さんの未完了の契約案件（完工まで確認できていないもの {len(rows)}件）\n\n" + "\n".join(line(p) for p in rows)
+            + "\n\n完工したら、下のボタン（または「完工報告 〇〇邸」）で報告してください。")
+    chunks, cur_text = [], ""
+    for ln in text.split("\n"):
+        if len(cur_text) + len(ln) + 1 > 4800:
+            chunks.append(cur_text)
+            cur_text = ""
+        cur_text += ("\n" if cur_text else "") + ln
+    chunks.append(cur_text)
+    msgs = [{"type": "text", "text": c} for c in chunks[:5]]
+    targets = (overdue or rows)[:13]   # ボタンは完工予定日を過ぎたものを優先
+    msgs[-1]["quickReply"] = quick_reply([_clip(BUILD_DONE_PREFIX + plain(p, "お客様名"), 18) for p in targets])
+    line_reply(event["replyToken"], msgs)
+
+
+def handle_build_done(event: dict, closer: dict) -> bool:
+    text = event["message"]["text"].strip()
+    if not text.startswith(BUILD_DONE_PREFIX.strip()):
+        return False
+    customer = text[len(BUILD_DONE_PREFIX.strip()):].strip(" 　…")
+    if not customer:
+        return False
+    name = closer.get("closer_name") or ""
+    found = notion_call("POST", f"databases/{DEAL_DATABASE_ID}/query", {"filter": {"and": [
+        {"property": "クローザー", "select": {"equals": name}}, {"property": "結果", "status": {"equals": "契約"}},
+        {"property": "完工確認済み", "checkbox": {"equals": False}},
+        {"property": "お客様名", "title": {"contains": customer.replace("邸", "")}}]}, "page_size": 5})["results"]
+    if len(found) != 1:
+        line_reply(event["replyToken"], [{"type": "text", "text": (
+            f"「{customer}」の未完了の契約が{'見つかりませんでした' if not found else '複数あります'}。"
+            "『契約後の案件確認』のボタンから選んでください。")}])
+        return True
+    notion_call("PATCH", f"pages/{found[0]['id']}", {"properties": {"完工確認済み": {"checkbox": True}}})
+    line_reply(event["replyToken"], [{"type": "text", "text": f"{plain(found[0], 'お客様名')}を完工済みにしました。お疲れさまでした！"}])
+    return True
+
+
+def line_push(to: str, messages: list) -> None:
+    _line_request("https://api.line.me/v2/bot/message/push", "POST", json.dumps({"to": to, "messages": messages}).encode(),
+                  {"Content-Type": "application/json"})
+
+
+ADMIN_NAME = "今川"
+SILENT_DONE_WORDS = {"終礼で解決", "解決済み", "解決済"}   # 終礼でその場で解決したもの：記録だけして本人には送らない
+SHARE_OK_TEXT, SHARE_NG_TEXT = "全員に共有OK", "共有しない"
+ANSWER_PREFIX = re.compile(r"^回答\s*([^\s:：]+)\s*[:：\s]\s*(.+)$", re.S)
+
+
+def handle_admin_answer(event: dict, closer: dict) -> bool:
+    """今川さんの回答を、困ったメモの本人へ送る。毎晩の共有（scripts/trouble_digest.py）の「回答待ち」メッセージに
+    LINEの返信（引用）で答えるか、「回答 平井：本文」と送る。本人へ回答を届け、Notionの回答欄と状態（解決）を更新する。"""
+    if closer.get("closer_name") != ADMIN_NAME:
+        return False
+    raw = event["message"]["text"].strip()
+    quoted = event["message"].get("quotedMessageId")
+    page_id, answer = None, raw
+    if quoted:
+        rows = sb("GET", f"deal_recordings?storage_path=eq.trouble_q&customer_name=eq.{quoted}&limit=1&select=notion_url") or []
+        if not rows:
+            return False
+        page_id = rows[0]["notion_url"]
+    else:
+        m = ANSWER_PREFIX.match(raw)
+        if not m:
+            return False
+        found = notion_call("POST", f"databases/{TROUBLE_DB}/query", {"filter": {"and": [
+            {"property": "投稿者", "select": {"equals": m.group(1)}}, {"property": "状態", "select": {"equals": "回答待ち"}}]},
+            "sorts": [{"property": "投稿日時", "direction": "descending"}], "page_size": 1})["results"]
+        if not found:
+            line_reply(event["replyToken"], [{"type": "text", "text": f"{m.group(1)}さんの回答待ちのメモは見つかりませんでした。"}])
+            return True
+        page_id, answer = found[0]["id"], m.group(2).strip()
+    page = notion_call("GET", f"pages/{page_id}")
+    member, original = plain(page, "投稿者"), plain(page, "原文")
+    old = plain(page, "回答")
+    if answer in SILENT_DONE_WORDS:
+        notion_call("PATCH", f"pages/{page_id}", {"properties": {
+            "回答": {"rich_text": rt((old + "\n" if old else "") + f"終礼で解決（{md(datetime.now(JST).date().isoformat())}）")},
+            "状態": {"select": {"name": "解決"}}}})
+        line_reply(event["replyToken"], [{"type": "text", "text": f"{member}さんのメモを「終礼で解決」として記録しました（本人には送っていません）。"}])
+        return True
+    notion_call("PATCH", f"pages/{page_id}", {"properties": {
+        "回答": {"rich_text": rt((old + "\n" if old else "") + answer)}, "状態": {"select": {"name": "解決"}}}})
+    users = sb("GET", f"closer_line_users?closer_name=eq.{urllib.parse.quote(member)}&select=line_user_id&limit=1") or []
+    if not users:
+        line_reply(event["replyToken"], [{"type": "text", "text": f"回答はNotionに保存しましたが、{member}さんのLINEが見つからず送れませんでした。"}])
+        return True
+    posted = plain(page, "投稿日時")
+    when = f"{md(posted)} {posted[11:16]}" if posted else "以前"
+    scene = f"（場面：{plain(page, '起きる場面')}）" if plain(page, "起きる場面") else ""
+    idea = f"\n\n【あなたが考えた解決案】\n{_clip(plain(page, '本人の解決案'), 300)}" if plain(page, "本人の解決案") else ""
+    line_push(users[0]["line_user_id"], [{"type": "text", "text": (
+        f"💡 {when}に送ってくれた困ったメモ{scene}への回答です\n\n【あなたのメモ】\n{_clip(original, 1500)}{idea}\n\n"
+        f"【今川さんからの回答】\n{answer}\n\nメニューの『困ったメモを見返す』でいつでも見返せます。\n\n"
+        "同じことで困っている仲間のために、このQ&Aを全員に共有してもいいですか？（名前は出しません）")[:4900],
+        "quickReply": quick_reply([SHARE_OK_TEXT, SHARE_NG_TEXT])}])
+    sb("PATCH", f"deal_recordings?line_user_id=eq.{users[0]['line_user_id']}&storage_path=eq.share_ok&status=eq.awaiting_share_ok",
+       {"status": "share_ok_cancelled"})
+    sb("POST", "deal_recordings", {"line_user_id": users[0]["line_user_id"], "storage_path": "share_ok",
+                                  "status": "awaiting_share_ok", "notion_url": page_id})
+    line_reply(event["replyToken"], [{"type": "text", "text": f"{member}さんに回答を送りました。"}])
+    return True
+
+
+def handle_share_consent(event: dict, closer: dict) -> bool:
+    """回答を受け取った本人が、そのQ&Aを全員に共有してよいか答える（7日以内の直近の回答が対象）。"""
+    text = event["message"]["text"].strip()
+    if text not in (SHARE_OK_TEXT, SHARE_NG_TEXT):
+        return False
+    uid = event["source"]["userId"]
+    rows = sb("GET", f"deal_recordings?line_user_id=eq.{uid}&storage_path=eq.share_ok&status=eq.awaiting_share_ok"
+                     "&order=received_at.desc&limit=1&select=*") or []
+    received = datetime.fromisoformat(rows[0]["received_at"].replace("Z", "+00:00")) if rows else None
+    if not rows or datetime.now(timezone.utc) - received > timedelta(days=7):
+        line_reply(event["replyToken"], [{"type": "text", "text": "対象の回答が見つかりませんでした。"}])
+        return True
+    ok = text == SHARE_OK_TEXT
+    notion_call("PATCH", f"pages/{rows[0]['notion_url']}", {"properties": {"全員に共有OK": {"checkbox": ok}}})
+    sb("PATCH", f"deal_recordings?id=eq.{rows[0]['id']}", {"status": "share_ok_done" if ok else "share_ok_declined"})
+    line_reply(event["replyToken"], [{"type": "text", "text": (
+        "ありがとうございます！名前を出さずに、全員の『困ったメモを見返す』に解決済みQ&Aとして載せます。" if ok
+        else "了解しました。このQ&Aはあなただけが見られます。")}])
+    return True
+
+
+# ---------------------------------------------------------------- 月次MTの改善ポイントを、毎週の宿題に落とす（2026-11から）
+# 月次MTで scripts/monthly_plan.py が出した「どこをどれだけ改善すれば何万円増えるか」（計画JSON）を、宿題の登録の
+# 最初に見せ、その改善のための宿題（いつ・誰と・何を）を決めてもらう。月単位のアクションプランはイメージしにくいので、
+# 毎週の宿題で回す（2026-10-29 今川さん指示）。宿題の実行日の前日夕方のリマインドと、実行日の夜の「できましたか？」は
+# scripts/homework_reminder.py が送り、ここで返事を📝週次PDCAの「実行チェック」に記録する。
+PLAN_PATH = "plans/{month}.json"   # Supabase Storage（deal-recordingsバケット。非公開）
+HW_DONE, HW_NOT_DONE = "宿題やった！", "宿題できなかった"
+LEVER_TEXT = {"対面率": "訪問→対面", "対話率": "対面→対話", "アポ率": "対話→アポ", "アポ→契約率": "アポ1件あたりの契約",
+              "商談→契約率": "商談→契約", "残る率": "契約が残る率"}
+LEVER_SUGGEST = {   # 宿題①の選択肢の先頭に足す（ボタンの文字は20字まで）
+    "対面率": ["時間帯を変えて回る", "インターホンの一言を変える"],
+    "対話率": ["玄関先の最初の一言を変える", "ロープレで切り返しを練習"],
+    "アポ率": ["同行してアポの取り切りを学ぶ", "アポトークを作り直して見てもらう"],
+    "アポ→契約率": ["アポ時にご主人の同席を確認", "商談前日にフォローLINE"],
+    "商談→契約率": ["自分の商談録音を聞き返して直す", "クロージングのロープレ"],
+    "残る率": ["契約時にご主人の同意を必ず取る", "契約翌日にお礼の電話"],
+}
+
+
+def sb_storage_get(bucket: str, path: str) -> bytes | None:
+    req = urllib.request.Request(f"{SUPABASE_URL}/storage/v1/object/{bucket}/{path}",
+                                 headers={"Authorization": f"Bearer {SUPABASE_SERVICE_ROLE_KEY}"})
+    try:
+        with urllib.request.urlopen(req, timeout=20) as r:
+            return r.read()
+    except urllib.error.HTTPError as e:
+        if e.code in (400, 404):
+            return None
+        raise
+
+
+def member_month_plan(name: str) -> dict | None:
+    """今月の計画（月次MTの予算・目標・改善ポイント）。まだ無ければNone。"""
+    try:
+        raw = sb_storage_get("deal-recordings", PLAN_PATH.format(month=datetime.now(JST).strftime("%Y-%m")))
+        return next((m for m in json.loads(raw).get("members", []) if m.get("name") == name), None) if raw else None
+    except Exception as e:  # noqa: BLE001 - 計画が読めなくても宿題の登録は続ける
+        print(f"month plan read error: {e}")
+        return None
+
+
+def plan_pct(x) -> str:
+    return f"{x * 100:.1f}%" if isinstance(x, (int, float)) else "-"
+
+
+def hw_plan_intro(m: dict) -> str:
+    lines = ["📊 今月の改善ポイント（月次MTより）",
+             f"予算{m['budget']:.0f}万／今の目標どおりだと約{m['proj_sales']:.0f}万"
+             + (f"（あと{m['gap']:.0f}万）" if m.get("gap", 0) > 0 else "（予算に届く見込み）")]
+    for i, lv in enumerate((m.get("levers") or [])[:2], 1):
+        apo = f"アポ+{lv['gain_apo']:.0f}件→" if lv.get("gain_apo") else ""
+        lines.append(f"{i}. {LEVER_TEXT.get(lv['key'], lv['key'])} {plan_pct(lv['now'])}→{plan_pct(lv['bench'])}で {apo}+{lv['gain_sales']:.0f}万")
+    lines.append("\nここを良くするための宿題を、今週1つ決めましょう。")
+    return "\n".join(lines)
+
+
+def hw_choices_for(m: dict | None, base: list[str]) -> list[str]:
+    extra = []
+    for lv in (m or {}).get("levers") or []:
+        extra += LEVER_SUGGEST.get(lv["key"], [])
+    out = list(dict.fromkeys(extra[:4] + [c for c in base if c != HW_OTHER]))[:12]
+    return out + [HW_OTHER]
+
+
+def hw_check_week_key(today: date) -> str:
+    """今やっている宿題の週初日（scripts/daily_mission.py の week_homework と同じ決め方）。"""
+    monday = today - timedelta(days=today.weekday())
+    return (monday - timedelta(days=7 if today.weekday() >= 2 else 14)).isoformat()
+
+
+def handle_homework_check(event: dict, closer: dict) -> bool:
+    """宿題の実行日の夜に聞いた「できましたか？」への返事を記録する。"""
+    text = event["message"]["text"].strip()
+    if text not in (HW_DONE, HW_NOT_DONE):
+        return False
+    name, reply = closer.get("closer_name") or "", event["replyToken"]
+    today = datetime.now(JST).date()
+    try:
+        found = notion_call("POST", f"data_sources/{PDCA_DATABASE_ID}/query", {"filter": {"and": [
+            {"property": "氏名", "select": {"equals": name}},
+            {"property": "週初日", "date": {"equals": hw_check_week_key(today)}}]}, "page_size": 1}, NOTION_VERSION_V2)["results"]
+        if not found:
+            line_reply(reply, [{"type": "text", "text": "今週の宿題が見つかりませんでした。「宿題を登録する」から登録してください。",
+                                "quickReply": quick_reply([HW_TRIGGER])}])
+            return True
+        log = plain(found[0], "実行チェック")
+        mark = f"{today.month}/{today.day} {'やった' if text == HW_DONE else 'できなかった'}"
+        lines = [x for x in log.splitlines() if x and not x.startswith(f"{today.month}/{today.day} ")] + [mark]
+        notion_call("PATCH", f"pages/{found[0]['id']}", {"properties": {"実行チェック": {"rich_text": rt("\n".join(lines))}}},
+                    NOTION_VERSION_V2)
+    except Exception as e:
+        print(f"homework check error: {e}")
+        line_reply(reply, [{"type": "text", "text": "記録に失敗しました。少し待ってから、もう一度ボタンを押してください。"}])
+        return True
+    done = sum(1 for x in lines if x.endswith("やった"))
+    line_reply(reply, [{"type": "text", "text": (
+        f"ナイス！🔥 記録しました（今週{done}回目）。この積み重ねが数字に出ます。" if text == HW_DONE else
+        "記録しました。できなかった理由を一言メモしておくと、来週のMTで話しやすくなります。\n"
+        "次の実行日にやり切りましょう！")}])
+    return True
+
+
+def handle_new_menu(event: dict, closer: dict) -> bool:
+    """新メニューのボタンと、困ったメモ・宿題登録の質問への返信を処理する。処理したらTrue。"""
+    text = event["message"]["text"].strip()
+    views = {TALK_TEXT: handle_talk_share, SHARE_TEXT: handle_share, POST_CONTRACT_TEXT: handle_post_contract,
+             TROUBLE_REVIEW_TEXT: handle_trouble_review}
+    if text in views:
+        try:
+            views[text](event, closer)
+        except Exception as e:
+            print(f"menu handler error ({text}): {e}")
+            line_reply(event["replyToken"], [{"type": "text", "text": "一時的に取得できませんでした。少し待ってからもう一度お試しください。"}])
+        return True
+    return (handle_admin_answer(event, closer) or handle_share_consent(event, closer) or handle_homework_check(event, closer)
+            or handle_trouble(event, closer) or handle_homework(event, closer) or handle_talk_phase(event, closer)
+            or handle_build_done(event, closer))
+
+
+def handle_audio_message(event: dict, closer: dict, extra_messages=None):
     message = event["message"]
     message_id = message["id"]
     line_user_id = event["source"]["userId"]
@@ -205,24 +2495,58 @@ def handle_audio_message(event: dict, closer: dict):
     storage_path = f"{now:%Y}/{now:%Y-%m-%d}_{line_user_id}_{message_id}.{ext}"
     sb_storage_upload("deal-recordings", storage_path, audio_bytes, content_type)
 
+    # 既に確認中（または確認待ちで順番待ち中）の録音があれば、今回の録音は
+    # 「queued」として積んでおき、今は質問を出さない。1件ずつ確実に区別して
+    # 聞けるようにするため、2件以上を並行して質問しない設計にしている
+    # （先の録音が「分析する/しない」まで終わったらhandle_text_messageが
+    # 自動的にこのqueuedの録音を次に出す）
+    in_progress = latest_pending_recording(line_user_id) is not None
+    already_queued = sb(
+        "GET", f"deal_recordings?line_user_id=eq.{line_user_id}&status=eq.queued&select=id",
+    ) or []
+    new_row = {"received_at": now.isoformat()}
+    label = recording_label(new_row)  # この時点ではお客様名未確定なので受信時刻ラベル
+    if in_progress or already_queued:
+        ordinal = 1 + len(already_queued) + 1  # 確認中の1件 + 既にqueued済みの件数 + 今回
+        sb("POST", "deal_recordings", [{
+            "line_user_id": line_user_id,
+            "storage_path": storage_path,
+            "status": "queued",
+            "received_at": now.isoformat(),
+        }])
+        line_reply(reply_token, [*(extra_messages or []), {
+            "type": "text",
+            "text": f"【{label}】を受け取りました（{ordinal}件目として予約しました）。"
+                    f"先の録音の確認が終わったら、続けてこちらについてお聞きします。",
+        }])
+        return
+
     sb("POST", "deal_recordings", [{
         "line_user_id": line_user_id,
-        "closer_name": closer.get("closer_name"),
         "storage_path": storage_path,
         "status": "awaiting_appointer",
         "received_at": now.isoformat(),
     }])
 
-    line_reply(reply_token, [{
-        "type": "text",
-        "text": "録音を受け取りました。アポインターは誰ですか？（お名前を入力してください）",
-    }])
+    line_reply(reply_token, [*(extra_messages or []),
+                             appointer_question_message({**new_row, "_sender": closer.get("closer_name")},
+                                                        prefix="録音を受け取りました。\n")])
+
+
+def start_next_queued_recording(line_user_id: str) -> list:
+    """現在の録音の確認が完了した直後に呼ぶ。次に待っている録音（queued）が
+    あれば確認を開始し、追加で送るメッセージ（1件）を返す。無ければ空配列。"""
+    nxt = oldest_queued_recording(line_user_id)
+    if not nxt:
+        return []
+    sb("PATCH", f"deal_recordings?id=eq.{nxt['id']}", {"status": "awaiting_appointer"})
+    return [appointer_question_message(nxt, prefix="続いてこの録音について確認します。\n")]
 
 
 def handle_text_message(event: dict):
     line_user_id = event["source"]["userId"]
     reply_token = event["replyToken"]
-    text = event["message"]["text"]
+    text = event["message"]["text"].strip()
 
     row = latest_pending_recording(line_user_id)
     if not row:
@@ -231,33 +2555,179 @@ def handle_text_message(event: dict):
     status = row["status"]
     row_id = row["id"]
 
+    # ---- 「修正」コマンド：確定済みの項目（アポインター／お客様名／結果）を
+    # あとから言い直したい場合、自由記入の内容からの推測ではなく、必ずこの
+    # コマンド経由で修正先の項目を選んでもらう（確実にどの項目の訂正かを
+    # 取り違えないようにするため。自由記入だけで判定すると誤爆の恐れがある） ----
+    if text in CORRECTION_WORDS and not status.startswith("correcting"):
+        filled_labels = [label for label, col in CORRECTABLE_FIELDS.items() if row.get(col)]
+        if not filled_labels:  # まだ何も確定していない（アポインター回答前）。何も保存せず、質問をもう一度出す
+            line_reply(reply_token, [{"type": "text", "text": labeled_text(row, "まだ何も入力されていないので、直すものはありません。")},
+                                     appointer_question_message(row)])
+            return
+        sb("PATCH", f"deal_recordings?id=eq.{row_id}", {"status": "correcting_choose_field"})
+        line_reply(reply_token, [{
+            "type": "text", "text": labeled_text(row, "どの項目を修正しますか？"),
+            "quickReply": quick_reply(filled_labels),
+        }])
+        return
+
+    if text in CORRECTION_WORDS and status.startswith("correcting") and status != "correcting_choose_field":
+        filled_labels = [label for label, col in CORRECTABLE_FIELDS.items() if row.get(col)]
+        sb("PATCH", f"deal_recordings?id=eq.{row_id}", {"status": "correcting_choose_field"})
+        line_reply(reply_token, [{"type": "text", "text": labeled_text(row, "どの項目を修正しますか？"),
+                                  "quickReply": quick_reply(filled_labels)}])
+        return
+
+    if status == "correcting_choose_field":
+        filled_labels = [label for label, col in CORRECTABLE_FIELDS.items() if row.get(col)]
+        if text not in CORRECTABLE_FIELDS:
+            line_reply(reply_token, [{
+                "type": "text", "text": labeled_text(row, "ボタンから選んでください。"),
+                "quickReply": quick_reply(filled_labels),
+            }])
+            return
+        field_to_status = {
+            "アポインター": "correcting_appointer",
+            "クローザー": "correcting_closer",
+            "お客様名": "correcting_customer",
+            "結果": "correcting_result",
+        }
+        next_status = field_to_status[text]
+        sb("PATCH", f"deal_recordings?id=eq.{row_id}", {"status": next_status})
+        if next_status == "correcting_result":
+            line_reply(reply_token, [{
+                "type": "text", "text": labeled_text(row, "新しい結果を選んでください。"),
+                "quickReply": quick_reply(RESULT_OPTIONS),
+            }])
+        elif next_status == "correcting_closer":
+            line_reply(reply_token, [{"type": "text", "text": labeled_text(row, "正しいクローザー（商談をした人）を選んでください。"),
+                                      "quickReply": quick_reply(closer_buttons(sender_of(row)))}])
+        elif next_status == "correcting_appointer":
+            line_reply(reply_token, [{"type": "text", "text": labeled_text(row, "正しいアポインターを選んでください（下のボタンか、苗字を入力）。"),
+                                      "quickReply": quick_reply(appointer_buttons(sender_of(row)))}])
+        else:
+            line_reply(reply_token, [{"type": "text", "text": labeled_text(row, "新しいお客様の苗字を入力してください（例: 杉浦）")}])
+        return
+
+    if status == "correcting_appointer":
+        appointer_name, why = resolve_appointer(text, sender_of(row))
+        if why:
+            line_reply(reply_token, reject_message(row, "appointer", why, text))
+            return
+        updated_row = {**row, "appointer": appointer_name}
+        new_status = resume_status(updated_row)
+        sb("PATCH", f"deal_recordings?id=eq.{row_id}", {"appointer": appointer_name, "status": new_status})
+        line_reply(reply_token, [
+            {"type": "text", "text": labeled_text(updated_row, f"アポインターを「{appointer_name}」に修正しました。")},
+            *prompt_messages_for_status(new_status, updated_row),
+        ])
+        return
+
+    if status == "correcting_closer":
+        closer_name, why = resolve_closer(text, sender_of(row))
+        if why:
+            line_reply(reply_token, reject_message(row, "closer", why, text))
+            return
+        updated_row = {**row, "closer_name": closer_name}
+        new_status = resume_status(updated_row)
+        sb("PATCH", f"deal_recordings?id=eq.{row_id}", {"closer_name": closer_name, "status": new_status})
+        line_reply(reply_token, [
+            {"type": "text", "text": labeled_text(updated_row, f"クローザーを「{closer_name}」に修正しました。")},
+            *prompt_messages_for_status(new_status, updated_row),
+        ])
+        return
+
+    if status == "correcting_customer":
+        if check_customer_answer(text):
+            line_reply(reply_token, reject_message(row, "customer", "sentence", text))
+            return
+        customer_name = to_customer_label(strip_polite(text) if not text.strip().endswith("様") else text)
+        updated_row = {**row, "customer_name": customer_name}
+        new_status = resume_status(updated_row)
+        sb("PATCH", f"deal_recordings?id=eq.{row_id}", {"customer_name": customer_name, "status": new_status})
+        line_reply(reply_token, [
+            {"type": "text", "text": labeled_text(updated_row, f"お客様名を「{customer_name}」に修正しました。")},
+            *prompt_messages_for_status(new_status, updated_row),
+        ])
+        return
+
+    if status == "correcting_result":
+        if text not in RESULT_OPTIONS:
+            line_reply(reply_token, [{
+                "type": "text", "text": labeled_text(row, "ボタンから選んでください。"),
+                "quickReply": quick_reply(RESULT_OPTIONS),
+            }])
+            return
+        updated_row = {**row, "result": text}
+        new_status = resume_status(updated_row)
+        sb("PATCH", f"deal_recordings?id=eq.{row_id}", {"result": text, "status": new_status})
+        line_reply(reply_token, [
+            {"type": "text", "text": labeled_text(updated_row, f"結果を「{text}」に修正しました。")},
+            *prompt_messages_for_status(new_status, updated_row),
+        ])
+        return
+
+    # ---- 通常フロー（アポインター→お客様名→結果→分析する/しない）。
+    # 各回答の直後に「〇〇: 回答内容 で承知しました」と必ずオウム返しで確認し、
+    # どの録音についての質問・確認かを【】で必ず明示する
+    # （本人が送った内容と記録された内容がズレていないか、複数録音が同時進行
+    # していてもどちらの件かが、その場で分かるようにする） ----
     if status == "awaiting_appointer":
+        # フルネーム（スペースあり/なし）で返信されても、既知のクローザー・
+        # アポインター名簿から苗字を特定して保存する（一致しなければ元のテキストのまま）
+        appointer_name, why = resolve_appointer(text, sender_of(row))
+        if why:  # 文章・質問・お客様名などは保存せず、聞き直す
+            line_reply(reply_token, reject_message(row, "appointer", why, text))
+            return
+        updated_row = {**row, "appointer": appointer_name}
         sb("PATCH", f"deal_recordings?id=eq.{row_id}",
-           {"appointer": text, "status": "awaiting_customer"})
-        line_reply(reply_token, [{"type": "text", "text": "お客様の苗字を教えてください（例: 杉浦）"}])
+           {"appointer": appointer_name, "status": "awaiting_closer"})
+        line_reply(reply_token, [closer_question_message(
+            updated_row, prefix=f"アポインター: {appointer_name} で承知しました。\n\n")])
+
+    elif status == "awaiting_closer":
+        closer_name, why = resolve_closer(text, sender_of(row))
+        if why:
+            line_reply(reply_token, reject_message(row, "closer", why, text))
+            return
+        updated_row = {**row, "closer_name": closer_name}
+        sb("PATCH", f"deal_recordings?id=eq.{row_id}", {"closer_name": closer_name, "status": "awaiting_customer"})
+        selfappo = "（自己アポ：アポインターと同じ人）" if closer_name == row.get("appointer") else ""
+        line_reply(reply_token, [{
+            "type": "text",
+            "text": labeled_text(updated_row,
+                                  f"クローザー: {closer_name}{selfappo} で承知しました。\n\nお客様の苗字を入力してください（例: 杉浦。「邸」は付けなくてOK）"),
+            "quickReply": quick_reply([FIX_LABEL]),
+        }])
 
     elif status == "awaiting_customer":
-        customer_name = to_customer_label(text)
+        if check_customer_answer(text):  # 文章・質問などはお客様名として保存しない
+            line_reply(reply_token, reject_message(row, "customer", "sentence", text))
+            return
+        customer_name = to_customer_label(strip_polite(text) if not text.strip().endswith("様") else text)
+        updated_row = {**row, "customer_name": customer_name}
         sb("PATCH", f"deal_recordings?id=eq.{row_id}",
            {"customer_name": customer_name, "status": "awaiting_result"})
         line_reply(reply_token, [{
             "type": "text",
-            "text": f"{customer_name}ですね。商談の結果は？",
-            "quickReply": quick_reply(RESULT_OPTIONS),
+            "text": labeled_text(updated_row, f"お客様名: {customer_name} で承知しました。\n\n商談の結果は？"),
+            "quickReply": quick_reply(with_fix(RESULT_OPTIONS)),
         }])
 
     elif status == "awaiting_result":
         if text not in RESULT_OPTIONS:
             line_reply(reply_token, [{
-                "type": "text", "text": "ボタンから選んでください。",
-                "quickReply": quick_reply(RESULT_OPTIONS),
+                "type": "text", "text": labeled_text(row, "ボタンから選んでください。"),
+                "quickReply": quick_reply(with_fix(RESULT_OPTIONS)),
             }])
             return
         sb("PATCH", f"deal_recordings?id=eq.{row_id}",
            {"result": text, "status": "awaiting_confirm"})
         line_reply(reply_token, [{
-            "type": "text", "text": "この商談を分析しますか？",
-            "quickReply": quick_reply(["分析する", "分析しない"]),
+            "type": "text",
+            "text": labeled_text(row, f"結果: {text} で承知しました。\n\nこの商談を分析しますか？"),
+            "quickReply": quick_reply(with_fix(["分析する", "分析しない"])),
         }])
 
     elif status == "awaiting_confirm":
@@ -265,15 +2735,17 @@ def handle_text_message(event: dict):
             sb("PATCH", f"deal_recordings?id=eq.{row_id}", {"status": "ready"})
             line_reply(reply_token, [{
                 "type": "text",
-                "text": f"受け付けました。{row.get('customer_name', '')}は次回の分析対象です。",
-            }])
+                "text": labeled_text(row, ANALYSIS_ACCEPTED_TEXT),
+            }, *start_next_queued_recording(line_user_id)])
         elif text == "分析しない":
             sb("PATCH", f"deal_recordings?id=eq.{row_id}", {"status": "skipped"})
-            line_reply(reply_token, [{"type": "text", "text": "承知しました。分析対象外として記録しました。"}])
+            line_reply(reply_token, [{
+                "type": "text", "text": labeled_text(row, "承知しました。分析対象外として記録しました。"),
+            }, *start_next_queued_recording(line_user_id)])
         else:
             line_reply(reply_token, [{
-                "type": "text", "text": "ボタンから選んでください。",
-                "quickReply": quick_reply(["分析する", "分析しない"]),
+                "type": "text", "text": labeled_text(row, "ボタンから選んでください。"),
+                "quickReply": quick_reply(with_fix(["分析する", "分析しない"])),
             }])
 
 
@@ -311,11 +2783,8 @@ def handle_registration(event: dict, closer: dict, is_first_contact: bool) -> bo
             role = role_map[text]
             sb("PATCH", f"closer_line_users?id=eq.{closer['id']}", {"role": role})
             if role == "closer":
-                line_reply(reply_token, [{"type": "text", "text": "登録完了しました。以後、商談録音をこのまま送ってください。"}])
-            elif role == "appointer":
-                line_reply(reply_token, [{"type": "text", "text": "登録完了しました。毎週、実績をお送りします。"}])
-            else:
-                line_reply(reply_token, [{"type": "text", "text": "登録完了しました。毎週、チーム全体の実績をお送りします。"}])
+                link_closer_richmenu(closer["line_user_id"])
+            line_reply(reply_token, [{"type": "text", "text": ROLE_WELCOME_MESSAGES[role]}])
         else:
             line_reply(reply_token, [{
                 "type": "text", "text": "クローザー・アポインター・管理者、どちらですか？ボタンから選んでください。",
@@ -324,6 +2793,187 @@ def handle_registration(event: dict, closer: dict, is_first_contact: bool) -> bo
         return True
 
     return False
+
+
+def make_kpi_token(member_name: str) -> str:
+    """kpi.py（単日KPIダッシュボード）用の署名付きトークンを発行する。
+    署名鍵はDEAL_LINE_CHANNEL_SECRETを流用する（kpi.py側のコメント参照。
+    クロスファイルimportを避けるため、同じHMACロジックをここにも複製している）。
+    """
+    exp = int(datetime.now(timezone.utc).timestamp()) + KPI_TOKEN_TTL_SECONDS
+    sig = hmac.new(LINE_CHANNEL_SECRET.encode(), f"kpi:{member_name}:{exp}".encode(), hashlib.sha256).hexdigest()[:32]
+    return f"{urllib.parse.quote(member_name)}.{exp}.{sig}"
+
+
+def handle_kpi_request(event: dict, closer: dict):
+    """「KPIを見る」への応答。本人専用の署名付きURL（48時間有効）をReply APIで返す。
+    ページ自体の描画・Notion照会はkpi.py側で行う（ここではリンクを発行するだけ）。
+    """
+    reply_token = event["replyToken"]
+    member_name = closer.get("closer_name")
+    if not member_name:
+        line_reply(reply_token, [{"type": "text", "text": "お名前が未登録のため表示できません。"}])
+        return
+    token = make_kpi_token(member_name)
+    url = f"{KPI_BASE_URL}/api/kpi?token={token}"
+    line_reply(reply_token, [{
+        "type": "text",
+        "text": f"📊 {member_name}さんの今日のKPIはこちら（48時間有効なリンクです）\n{url}",
+    }])
+
+
+def handle_goal_request(event: dict, closer: dict):
+    """リッチメニュー「今日の目標を見る」タップへの応答。
+    Notion「📊 個人別KPI逆算データ（参照用）」の役割に応じた通知本文を、その場で
+    Reply APIで返す（Push APIは使わない＝メッセージ配信数を消費しない）。
+    """
+    reply_token = event["replyToken"]
+    member_name = closer.get("closer_name")
+    now = datetime.now(JST)
+
+    # 連打防止（LINEの再送・素早い連打対策）。last_goal_reply_atカラムが未追加の
+    # 環境ではcloser.get()がNoneを返すだけで安全にスキップされる。
+    last_at = closer.get("last_goal_reply_at")
+    if last_at:
+        try:
+            if now - datetime.fromisoformat(last_at) < timedelta(seconds=5):
+                return
+        except ValueError:
+            pass
+
+    if not NOTION_TOKEN:
+        line_reply(reply_token, [{
+            "type": "text",
+            "text": "目標配信の設定が完了していません（NOTION_TOKEN未設定）。今川さんに確認してください。",
+        }])
+        return
+
+    today_iso = now.date().isoformat()
+
+    # REPLY_COUNTS_TOWARD_QUOTA=true の場合のみ、1ユーザー1日1回に制限し
+    # 2回目以降は直近の内容を再送する（既定はfalse。今のLINE仕様ではReply APIは
+    # メッセージ配信数にカウントされないため、既定では毎回最新値を取り直す）。
+    if REPLY_COUNTS_TOWARD_QUOTA and closer.get("last_goal_reply_date") == today_iso:
+        cached = closer.get("last_goal_reply_text") or "本日分は送信済みです。"
+        line_reply(reply_token, [{
+            "type": "text",
+            "text": f"{cached}\n（本日2回目以降のため、直近の内容を再送しています）",
+        }])
+        try:
+            sb("PATCH", f"closer_line_users?id=eq.{closer['id']}", {"last_goal_reply_at": now.isoformat()})
+        except urllib.error.HTTPError:
+            pass  # last_goal_reply_at列未追加の環境では無視する
+        return
+
+    try:
+        page = notion_query_member(member_name)
+    except (urllib.error.HTTPError, urllib.error.URLError, json.JSONDecodeError) as e:
+        print(f"handle_goal_request: notion_query_member failed: {e}")
+        line_reply(reply_token, [{
+            "type": "text",
+            "text": "一時的にデータの取得に失敗しました。少し待ってからもう一度ボタンを押してください。",
+        }])
+        return
+    if page is None:
+        line_reply(reply_token, [{
+            "type": "text",
+            "text": f"「{member_name}」のKPIデータが見つかりませんでした。今川さんに確認してください。",
+        }])
+        return
+
+    status = notion_rollup_status(page, "在籍状況(名簿参照)")
+    if status and status != "稼働中":
+        line_reply(reply_token, [{"type": "text", "text": "現在このアカウントへの配信対象外です。"}])
+        return
+
+    text = notion_formula_text(page, "通知本文（LINE配信用）")
+    if not text:
+        text = "本日分の目標データがまだ準備できていません。しばらくしてから再度お試しください。"
+
+    # 「📉 営業部 実績DB」の直近実績行をまとめて取得し、⚔️営業ステータスと
+    # 「前回共有した内容」の両方に使い回す（Notion APIの呼び出しを1回にまとめる）
+    try:
+        recent_rows = notion_query_recent_performance(member_name, today_iso)
+    except (urllib.error.HTTPError, urllib.error.URLError, json.JSONDecodeError):
+        recent_rows = []
+
+    # 平日のみ：前回のLINE日報（/shoudannhoukoku等）の「備考」欄に書かれた共有事項・
+    # 意識するポイントを、次にタップした時に再確認できるよう添える（ユーザー指示。
+    # 「前日」固定ではなく、間が空いていても直近の報告内容をそのまま出す＝
+    # 水曜にタップしたら日曜の内容が出る、等）
+    remark_block = ""
+    if now.weekday() < 5:
+        remark = latest_remark_from_rows(recent_rows)
+        if remark:
+            remark_block = f"📝 前回共有した内容\n{remark}\n\n"
+
+    # 平日のみ：📊進捗（契約はクーリングオフを「契約」に含めつつ「成約」で別出しする。
+    # ユーザー指示）。「DB 商談分析＆アポ分析」から今月分を集計する
+    progress_block = ""
+    if now.weekday() < 5:
+        role = closer.get("role") or ""
+        role_prop = "クローザー" if role == "closer" else "アポインター"
+        month_start_iso = now.replace(day=1).date().isoformat()
+        try:
+            month_deals = notion_query_month_deals(role_prop, member_name, month_start_iso)
+        except (urllib.error.HTTPError, urllib.error.URLError, json.JSONDecodeError):
+            month_deals = []
+        gross, net = count_contracts(month_deals)
+        progress_block = build_progress_block(page, role, gross, net) + "\n\n"
+
+    # メッセージの最上部に⚔️営業ステータス（ゲーム性、ユーザー指示）を置く
+    status_block = build_status_block(page, recent_rows, closer.get("role") or "", now)
+    text = status_block + "\n\n" + progress_block + remark_block + text
+
+    line_reply(reply_token, [{"type": "text", "text": text}])
+
+    update = {"last_goal_reply_at": now.isoformat()}
+    if REPLY_COUNTS_TOWARD_QUOTA:
+        update["last_goal_reply_date"] = today_iso
+        update["last_goal_reply_text"] = text
+    try:
+        sb("PATCH", f"closer_line_users?id=eq.{closer['id']}", update)
+    except urllib.error.HTTPError:
+        pass  # last_goal_reply_*列未追加の環境では無視する（本文の返信自体は既に成功している）
+
+
+def handle_analysis_request(event: dict, closer: dict):
+    """リッチメニュー「直近の商談分析結果を見る」タップへの応答（クローザー専用）。
+    Notion「DB 商談分析＆アポ分析」から自分の最新1件を検索し、Reply APIで返す。
+    """
+    reply_token = event["replyToken"]
+    if closer.get("role") != "closer":
+        # クローザー用メニューからしか出現しないボタンだが、念のためサーバー側でも守る
+        line_reply(reply_token, [{"type": "text", "text": "この機能はクローザー限定です。"}])
+        return
+
+    if not NOTION_TOKEN:
+        line_reply(reply_token, [{
+            "type": "text",
+            "text": "商談分析結果の照会設定が完了していません（NOTION_TOKEN未設定）。今川さんに確認してください。",
+        }])
+        return
+
+    try:
+        page = notion_query_latest_deal(closer.get("closer_name"))
+    except (urllib.error.HTTPError, urllib.error.URLError, json.JSONDecodeError) as e:
+        print(f"handle_analysis_request: notion_query_latest_deal failed: {e}")
+        line_reply(reply_token, [{
+            "type": "text",
+            "text": "一時的にデータの取得に失敗しました。少し待ってからもう一度ボタンを押してください。",
+        }])
+        return
+    if page is None:
+        line_reply(reply_token, [{"type": "text", "text": "まだ商談分析の記録が見つかりませんでした。"}])
+        return
+
+    customer = notion_title_text(page, "お客様名") or "（お客様名未設定）"
+    result = notion_status_name(page, "結果") or "-"
+    score = page.get("properties", {}).get("採点", {}).get("number")
+    score_line = f"採点: {score}点" if score is not None else "採点: 未算出"
+    text = f"📋 直近の商談分析結果\n\n{customer}（{result}）\n{score_line}\n\n{page.get('url', '')}"
+
+    line_reply(reply_token, [{"type": "text", "text": text}])
 
 
 def handle_event(event: dict):
@@ -341,12 +2991,52 @@ def handle_event(event: dict):
         # 確定しているので、手動登録やあいさつフローを待たずにこのメッセージ自体
         # （録音も含む）をそのまま処理する
 
+    # 自動一致登録（上記）の場合、あいさつフローを経由しないため本来の登録完了
+    # メッセージが一度も送られない。無言のままだと本人・今川さんから見て「登録
+    # できていない」ように見える（実際に田村さんで発生）ため、初回メッセージへの
+    # 返信として登録完了メッセージを送る。
+    welcome_messages = []
+    if is_first_contact and closer.get("closer_name") and closer.get("role"):
+        welcome_messages = [{"type": "text", "text": ROLE_WELCOME_MESSAGES[closer["role"]]}]
+
     if handle_registration(event, closer, is_first_contact):
         return
 
     message_type = event.get("message", {}).get("type")
+    if message_type == "text" and event["message"]["text"].strip() in MENU_TEXTS:
+        cancel_flows(line_user_id)   # メニューが押されたら、途中だった質問は閉じる
     if message_type in ("audio", "file"):
-        handle_audio_message(event, closer)
+        handle_audio_message(event, closer, extra_messages=welcome_messages)
+    elif welcome_messages:
+        line_reply(event["replyToken"], welcome_messages)
+    elif message_type == "text" and event["message"]["text"] == GOAL_BUTTON_TEXT:
+        # 録音登録フローの途中（awaiting_customer等）でタップされた場合も、
+        # 目標確認を優先する（handle_text_messageの状態遷移より先に判定する）
+        handle_goal_request(event, closer)
+    elif message_type == "text" and event["message"]["text"] == KPI_BUTTON_TEXT:
+        handle_kpi_request(event, closer)
+    elif message_type == "text" and event["message"]["text"] == ANALYSIS_BUTTON_TEXT:
+        handle_analysis_request(event, closer)
+    elif message_type == "text" and event["message"]["text"] == STATUS_DEFINITION_TEXT:
+        handle_status_definition_request(event, closer)
+    elif message_type == "text" and event["message"]["text"].strip() == DECLARE_TEXT:
+        handle_declaration(event, closer)
+    elif message_type == "text" and event["message"]["text"].strip() == KPI_MONTH_TEXT:
+        handle_kpi_month_request(event, closer)
+    elif message_type == "text" and handle_new_menu(event, closer):
+        pass  # 新メニュー（困ったメモ・宿題の登録・うまくいったトーク・有力な共有・契約後の案件確認）。処理済み
+    elif message_type == "text" and handle_target(event, closer):
+        pass  # 今月のアポ目標の宣言（開始・数字）。処理済み
+    elif message_type == "text" and handle_feedback(event, closer):
+        pass  # 分析結果へのフィードバック（開始・本文）。処理済み
+    elif (message_type == "text" and latest_pending_recording(line_user_id) is None
+          and (re.search(r"宿題", event["message"]["text"])
+               or (closer.get("pdca_pending_week") and re.search(r"[①②③④]|目標", event["message"]["text"])))
+          and handle_homework_text(event, closer)):
+        # 宿題・数字の目標を文面で送ってきた場合は、Geminiで読み取って足りない項目だけボタンで聞き、確認してから登録する
+        # （2026-10-28 今川さん指示。ボタンが基本だが、文面の人も取りこぼさない）。宿題の話でなければ下の通常処理へ。
+        # 商談録音の確認フロー中（お客様名・結果ボタン待ち等）は、その回答を横取りしないよう対象外にする
+        pass
     elif message_type == "text":
         handle_text_message(event)
 

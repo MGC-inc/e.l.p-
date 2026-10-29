@@ -24,9 +24,18 @@
 | 議事録の書き方・テンプレートを知りたい | [議事録/README.md](./議事録/README.md) |
 | 過去の電話のやり取りを調べたい | [通話ログ/](./通話ログ/) |
 | 商談録音の分析・営業PDCAの回し方を知りたい | [商談分析運用.md](./商談分析運用.md)（個別分析はNotion「DB 商談分析＆アポ分析」、週次レビューは [商談分析/](./商談分析/)） |
+| 週次MT用PDF（代理店別配信・全社MT用）の集計・判定ロジックを知りたい | [tools/shuuji/README.md](./tools/shuuji/README.md)（商談分析運用.mdに全体設計、Notionエージェント版`/shuuji`は2026-09-29廃止） |
+| 月次の粗利・報酬（PL）を作り直したい（管理者のみ） | [tools/pl/build_pl.py](./tools/pl/build_pl.py)（冒頭の説明を参照。料率は給与にあたるためリポジトリに置かず、`--rates`のJSONで渡す。出力は管理者だけが見られるNotionページに貼り、リポジトリには置かない） |
+| 困ったメモの夜のまとめ・うまくいったトークの取り込み・LINEメニューを変えたい | [scripts/trouble_digest.py](./scripts/trouble_digest.py)（[workflow](./.github/workflows/trouble-digest.yml)）、[scripts/talk_share_sync.py](./scripts/talk_share_sync.py)、[scripts/deal_bot_richmenu.py](./scripts/deal_bot_richmenu.py)。仕様は [商談分析運用.md](./商談分析運用.md) の「LINEメニューと質問ボタン」 |
+| 月次MTのスライドを作りたい | [tools/shuuji/build_monthly_slides.py](./tools/shuuji/build_monthly_slides.py)（`scripts/monthly_plan.py --out` の計画JSONから作る。MT前日は `--lock` で確定済みの予算・目標を固定して実績だけ最新にする） |
+| 月次MT用の個人計画（翌月の個人予算の配分・先月×110%の目標・どこをどれだけ改善すれば何万円増えるか）を出したい | [scripts/monthly_plan.py](./scripts/monthly_plan.py)（冒頭の説明を参照。予算表への書き込みは `--write-budget` で今川さんの確認後だけ） |
+| 宿題の実行日のLINE（前日夕方のリマインド・実行日の夜の「できましたか？」）を変えたい | [scripts/homework_reminder.py](./scripts/homework_reminder.py)（宿題＝改善のためのアクションプラン。返事は line-webhook/api/webhook.py の handle_homework_check が📝週次PDCAの「実行チェック」に記録） |
+| 毎朝の「今日の任された数字」カード（稼働日にLINEで各メンバーへ送る）を変えたい・確認したい | [scripts/daily_mission.py](./scripts/daily_mission.py)（冒頭の説明を参照）と [.github/workflows/daily-mission.yml](./.github/workflows/daily-mission.yml)。設計の考え方は [商談分析運用.md](./商談分析運用.md) の「毎朝の任された数字カード」 |
 | 顧客が誰で、どんな取引状況か知りたい | [顧客一覧.md](./顧客一覧.md) |
 | 未完了タスクを横断で確認したい | [タスク.md](./タスク.md) |
 | 業務の標準手順・品質基準を知りたい | [マニュアル/](./マニュアル/) |
+| 週次MTの進め方（スライドの見方・宿題の評価基準・木金の動き方）を知りたい | [マニュアル/週次MT.md](./マニュアル/週次MT.md) |
+| 代理店リーダーが集まるリーダー会議の進め方を知りたい | [マニュアル/リーダー会議.md](./マニュアル/リーダー会議.md) |
 | 使用しているAPI・外部サービスを知りたい | [API一覧.md](./API一覧.md) |
 | 事業の全体像・サービス内容を知りたい | [事業内容.md](./事業内容.md) |
 | GitHub×DB×アプリの全体設計を知りたい | [運用設計.md](./運用設計.md) |
