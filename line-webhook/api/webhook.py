@@ -1372,7 +1372,7 @@ POST_CONTRACT_TEXT = "契約後の案件確認"
 HW_TRIGGER = "宿題を登録する"
 MENU_TEXTS = {GOAL_BUTTON_TEXT, KPI_BUTTON_TEXT, ANALYSIS_BUTTON_TEXT, STATUS_DEFINITION_TEXT, DECLARE_TEXT,
               KPI_MONTH_TEXT, TARGET_TRIGGER, TROUBLE_TRIGGER, TROUBLE_REVIEW_TEXT, TALK_TEXT, SHARE_TEXT,
-              POST_CONTRACT_TEXT, HW_TRIGGER, "今月のアクションプランを登録する"}
+              POST_CONTRACT_TEXT, HW_TRIGGER}
 FLOW_EXPIRE_MINUTES = 60
 TROUBLE_DB = "406da094-9999-81ca-ab25-ff9f1b7933f5"   # 🆘 困ったメモ
 TALK_DB = "406da094-9999-81e7-8615-d19651c1f165"     # 🗣 うまくいったトーク集（scripts/talk_share_sync.py が作る）
@@ -1382,7 +1382,7 @@ COOLING_OFF_DAYS = 8
 
 def cancel_flows(line_user_id: str) -> None:
     """メニューが押されたら、途中だった質問（フィードバック・目標・宿題・困ったメモ）は閉じる。"""
-    sb("PATCH", f"deal_recordings?line_user_id=eq.{line_user_id}&storage_path=in.(feedback,target,homework,trouble,actionplan)"
+    sb("PATCH", f"deal_recordings?line_user_id=eq.{line_user_id}&storage_path=in.(feedback,target,homework,trouble)"
                 "&status=like.awaiting*", {"status": "flow_cancelled"})
 
 
@@ -1888,8 +1888,11 @@ def handle_homework(event: dict, closer: dict) -> bool:
     choices = HW_CHOICES["closer" if role == "closer" else "appointer"]
     metric_labels = [label for label, _ in HW_METRICS if role == "closer" or label not in APPOINTER_SKIP_METRICS]
     if text == HW_TRIGGER:
-        flow_start(uid, "homework", "what", {"week": hw_week_key(closer), "metrics": metric_labels})
-        line_reply(reply, [{"type": "text", "text": HW_QUESTION_Q1, "quickReply": quick_reply(choices)}])
+        plan = member_month_plan(name)   # 月次MTの改善ポイントがあれば、先に見せて宿題の選択肢にも足す
+        q1 = hw_choices_for(plan, choices) if plan else choices
+        flow_start(uid, "homework", "what", {"week": hw_week_key(closer), "metrics": metric_labels, "choices": q1})
+        msgs = [{"type": "text", "text": hw_plan_intro(plan)}] if plan else []
+        line_reply(reply, msgs + [{"type": "text", "text": HW_QUESTION_Q1, "quickReply": quick_reply(q1)}])
         return True
     row = flow_active(uid, "homework")
     if not row or latest_pending_recording(uid) is not None:
@@ -1898,6 +1901,7 @@ def handle_homework(event: dict, closer: dict) -> bool:
         line_reply(reply, [{"type": "text", "text": HW_EXPIRED_TEXT, "quickReply": quick_reply([HW_TRIGGER])}])
         return True
     step, d = row.get("result"), flow_data(row)
+    choices = d.get("choices") or choices
     long_ok = step in ("what_free", "learn") or (step == "what" and d.get("source_text"))
     if len(text) > (300 if long_ok else 30):
         return False   # 長い文章は別の用件（日報など）なので横取りしない
@@ -2354,29 +2358,23 @@ def handle_share_consent(event: dict, closer: dict) -> bool:
     return True
 
 
-# ---------------------------------------------------------------- 月次アクションプラン（2026-11の月次MTから）
-# 本人の予算・目標と「どこをどれだけ改善すれば何万円増えるか」（scripts/monthly_plan.py の計画JSON）を先に見せ、
-# その改善のためのアクションを最大3つ、実行日・相手つきで登録してもらう。前日18時と当日朝に
-# scripts/action_plan_reminder.py がリマインドする（相手がいれば「予約のLINEを入れて徹底しましょう」）。
-AP_TRIGGER = "今月のアクションプランを登録する"
-AP_DB = "408da094-9999-8127-bdf7-d765f11a4594"   # 🗓 月次アクションプラン
-AP_PLAN_PATH = "plans/{month}.json"              # Supabase Storage（deal-recordingsバケット。非公開）
-AP_MAX = 3
-AP_OTHER = "その他（自分で書く）"
-AP_VOLUME = "件数を増やす"
-AP_WHOS = ["ひとりで", "リーダーと"]
-AP_MORE, AP_DONE = "もう1つ登録する", "これで登録する"
-AP_SUGGEST = {   # ボタンの文字は20字まで
-    "対面率": ["時間帯を変えて回る", "インターホンの一言を変える", "できてる人に同行して学ぶ"],
-    "対話率": ["玄関先の最初の一言を変える", "ロープレで切り返しを練習", "できてる人に同行して学ぶ"],
-    "アポ率": ["同行してアポの取り切りを学ぶ", "アポトークを作り直して見てもらう", "ロープレでアポトークを練習"],
-    "アポ→契約率": ["アポ時にご主人の同席を確認", "商談前日にフォローLINE", "クローザーとアポの質を振り返る"],
-    "商談→契約率": ["自分の商談録音を聞き返して直す", "できてる人の商談に同行", "クロージングのロープレ"],
-    "残る率": ["契約時にご主人の同意を必ず取る", "契約翌日にお礼の電話", "保証の伝え方を練習する"],
-    AP_VOLUME: ["稼働日を1日増やす", "朝の開始を早める", "アポが取れる時間帯に回る"],
+# ---------------------------------------------------------------- 月次MTの改善ポイントを、毎週の宿題に落とす（2026-11から）
+# 月次MTで scripts/monthly_plan.py が出した「どこをどれだけ改善すれば何万円増えるか」（計画JSON）を、宿題の登録の
+# 最初に見せ、その改善のための宿題（いつ・誰と・何を）を決めてもらう。月単位のアクションプランはイメージしにくいので、
+# 毎週の宿題で回す（2026-10-29 今川さん指示）。宿題の実行日の前日夕方のリマインドと、実行日の夜の「できましたか？」は
+# scripts/homework_reminder.py が送り、ここで返事を📝週次PDCAの「実行チェック」に記録する。
+PLAN_PATH = "plans/{month}.json"   # Supabase Storage（deal-recordingsバケット。非公開）
+HW_DONE, HW_NOT_DONE = "宿題やった！", "宿題できなかった"
+LEVER_TEXT = {"対面率": "訪問→対面", "対話率": "対面→対話", "アポ率": "対話→アポ", "アポ→契約率": "アポ1件あたりの契約",
+              "商談→契約率": "商談→契約", "残る率": "契約が残る率"}
+LEVER_SUGGEST = {   # 宿題①の選択肢の先頭に足す（ボタンの文字は20字まで）
+    "対面率": ["時間帯を変えて回る", "インターホンの一言を変える"],
+    "対話率": ["玄関先の最初の一言を変える", "ロープレで切り返しを練習"],
+    "アポ率": ["同行してアポの取り切りを学ぶ", "アポトークを作り直して見てもらう"],
+    "アポ→契約率": ["アポ時にご主人の同席を確認", "商談前日にフォローLINE"],
+    "商談→契約率": ["自分の商談録音を聞き返して直す", "クロージングのロープレ"],
+    "残る率": ["契約時にご主人の同意を必ず取る", "契約翌日にお礼の電話"],
 }
-AP_EXPIRED_TEXT = "時間が空いたので、もう一度「今月のアクションプランを登録する」を押して登録してください。"
-WEEKDAYS_JA = "月火水木金土日"
 
 
 def sb_storage_get(bucket: str, path: str) -> bytes | None:
@@ -2391,208 +2389,75 @@ def sb_storage_get(bucket: str, path: str) -> bytes | None:
         raise
 
 
-def ap_member_plan(name: str, month: str) -> dict | None:
-    raw = sb_storage_get("deal-recordings", AP_PLAN_PATH.format(month=month))
-    if not raw:
+def member_month_plan(name: str) -> dict | None:
+    """今月の計画（月次MTの予算・目標・改善ポイント）。まだ無ければNone。"""
+    try:
+        raw = sb_storage_get("deal-recordings", PLAN_PATH.format(month=datetime.now(JST).strftime("%Y-%m")))
+        return next((m for m in json.loads(raw).get("members", []) if m.get("name") == name), None) if raw else None
+    except Exception as e:  # noqa: BLE001 - 計画が読めなくても宿題の登録は続ける
+        print(f"month plan read error: {e}")
         return None
-    return next((m for m in json.loads(raw).get("members", []) if m.get("name") == name), None)
 
 
-def ap_pct(x) -> str:
+def plan_pct(x) -> str:
     return f"{x * 100:.1f}%" if isinstance(x, (int, float)) else "-"
 
 
-def ap_lever_line(lv: dict) -> str:
-    apo = f"アポ+{lv['gain_apo']:.0f}件 → " if lv.get("gain_apo") else ""
-    return f"{lv['key']} {ap_pct(lv['now'])}→{ap_pct(lv['bench'])}（できてる人の水準）\n→ {apo}実質売上 +{lv['gain_sales']:.0f}万"
-
-
-def ap_intro(m: dict, month: str) -> str:
-    t = m.get("targets") or {}
-    names = {"訪問数": "訪問", "アポ数": "アポ", "有効商談数": "商談", "契約数": "契約"}
-    lines = [f"📅 {m['name']}さんの{int(month[5:])}月", f"予算：{m['budget']:.1f}万",
-             "目標：" + "・".join(f"{names.get(k, k)}{v}" for k, v in t.items())]
-    if m.get("gap", 0) > 0:
-        lines.append(f"この目標どおりだと約{m['proj_sales']:.0f}万（予算まであと{m['gap']:.0f}万）")
-    else:
-        lines.append(f"この目標どおりだと約{m['proj_sales']:.0f}万（予算に届く見込み）")
-    levers = m.get("levers") or []
-    if levers:
-        lines.append("\n🔑 ここを改善すると数字が伸びます")
-        lines += [f"{i}. {ap_lever_line(lv)}" for i, lv in enumerate(levers, 1)]
-    vol = m.get("volume")
-    if vol and vol.get("add"):
-        lines.append(f"（率を変えずに件数で埋めるなら：{'商談' if vol['key'] == '有効商談数' else 'アポ'} あと+{vol['add']:.0f}件）")
+def hw_plan_intro(m: dict) -> str:
+    lines = ["📊 今月の改善ポイント（月次MTより）",
+             f"予算{m['budget']:.0f}万／今の目標どおりだと約{m['proj_sales']:.0f}万"
+             + (f"（あと{m['gap']:.0f}万）" if m.get("gap", 0) > 0 else "（予算に届く見込み）")]
+    for i, lv in enumerate((m.get("levers") or [])[:2], 1):
+        apo = f"アポ+{lv['gain_apo']:.0f}件→" if lv.get("gain_apo") else ""
+        lines.append(f"{i}. {LEVER_TEXT.get(lv['key'], lv['key'])} {plan_pct(lv['now'])}→{plan_pct(lv['bench'])}で {apo}+{lv['gain_sales']:.0f}万")
+    lines.append("\nここを良くするための宿題を、今週1つ決めましょう。")
     return "\n".join(lines)
 
 
-def ap_lever_buttons(m: dict) -> list[str]:
-    keys = [lv["key"] for lv in (m.get("levers") or [])]
-    if m.get("volume") and m["volume"].get("add"):
-        keys.append(AP_VOLUME)
-    return keys or [AP_VOLUME]
+def hw_choices_for(m: dict | None, base: list[str]) -> list[str]:
+    extra = []
+    for lv in (m or {}).get("levers") or []:
+        extra += LEVER_SUGGEST.get(lv["key"], [])
+    out = list(dict.fromkeys(extra[:4] + [c for c in base if c != HW_OTHER]))[:12]
+    return out + [HW_OTHER]
 
 
-def ap_dates(today: date, n: int = 12) -> list[str]:
-    out, d = [], today + timedelta(days=1)
-    while len(out) < n and d.month == today.month or (len(out) < 3 and d.month != today.month):
-        if d.weekday() >= 2 or is_jp_holiday(d):
-            out.append(f"{d.month}/{d.day}({WEEKDAYS_JA[d.weekday()]})")
-        d += timedelta(days=1)
-        if d > today + timedelta(days=45):
-            break
-    return out[:n]
+def hw_check_week_key(today: date) -> str:
+    """今やっている宿題の週初日（scripts/daily_mission.py の week_homework と同じ決め方）。"""
+    monday = today - timedelta(days=today.weekday())
+    return (monday - timedelta(days=7 if today.weekday() >= 2 else 14)).isoformat()
 
 
-def is_jp_holiday(d: date) -> bool:
-    try:
-        import jpholiday
-        return bool(jpholiday.is_holiday(d))
-    except ImportError:
+def handle_homework_check(event: dict, closer: dict) -> bool:
+    """宿題の実行日の夜に聞いた「できましたか？」への返事を記録する。"""
+    text = event["message"]["text"].strip()
+    if text not in (HW_DONE, HW_NOT_DONE):
         return False
-
-
-def ap_parse_date(text: str, today: date) -> date | None:
-    m = re.search(r"(\d{1,2})\s*[/月]\s*(\d{1,2})", text.translate(str.maketrans("０１２３４５６７８９／", "0123456789/")))
-    if not m:
-        return None
-    mo, dy = int(m.group(1)), int(m.group(2))
-    for y in (today.year, today.year + 1):
-        try:
-            d = date(y, mo, dy)
-        except ValueError:
-            return None
-        if d >= today:
-            return d
-    return None
-
-
-def ap_summary(items: list[dict]) -> str:
-    out = []
-    for i, it in enumerate(items, 1):
-        who = "" if it["who"] == "ひとりで" else f"／{it['who']}"
-        out.append(f"{i}. {it['date_label']}{who}\n　{it['what']}（改善：{it['lever']}）")
-    return "\n".join(out)
-
-
-def ap_save(name: str, month: str, m: dict, items: list[dict]) -> None:
-    levers = {lv["key"]: lv for lv in (m.get("levers") or [])}
-    for it in items:
-        lv = levers.get(it["lever"], {})
-        props = {
-            "アクション": {"title": rt(it["what"])}, "メンバー": {"select": {"name": name}},
-            "月": {"rich_text": rt(month)}, "改善ポイント": {"select": {"name": "件数" if it["lever"] == AP_VOLUME else it["lever"]}},
-            "実行日": {"date": {"start": it["date"]}}, "状態": {"select": {"name": "予定"}},
-            "相手": {"rich_text": rt("" if it["who"] == "ひとりで" else it["who"])},
-        }
-        if lv:
-            props["今の率"] = {"number": lv["now"]}
-            props["目標の率"] = {"number": lv["bench"]}
-            props["見込み効果（万円）"] = {"number": lv["gain_sales"]}
-        notion_call("POST", "pages", {"parent": {"database_id": AP_DB}, "properties": props})
-
-
-def handle_action_plan(event: dict, closer: dict) -> bool:
-    uid, reply, text = event["source"]["userId"], event["replyToken"], event["message"]["text"].strip()
-    name = closer.get("closer_name") or ""
+    name, reply = closer.get("closer_name") or "", event["replyToken"]
     today = datetime.now(JST).date()
-    month = today.strftime("%Y-%m")
-    if text == AP_TRIGGER:
-        m = ap_member_plan(name, month)
-        if not m:
-            line_reply(reply, [{"type": "text", "text": f"{int(month[5:])}月の計画がまだ用意されていません。今川さんに一言伝えてください。"}])
+    try:
+        found = notion_call("POST", f"data_sources/{PDCA_DATABASE_ID}/query", {"filter": {"and": [
+            {"property": "氏名", "select": {"equals": name}},
+            {"property": "週初日", "date": {"equals": hw_check_week_key(today)}}]}, "page_size": 1}, NOTION_VERSION_V2)["results"]
+        if not found:
+            line_reply(reply, [{"type": "text", "text": "今週の宿題が見つかりませんでした。「宿題を登録する」から登録してください。",
+                                "quickReply": quick_reply([HW_TRIGGER])}])
             return True
-        flow_start(uid, "actionplan", "lever", {"month": month, "items": []})
-        line_reply(reply, [{"type": "text", "text": ap_intro(m, month)},
-                           {"type": "text", "text": f"改善のためのアクションを、いつ・誰と・何をするかまで決めて登録します（最大{AP_MAX}つ）。\n\n"
-                                                    "1つ目：どこを改善しますか？", "quickReply": quick_reply(ap_lever_buttons(m))}])
+        log = plain(found[0], "実行チェック")
+        mark = f"{today.month}/{today.day} {'やった' if text == HW_DONE else 'できなかった'}"
+        lines = [x for x in log.splitlines() if x and not x.startswith(f"{today.month}/{today.day} ")] + [mark]
+        notion_call("PATCH", f"pages/{found[0]['id']}", {"properties": {"実行チェック": {"rich_text": rt("\n".join(lines))}}},
+                    NOTION_VERSION_V2)
+    except Exception as e:
+        print(f"homework check error: {e}")
+        line_reply(reply, [{"type": "text", "text": "記録に失敗しました。少し待ってから、もう一度ボタンを押してください。"}])
         return True
-    row = flow_active(uid, "actionplan")
-    if not row or latest_pending_recording(uid) is not None:
-        return False
-    if row.get("expired"):
-        line_reply(reply, [{"type": "text", "text": AP_EXPIRED_TEXT, "quickReply": quick_reply([AP_TRIGGER])}])
-        return True
-    step, d = row.get("result"), flow_data(row)
-    if len(text) > (200 if step == "what_free" else 40):
-        return False
-    m = ap_member_plan(name, d.get("month") or month) or {}
-    n = len(d.get("items", [])) + 1
-
-    if step == "lever":
-        buttons = ap_lever_buttons(m)
-        if text not in buttons:
-            line_reply(reply, [{"type": "text", "text": "ボタンから選んでください。", "quickReply": quick_reply(buttons)}])
-            return True
-        d["cur"] = {"lever": text}
-        flow_update(row, step="what", data=d)
-        line_reply(reply, [{"type": "text", "text": f"{n}つ目：{text}を良くするために、何をしますか？\n（ボタンにない場合は「{AP_OTHER}」）",
-                            "quickReply": quick_reply(AP_SUGGEST.get(text, []) + [AP_OTHER])}])
-        return True
-    if step in ("what", "what_free"):
-        if step == "what" and text == AP_OTHER:
-            flow_update(row, step="what_free")
-            line_reply(reply, [{"type": "text", "text": "やることを、そのまま送ってください。\n（例：木曜に岡野さんの商談に同行して、クロージングを見て学ぶ）"}])
-            return True
-        d["cur"]["what"] = text
-        flow_update(row, step="date", data=d)
-        line_reply(reply, [{"type": "text", "text": "いつやりますか？（ボタンにない日は「11/20」のように送ってください）",
-                            "quickReply": quick_reply(ap_dates(today))}])
-        return True
-    if step == "date":
-        dd = ap_parse_date(text, today)
-        if not dd:
-            line_reply(reply, [{"type": "text", "text": "日付が読み取れませんでした。ボタンを押すか「11/20」のように送ってください。",
-                                "quickReply": quick_reply(ap_dates(today))}])
-            return True
-        d["cur"]["date"] = dd.isoformat()
-        d["cur"]["date_label"] = f"{dd.month}/{dd.day}({WEEKDAYS_JA[dd.weekday()]})"
-        flow_update(row, step="who", data=d)
-        line_reply(reply, [{"type": "text", "text": "誰とやりますか？\n相手がいる場合は、名前を送ってください（例：岡野さん）。",
-                            "quickReply": quick_reply(AP_WHOS)}])
-        return True
-    if step == "who":
-        d["cur"]["who"] = text
-        d["items"] = d.get("items", []) + [d.pop("cur")]
-        if len(d["items"]) >= AP_MAX:
-            flow_update(row, step="confirm", data=d)
-            line_reply(reply, [{"type": "text", "text": f"{ap_summary(d['items'])}\n\nこの内容で、やり切りますか？",
-                                "quickReply": quick_reply(["やり切る！", "やり直す"])}])
-        else:
-            flow_update(row, step="more", data=d)
-            line_reply(reply, [{"type": "text", "text": f"{ap_summary(d['items'])}\n\nもう1つ登録しますか？",
-                                "quickReply": quick_reply([AP_MORE, AP_DONE])}])
-        return True
-    if step == "more":
-        if text == AP_MORE:
-            flow_update(row, step="lever", data=d)
-            line_reply(reply, [{"type": "text", "text": f"{n}つ目：どこを改善しますか？", "quickReply": quick_reply(ap_lever_buttons(m))}])
-        elif text == AP_DONE:
-            flow_update(row, step="confirm", data=d)
-            line_reply(reply, [{"type": "text", "text": f"{ap_summary(d['items'])}\n\nこの内容で、やり切りますか？",
-                                "quickReply": quick_reply(["やり切る！", "やり直す"])}])
-        else:
-            line_reply(reply, [{"type": "text", "text": "ボタンから選んでください。", "quickReply": quick_reply([AP_MORE, AP_DONE])}])
-        return True
-    if step == "confirm":
-        if text == "やり直す":
-            flow_start(uid, "actionplan", "lever", {"month": d.get("month") or month, "items": []})
-            line_reply(reply, [{"type": "text", "text": "1つ目：どこを改善しますか？", "quickReply": quick_reply(ap_lever_buttons(m))}])
-            return True
-        if text != "やり切る！":
-            line_reply(reply, [{"type": "text", "text": "この内容で、やり切りますか？", "quickReply": quick_reply(["やり切る！", "やり直す"])}])
-            return True
-        try:
-            ap_save(name, d.get("month") or month, m, d["items"])
-        except Exception as e:
-            print(f"action plan save error: {e}")
-            line_reply(reply, [{"type": "text", "text": "保存に失敗しました。お手数ですが、今川さんに一言伝えてください。"}])
-            return True
-        flow_update(row, status="actionplan_done")
-        line_reply(reply, [{"type": "text", "text": "登録しました！🔥\n実行日の前日夕方と当日の朝に、LINEでお知らせします。"
-                                                    "相手がいるアクションは、早めに予約のLINEを入れておきましょう。"}])
-        return True
-    return False
+    done = sum(1 for x in lines if x.endswith("やった"))
+    line_reply(reply, [{"type": "text", "text": (
+        f"ナイス！🔥 記録しました（今週{done}回目）。この積み重ねが数字に出ます。" if text == HW_DONE else
+        "記録しました。できなかった理由を一言メモしておくと、来週のMTで話しやすくなります。\n"
+        "次の実行日にやり切りましょう！")}])
+    return True
 
 
 def handle_new_menu(event: dict, closer: dict) -> bool:
@@ -2607,9 +2472,9 @@ def handle_new_menu(event: dict, closer: dict) -> bool:
             print(f"menu handler error ({text}): {e}")
             line_reply(event["replyToken"], [{"type": "text", "text": "一時的に取得できませんでした。少し待ってからもう一度お試しください。"}])
         return True
-    return (handle_admin_answer(event, closer) or handle_share_consent(event, closer)
+    return (handle_admin_answer(event, closer) or handle_share_consent(event, closer) or handle_homework_check(event, closer)
             or handle_trouble(event, closer) or handle_homework(event, closer) or handle_talk_phase(event, closer)
-            or handle_build_done(event, closer) or handle_action_plan(event, closer))
+            or handle_build_done(event, closer))
 
 
 def handle_audio_message(event: dict, closer: dict, extra_messages=None):

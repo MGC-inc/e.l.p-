@@ -765,6 +765,12 @@ def week_homework(today: dt.date) -> dict[str, str]:
         name = prop_text(r, "氏名")
         if name and plan:
             out[name] = plan + (f"\n数字：{'・'.join(nums)}" if nums else "")
+            try:   # 宿題の「いつ」が今日なら、実行日だと目立たせる（scripts/homework_reminder.py と同じ判定）
+                import homework_reminder as HR
+                if today in HR.action_days(HR.when_who(r)[1], key):
+                    out[name] = "🔥 今日は宿題の実行日です\n" + out[name]
+            except Exception as e:  # noqa: BLE001
+                print(f"宿題の実行日の判定に失敗（印なしで出します）: {e}")
     return out
 
 
