@@ -53,6 +53,7 @@ PDCA_DATABASE_ID = "17f23c69-8a24-429a-8957-6b5490a87680"
 NOTION_VERSION_V2 = "2025-09-03"
 GOAL_BUTTON_TEXT = "今日の目標を見る"
 ANALYSIS_BUTTON_TEXT = "直近の商談分析結果を見る"
+ANALYSIS_DETAIL_TEXT = "詳細を見る"   # 分析サマリー（handle_analysis_request）に付くボタン
 # 単日KPIダッシュボード（Webページ、line-webhook/api/kpi.py）への入口テキスト。
 # 「今日の目標を見る」（テキスト1通で完結）とは意図的に分離している（ユーザー指示:
 # 見れる内容を切り分けたい）。こちらは行動量（実績/残り）・転換率（本日/基準/差）を
@@ -2941,6 +2942,39 @@ def handle_goal_request(event: dict, closer: dict):
         pass  # last_goal_reply_*列未追加の環境では無視する（本文の返信自体は既に成功している）
 
 
+def _analysis_blocks(page_id: str, until_detail_chars: int = 0, max_calls: int = 2):
+    """Notionページ本文のブロックを (type, text) で返す。until_detail_chars>0 のときは詳細用に多めに読む。"""
+    out, cur, calls = [], None, 0
+    while calls < max_calls:
+        path = f"blocks/{page_id}/children?page_size=100" + (f"&start_cursor={cur}" if cur else "")
+        r = notion_call("GET", path)
+        calls += 1
+        for b in r.get("results", []):
+            t = "".join(x.get("plain_text", "") for x in (b.get(b["type"]) or {}).get("rich_text", []))
+            if b["type"] in ("bulleted_list_item", "numbered_list_item"):
+                t = "・" + t
+            out.append((b["type"], t))
+        if not r.get("has_more"):
+            break
+        if until_detail_chars and sum(len(t) for _, t in out) > until_detail_chars:
+            break
+        cur = r.get("next_cursor")
+    return out
+
+
+def analysis_sections(blocks) -> tuple[str, str]:
+    """ブロックから SUMMARY と DETAIL の本文を取り出す。見つからなければ ("", "")。"""
+    texts = [t.strip() for _, t in blocks]
+    marks = {"SUMMARY": "SUMMARY", "===SUMMARY===": "SUMMARY", "DETAIL": "DETAIL", "===DETAIL===": "DETAIL"}
+    si = next((i for i, t in enumerate(texts) if marks.get(t) == "SUMMARY"), None)
+    if si is None:
+        return "", ""
+    di = next((i for i in range(si + 1, len(texts)) if marks.get(texts[i]) == "DETAIL"), None)
+    summary = "\n".join(t for t in texts[si + 1:di if di is not None else len(texts)] if t)
+    detail = "\n".join(t for t in texts[di + 1:] if t) if di is not None else ""
+    return summary.strip(), detail.strip()
+
+
 def handle_analysis_request(event: dict, closer: dict):
     """リッチメニュー「直近の商談分析結果を見る」タップへの応答（クローザー専用）。
     Notion「DB 商談分析＆アポ分析」から自分の最新1件を検索し、Reply APIで返す。
@@ -2977,7 +3011,51 @@ def handle_analysis_request(event: dict, closer: dict):
     score_line = f"採点: {score}点" if score is not None else "採点: 未算出"
     text = f"📋 直近の商談分析結果\n\n{customer}（{result}）\n{score_line}\n\n{page.get('url', '')}"
 
+    # サマリーを先に出し、［詳細を見る］で詳細を続ける。取れないときは従来の返信のまま
+    try:
+        summary, _ = analysis_sections(_analysis_blocks(page["id"]))
+    except Exception as e:  # noqa: BLE001
+        print(f"handle_analysis_request: summary fetch failed: {e}")
+        summary = ""
+    if summary:
+        body = f"📋 {customer}（{result}）\n{score_line}\n\n{summary}"
+        msg = {"type": "text", "text": body[:4800],
+               "quickReply": {"items": [{"type": "action", "action": {
+                   "type": "message", "label": ANALYSIS_DETAIL_TEXT, "text": ANALYSIS_DETAIL_TEXT}}]}}
+        line_reply(reply_token, [msg])
+        return
+
     line_reply(reply_token, [{"type": "text", "text": text}])
+
+
+def handle_analysis_detail(event: dict, closer: dict):
+    """［詳細を見る］: 直近の商談分析の詳細（DETAIL）を、1通4500字までに分けて返す（最大5通）。"""
+    reply_token = event["replyToken"]
+    if closer.get("role") != "closer" or not NOTION_TOKEN:
+        line_reply(reply_token, [{"type": "text", "text": "詳細を表示できません。今川さんに確認してください。"}])
+        return
+    page = None
+    try:
+        page = notion_query_latest_deal(closer.get("closer_name"))
+        detail = analysis_sections(_analysis_blocks(page["id"], until_detail_chars=22000, max_calls=10))[1] if page else ""
+    except Exception as e:  # noqa: BLE001
+        print(f"handle_analysis_detail failed: {e}")
+        detail = ""
+    if not detail:
+        line_reply(reply_token, [{"type": "text", "text": "詳細が見つかりませんでした。" + (f"\n{page.get('url', '')}" if page else "")}])
+        return
+    chunks, cur = [], ""
+    for line in detail.split("\n"):
+        if len(cur) + len(line) + 1 > 4500:
+            chunks.append(cur)
+            cur = ""
+        cur += line[:4500] + "\n"
+    if cur.strip():
+        chunks.append(cur)
+    msgs = [{"type": "text", "text": c.strip()} for c in chunks[:5]]
+    if len(chunks) > 5:
+        msgs[-1]["text"] = msgs[-1]["text"][:4300] + f"\n\n…続きはNotionで: {page.get('url', '')}"
+    line_reply(reply_token, msgs)
 
 
 def handle_event(event: dict):
@@ -3021,6 +3099,8 @@ def handle_event(event: dict):
         handle_kpi_request(event, closer)
     elif message_type == "text" and event["message"]["text"] == ANALYSIS_BUTTON_TEXT:
         handle_analysis_request(event, closer)
+    elif message_type == "text" and event["message"]["text"].strip() == ANALYSIS_DETAIL_TEXT:
+        handle_analysis_detail(event, closer)
     elif message_type == "text" and event["message"]["text"] == STATUS_DEFINITION_TEXT:
         handle_status_definition_request(event, closer)
     elif message_type == "text" and event["message"]["text"].strip() == DECLARE_TEXT:
