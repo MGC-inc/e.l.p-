@@ -2075,8 +2075,12 @@ def handle_talk_phase(event: dict, closer: dict) -> bool:
     for p in picked:
         who, cust = plain(p, "クローザー"), plain(p, "お客様名")
         score, when = plain(p, "採点"), md(plain(p, "商談日"))
-        reason = plain(p, "理由")
-        body = [_t("なぜ効いたか", "xs", "#888888", margin="md"), _t(_clip(reason, 120), "sm")] if reason else []
+        reason, react = plain(p, "理由"), plain(p, "お客様の反応")
+        body = []
+        if react:   # マニュアルに無いトークの、お客様の実際の反応を先に見せる（2026-11-01 今川さん指示）
+            body += [_t("お客様の反応", "xs", "#888888", margin="md"), _t(_clip(react, 110), "sm", weight="bold")]
+        if reason:
+            body += [_t("刺さったポイント", "xs", "#888888", margin="md"), _t(_clip(reason, 110), "sm")]
         t = plain(p, "時刻")
         if t:
             body.append(_t(f"商談中の時刻：{t}", "xs", "#888888"))

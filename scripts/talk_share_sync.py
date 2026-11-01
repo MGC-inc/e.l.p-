@@ -1,15 +1,18 @@
 #!/usr/bin/env python3
-"""商談分析ページの「■5 刺さったトーク」のうち、うまくいった表現（効果的だった表現と理由）を
-Notion「🗣 うまくいったトーク集」に取り込む。LINE Botのクローザー用メニュー
+"""商談分析ページから、「マニュアルに無い、お客様に実際に刺さったトーク」を抜き出して
+Notion「🗣 うまくいったトーク集」に取り込む（2026-11-01 今川さん指示:「マニュアル通りの内容ばかりで良くない。
+マニュアルに無い良かったトーク、特にお客様に刺さったポイントを共有してほしい」）。LINE Botのクローザー用メニュー
 「全員の商談のうまくいったトーク」が、このDBを読んで誰のどの商談分析から引用したかまで表示する。
 
-  python3 scripts/talk_share_sync.py [--days 21] [--dry-run]
+  python3 scripts/talk_share_sync.py [--days 21] [--dry-run] [--rebuild]
 
 ・対象: 「DB 商談分析＆アポ分析」で 分析済み=✔ かつ 商談日時が直近N日の商談（採点があるもの）
 ・取込済みの商談（取込キー=商談ページID）は飛ばす。同じ商談を2回取り込まない
-・引用は分析ページの本文そのまま（要約しない）
-・場面（フェーズ）はGemini（GEMINI_API_KEY）が引用と理由から7つのどれかに分類する。使えないときはキーワードで推定
-・--reclassify で、取り込み済みの全トークの場面を分類し直す
+・1商談につき1回、分析ページ全文とマニュアル（マニュアル/訪問営業.md）をGeminiに渡し、次の条件を満たすトークだけ最大3つ取り出す
+    - 営業の実際の発言（引用）。マニュアルの定型トーク・基本手順は除く（その人独自の言い回し・例え・質問・合わせ方だけ）
+    - お客様の実際の反応（発言・笑い・質問が増えた・態度が変わった等）が分析ページから確認できるもの
+  あわせて場面（7つ）・お客様の反応・なぜ刺さったかを付ける。条件に合うものが無い商談は「（引用なし）」の目印だけ残す
+・--rebuild で、取り込み済みの行をすべて消して取り込み直す（抽出のしかたを変えたとき）
 ・商談分析（商談録音分析スキル）がNotionページを作った直後にも実行する（--days 3 で十分）
 
 環境変数: NOTION_TOKEN, GEMINI_API_KEY（無ければキーワード推定）
@@ -45,8 +48,15 @@ def call(method: str, path: str, body=None) -> dict:
         data=json.dumps(body).encode() if body is not None else None,
         headers={"Authorization": f"Bearer {os.environ['NOTION_TOKEN']}", "Notion-Version": NOTION_VERSION,
                  "Content-Type": "application/json"})
-    with urllib.request.urlopen(req, timeout=30) as r:
-        return json.loads(r.read())
+    for attempt in range(4):   # Notionの一時的なエラー（502・429）は待って再試行
+        try:
+            with urllib.request.urlopen(req, timeout=30) as r:
+                return json.loads(r.read())
+        except urllib.error.HTTPError as e:
+            if e.code in (429, 500, 502, 503, 504) and attempt < 3:
+                time.sleep(3 * (attempt + 1))
+                continue
+            raise
 
 
 def children(block_id: str) -> list[dict]:
@@ -190,6 +200,93 @@ def existing_keys() -> set[str]:
         cur = d["next_cursor"]
 
 
+MANUAL_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "マニュアル", "訪問営業.md")
+
+
+def usable(i: dict) -> bool:
+    """Geminiが出した候補の最終チェック: 発言らしい引用で、お客様の実際の発言（「」）か行動が書かれているものだけ。"""
+    q, r = (i.get("quote") or "").strip(), (i.get("customer_reaction") or "")
+    if len(q) < 10 or q.startswith(("（", "(")) or re.search(r"(が弱かった|意識しすぎ|不足していた|印象|歳|[（(]\d{2}[）)]|築\d)", q):
+        return False
+    if (i.get("rating") or 0) < 4 or re.search(r"(検討|躊躇|沈黙|断られ|難色|渋)", r):   # 反応が良かった場面だけ
+        return False
+    return "「" in r or bool(re.search(r"(笑|うなず|頷|身を乗り出|質問が|メモを)", r))
+
+
+def pick_resonating(page_text: str, manual: str) -> list[dict] | None:
+    """分析ページ全文から「マニュアルに無い・お客様の反応が確認できる」トークを最大3つ。失敗したらNone（次回やり直す）。"""
+    key = os.environ.get("GEMINI_API_KEY")
+    if not key:
+        return None
+    prompt = (
+        "あなたは訪問販売（浄水器・住宅設備保証）の営業教育担当です。次は1件の商談の分析レポートです。"
+        "ここから「他のメンバーにも広めたい、うまくいったトーク」を最大3つ取り出してください。\n"
+        "条件:\n"
+        "・営業が商談中に実際に話した言葉だけを引用する（レポートに引用されている言葉をそのまま使い、要約や言い換えをしない）。"
+        "営業本人の反省メモ・感想・「〜が弱かった」「〜を意識しすぎた」のような文、（　）で書かれた説明は、トークではないので使わない\n"
+        "・次のマニュアルに書かれている定型トーク・基本手順（切り口、2名在宅の確認、クーリングオフの説明、一般的な価格提示の型など）は除く。"
+        "その人独自の言い回し・例え・質問・間の取り方・お客様ごとの合わせ方だけを選ぶ\n"
+        "・お客様が実際にどう反応したか（お客様の発言・笑い・うなずき・質問が増えた・態度が変わった等）が、レポートから確認できるものだけ。"
+        "反応は、お客様の実際の発言（「」で引用）か、見て分かる行動に限る。「好意的な感情を引き出した」「興味を示している様子」のような"
+        "評価・解釈は反応とは認めない。そうした確認ができなければ除く\n"
+        "・「家をほめる」「社会的証明（○割の方が満足）」「価格を提示した」「相見積もりを案内した」のような一般的な型は除く。"
+        "同じ型でも、その人にしか言えない具体的な言い回し・例え・質問が引用できるものだけを選ぶ\n"
+        "・質より量を求めない。基準に合うものが1つも無い商談は items を空にしてよい（無理に埋めない）\n"
+        "・条件に合うものが無ければ items は空の配列\n"
+        "・customer_reaction は、お客様の反応を具体的に1〜2文（お客様の発言は「」で引用）。"
+        "why は、お客様の事情・気持ちに触れて、なぜ刺さったかを1〜2文。"
+        "rating は、お客様への刺さり方の確かさと、その人ならではの独自性を合わせた5段階（5=お客様がはっきり反応し、他の人が真似できる具体的な言い回し。"
+        "3以下=一般的な型や反応が弱いもの）。phase は " + "／".join(PHASE_NAMES) + " から1つ\n\n"
+        f"【マニュアル】\n{manual[:9000]}\n\n【分析レポート】\n{page_text[:30000]}")
+    schema = {"type": "OBJECT", "required": ["items"], "properties": {"items": {"type": "ARRAY", "items": {
+        "type": "OBJECT", "required": ["quote", "phase", "customer_reaction", "why", "rating"], "properties": {
+            "rating": {"type": "INTEGER"},
+            "quote": {"type": "STRING"}, "time": {"type": "STRING", "nullable": True}, "phase": {"type": "STRING"},
+            "customer_reaction": {"type": "STRING"}, "why": {"type": "STRING"}}}}}}
+    body = json.dumps({"contents": [{"parts": [{"text": prompt}]}],
+                       "generationConfig": {"temperature": 0, "responseMimeType": "application/json", "responseSchema": schema,
+                                            "thinkingConfig": {"thinkingBudget": 0}}}).encode()
+    for model in ("gemini-2.5-flash", "gemini-2.5-flash-lite"):   # 判断の質が要るのでメインのモデルから。回数制限の日は軽いモデル
+        req = urllib.request.Request(
+            f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}",
+            data=body, method="POST", headers={"Content-Type": "application/json"})
+        for attempt in range(3):
+            try:
+                with urllib.request.urlopen(req, timeout=90) as r:
+                    out = json.loads(r.read())["candidates"][0]["content"]["parts"][0]["text"]
+                items = json.loads(out).get("items") or []
+                return [i for i in items if usable(i)][:3]
+            except urllib.error.HTTPError as e:
+                if e.code == 429 and attempt < 2:
+                    time.sleep(15 * (attempt + 1))
+                    continue
+                print(f"  Gemini抽出に失敗（{model}）: {e}", file=sys.stderr)
+                break
+            except Exception as e:  # noqa: BLE001
+                print(f"  Gemini抽出に失敗（{model}）: {e}", file=sys.stderr)
+                break
+    return None
+
+
+def page_full_text(page_id: str) -> str:
+    lines: list[str] = []
+    for b in children(page_id):
+        flatten(b, lines)
+    return "\n".join(x for x in lines if x.strip())
+
+
+def archive_all() -> int:
+    n, cur = 0, None
+    while True:
+        d = call("POST", f"databases/{TALK_DB}/query", {"page_size": 100, **({"start_cursor": cur} if cur else {})})
+        for p in d["results"]:
+            call("PATCH", f"pages/{p['id']}", {"archived": True})
+            n += 1
+        if not d.get("has_more"):
+            return n
+        cur = d["next_cursor"]
+
+
 def reclassify() -> None:
     cur = None
     while True:
@@ -212,32 +309,40 @@ def main() -> None:
         return
     days = int(sys.argv[sys.argv.index("--days") + 1]) if "--days" in sys.argv else 21
     dry = "--dry-run" in sys.argv
+    if "--rebuild" in sys.argv and not dry:
+        print(f"取り込み済み{archive_all()}件を消しました（取り込み直します）")
     since = (dt.date.today() - dt.timedelta(days=days)).isoformat()
     deals = call("POST", f"databases/{DEAL_DB}/query", {"filter": {"and": [
         {"property": "分析済み", "checkbox": {"equals": True}},
         {"property": "商談日時", "date": {"on_or_after": since}}]},
         "sorts": [{"property": "商談日時", "direction": "descending"}], "page_size": 100})["results"]
-    done = existing_keys()
+    done = set() if "--rebuild" in sys.argv else existing_keys()   # 取り直すときは取込済みの印を見ない
+    manual = open(MANUAL_PATH, encoding="utf-8").read() if os.path.exists(MANUAL_PATH) else ""
     added = 0
     for p in deals:
         pid = p["id"]
         score = p["properties"].get("採点", {}).get("number")
         if pid in done or score is None or score < MIN_SCORE:
             continue
-        items = parse_effective(section5_lines(pid))[:MAX_PER_DEAL]
+        items = pick_resonating(page_full_text(pid), manual)
+        if items is None:   # 抽出に失敗した商談は取り込まず、次回また調べる
+            print(f"{prop_plain(p, 'お客様名')}: 抽出できませんでした（次回やり直します）")
+            continue
         customer = prop_plain(p, "お客様名")
         closer = prop_plain(p, "クローザー")
         date = ((p["properties"].get("商談日時") or {}).get("date") or {}).get("start", "")[:10]
         print(f"{date} {customer}（{closer}・{score}点）: {len(items)}件")
         for n, it in enumerate(items):
+            phase = it["phase"] if it.get("phase") in PHASE_NAMES else phase_of(it["quote"] + it["why"])
             if dry:
-                print("   ", it["quote"][:60], "|", it["time"], "|", it["reason"][:30])
+                print("   ", phase, "|", it["quote"][:50], "|反応:", it["customer_reaction"][:50], "|", it["why"][:40])
                 continue
             props = {
                 "トーク": {"title": rich(it["quote"])},
-                "理由": {"rich_text": rich(it["reason"])},
-                "フェーズ": {"select": {"name": gemini_phase(it["quote"], it["reason"]) or phase_of(it["quote"] + it["reason"])}},
-                "時刻": {"rich_text": rich(it["time"])},
+                "理由": {"rich_text": rich(it["why"])},
+                "お客様の反応": {"rich_text": rich(it["customer_reaction"])},
+                "フェーズ": {"select": {"name": phase}},
+                "時刻": {"rich_text": rich(it.get("time") or "")},
                 "お客様名": {"rich_text": rich(customer)},
                 "商談日": {"date": {"start": date}} if date else {"date": None},
                 "採点": {"number": score},
@@ -248,10 +353,11 @@ def main() -> None:
                 props["クローザー"] = {"select": {"name": closer}}
             call("POST", "pages", {"parent": {"database_id": TALK_DB}, "properties": props})
             added += 1
-        if not items and not dry:  # 取り込める引用が無い商談も、次回また調べ直さないよう目印だけ残す
+        if not items and not dry:   # 条件に合うトークが無い商談は、次回また調べ直さないよう目印だけ残す
             call("POST", "pages", {"parent": {"database_id": TALK_DB}, "properties": {
                 "トーク": {"title": rich("（引用なし）")}, "取込キー": {"rich_text": rich(f"{pid}#none")},
                 "商談日": {"date": {"start": date}} if date else {"date": None}}})
+        time.sleep(1)
     print(f"取り込み: {added}件")
 
 
