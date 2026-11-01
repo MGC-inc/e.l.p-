@@ -106,6 +106,24 @@ def is_workday(d: dt.date) -> bool:
     return bool(jpholiday and jpholiday.is_holiday(d))
 
 
+# 祝日の月火のうち、一部の代理店だけが稼働する日（日付→稼働する代理店）。今川さん指示 2026-11-01:「今週は火曜が祝日なので、ピタサチだけ稼働」
+PARTIAL_WORKDAYS = {"2026-11-03": "ピタサチ"}
+
+
+def agency_members(agency: str, month: str) -> set[str]:
+    """予算DBの代理店欄から、その代理店のメンバー名（当月＋前月）。"""
+    y, m = map(int, month.split("-"))
+    months = [month, f"{y - (m == 1)}-{(m - 2) % 12 + 1:02d}"]
+    out: set[str] = set()
+    for ym in months:
+        for r in query_all(f"/data_sources/{BUDGET_DB}/query",
+                           {"property": "年月（YYYY-MM）", "rich_text": {"equals": ym}}, NOTION_VERSION_V2):
+            sel = (r["properties"].get("代理店") or {}).get("select")
+            if sel and sel.get("name") == agency and prop_text(r, "メンバー"):
+                out.add(prop_text(r, "メンバー"))
+    return out
+
+
 def month_days(d: dt.date) -> list[dt.date]:
     first = d.replace(day=1)
     nxt = first.replace(year=first.year + first.month // 12, month=first.month % 12 + 1)
@@ -858,6 +876,10 @@ def main() -> int:
     except Exception as e:  # noqa: BLE001 - 宿題が読めなくてもカードは送る
         print(f"今週の宿題の読み込みに失敗（宿題欄なしで送ります）: {e}")
         homeworks = {}
+    only_agency = PARTIAL_WORKDAYS.get(today.isoformat())
+    agency_set = agency_members(only_agency, month) if only_agency else None
+    if agency_set is not None:
+        print(f"{today} は{only_agency}だけ稼働日: 対象 {sorted(agency_set)}")
     ask_hw_day = today.weekday() >= 2   # 水曜のMT以降に、未登録の人へボタンを出す
     team["n_closers"] = len([p for p in active if prop_text(p, "役割") == "クローザー"])
     sent, failed, skipped = [], [], []
@@ -866,6 +888,8 @@ def main() -> int:
         name = prop_text(p, "メンバー")
         if args.only and name != args.only:
             continue
+        if agency_set is not None and name not in agency_set and not args.force:
+            continue   # この日は別の代理店は休み
         if name in done:
             print(f"{name}: 今日は配信済みのため送りません")
             continue

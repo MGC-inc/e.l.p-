@@ -287,6 +287,9 @@ def build_results(members: dict[str, dict], week_start: datetime.date, week_end:
     return res
 
 
+PARTIAL_WORKDAYS = {"2026-11-03"}  # scripts/daily_mission.py の PARTIAL_WORKDAYS と同じ日
+
+
 def check_week_completeness(week_start: datetime.date, week_end: datetime.date) -> None:
     """対象週の実績DB反映漏れを検知する（ユーザー報告で発覚: 配信日時点で対象週の一部の
     日がまるごと未反映のまま、その不完全なデータでPDCAが配信されてしまった実例があった。
@@ -312,6 +315,8 @@ def check_week_completeness(week_start: datetime.date, week_end: datetime.date) 
             counts[d] = counts.get(d, 0) + 1
     all_days = [week_start + datetime.timedelta(days=i) for i in range(7)]
     check_days = [d for d in all_days if d.weekday() not in (0, 1) or jpholiday.is_holiday(d)]
+    # 一部の代理店だけ稼働した祝日（2026-11-03 ピタサチのみ）は、他の日と件数を比べられないので対象外
+    check_days = [d for d in check_days if d.isoformat() not in PARTIAL_WORKDAYS]
     max_count = max(counts.values(), default=0)
     sparse = [(d.isoformat(), counts.get(d.isoformat(), 0)) for d in check_days
               if max_count and counts.get(d.isoformat(), 0) < max_count * 0.5]
