@@ -285,6 +285,8 @@ def register_unknown_sender(line_user_id: str) -> dict:
     created = sb("POST", "closer_line_users", [row])
     if role == "closer":
         link_closer_richmenu(line_user_id)
+    elif role == "admin":
+        link_admin_richmenu(line_user_id)
     return created[0] if created else row
 
 
@@ -2794,6 +2796,8 @@ def handle_registration(event: dict, closer: dict, is_first_contact: bool) -> bo
             sb("PATCH", f"closer_line_users?id=eq.{closer['id']}", {"role": role})
             if role == "closer":
                 link_closer_richmenu(closer["line_user_id"])
+            elif role == "admin":
+                link_admin_richmenu(closer["line_user_id"])
             line_reply(reply_token, [{"type": "text", "text": ROLE_WELCOME_MESSAGES[role]}])
         else:
             line_reply(reply_token, [{
@@ -3063,6 +3067,168 @@ def handle_analysis_detail(event: dict, closer: dict):
     line_reply(reply_token, msgs)
 
 
+# ---- 管理者向け「全員の数字」（2026-11-02 今川さん指示）----------------------------------
+# 自動送信はせず、管理者が見たい時にボタン（管理者専用リッチメニュー）を押すと返す。
+# 日次／週次／月次／直近3ヶ月。数字は「📉 営業部 実績DB」から集計する（週は水曜始まり）。
+TEAM_TEXT = "全員の数字"
+TEAM_PERIODS = ["日次", "週次", "月次", "直近3ヶ月"]
+ADMIN_RICHMENU_NAME = "営業分析BOT 管理者用"   # scripts/admin_richmenu.py が作る
+BUDGET_DATA_SOURCE_ID = "b1809b1a-e82d-4032-ac86-a32d165d475d"   # 💰 予算と達成率
+
+
+def is_admin(closer: dict) -> bool:
+    return closer.get("role") == "admin" or closer.get("closer_name") == ADMIN_NAME
+
+
+def link_admin_richmenu(line_user_id: str) -> None:
+    """役割が管理者に確定したユーザーに、全員の数字ボタンの専用リッチメニューを個別リンクする。"""
+    try:
+        menus = json.loads(_line_request("https://api.line.me/v2/bot/richmenu/list", "GET")).get("richmenus", [])
+        target = next((m for m in menus if m.get("name") == ADMIN_RICHMENU_NAME), None)
+        if target:
+            _line_request(f"https://api.line.me/v2/bot/user/{line_user_id}/richmenu/{target['richMenuId']}", "POST")
+    except (urllib.error.HTTPError, urllib.error.URLError, json.JSONDecodeError):
+        pass
+
+
+def _query_all(data_source_id: str, flt: dict, max_pages: int = 10) -> list[dict]:
+    rows, cursor = [], None
+    for _ in range(max_pages):
+        body = {"filter": flt, "page_size": 100}
+        if cursor:
+            body["start_cursor"] = cursor
+        res = notion_call("POST", f"data_sources/{data_source_id}/query", body, NOTION_VERSION_V2)
+        rows += res.get("results", [])
+        if not res.get("has_more"):
+            break
+        cursor = res.get("next_cursor")
+    return rows
+
+
+def _perf_rows(start: date, end: date) -> list[dict]:
+    return _query_all(PERFORMANCE_DATABASE_ID, {"and": [
+        {"property": "実績日", "date": {"on_or_after": start.isoformat()}},
+        {"property": "実績日", "date": {"on_or_before": end.isoformat()}},
+    ]})
+
+
+def _member_of(row: dict) -> str:
+    sel = (row.get("properties", {}).get("メンバー") or {}).get("select")
+    return sel.get("name") if sel else ""
+
+
+def _aggregate(rows: list[dict]) -> dict:
+    agg: dict = {}
+    for r in rows:
+        name = _member_of(r)
+        if not name:
+            continue
+        a = agg.setdefault(name, {"visit": 0.0, "apo": 0.0, "contract": 0.0, "amount": 0.0, "cancel": 0.0})
+        a["visit"] += row_number(r, "訪問数")
+        a["apo"] += row_number(r, "アポ数")
+        a["contract"] += row_number(r, "契約")
+        a["amount"] += row_number(r, "契約金額（万円）")
+        a["cancel"] += row_number(r, "キャンセル金額（万円）")
+    return agg
+
+
+def _net(a: dict) -> float:
+    return a["amount"] - a["cancel"]
+
+
+def _budgets(month: str) -> dict:
+    try:
+        rows = _query_all(BUDGET_DATA_SOURCE_ID, {"property": "年月（YYYY-MM）", "rich_text": {"equals": month}})
+    except Exception as e:  # noqa: BLE001 - 予算が取れなくても数字は返す
+        print(f"_budgets failed: {e}")
+        return {}
+    out = {}
+    for r in rows:
+        name = _member_of(r)
+        v = (r.get("properties", {}).get("予算（万円）") or {}).get("number")
+        if name and v:
+            out[name] = v
+    return out
+
+
+def _team_lines(agg: dict, budgets: dict | None = None) -> list[str]:
+    tot = {"visit": 0.0, "apo": 0.0, "contract": 0.0, "amount": 0.0, "cancel": 0.0}
+    for a in agg.values():
+        for k in tot:
+            tot[k] += a[k]
+    lines = [f"■全体 訪問{tot['visit']:.0f}・アポ{tot['apo']:.0f}・契約{tot['contract']:.0f}件・実質売上{_net(tot):.1f}万"]
+    if budgets:
+        b = sum(budgets.values())
+        lines[0] += f"（予算{b:.0f}万・{_net(tot) / b * 100:.0f}%）" if b else ""
+    for name, a in sorted(agg.items(), key=lambda kv: (-_net(kv[1]), -kv[1]["apo"], -kv[1]["visit"])):
+        if not (a["visit"] or a["apo"] or a["contract"] or a["amount"]):
+            continue
+        line = f"・{name} 訪問{a['visit']:.0f}・アポ{a['apo']:.0f}・契約{a['contract']:.0f}・売上{_net(a):.1f}万"
+        if budgets and budgets.get(name):
+            line += f"（{_net(a) / budgets[name] * 100:.0f}%）"
+        lines.append(line)
+    return lines
+
+
+def team_numbers_text(period: str) -> str:
+    today = datetime.now(JST).date()
+    if period == "日次":
+        rows, day = _perf_rows(today, today), today
+        if not rows:   # 日報は夜に上がるため、まだなら直近の昨日を見せる
+            day = today - timedelta(days=1)
+            rows = _perf_rows(day, day)
+        head = f"📊 全員の数字｜日次（{day.month}/{day.day}）"
+        agg = _aggregate(rows)
+        return "\n".join([head] + (_team_lines(agg) if agg else ["まだ報告がありません。"]))
+    if period == "週次":
+        start = today - timedelta(days=(today.weekday() - 2) % 7)   # 水曜始まり
+        agg = _aggregate(_perf_rows(start, today))
+        head = f"📊 全員の数字｜週次（{start.month}/{start.day}〜{today.month}/{today.day}）"
+        return "\n".join([head] + (_team_lines(agg) if agg else ["まだ報告がありません。"]))
+    if period == "月次":
+        start = today.replace(day=1)
+        agg = _aggregate(_perf_rows(start, today))
+        head = f"📊 全員の数字｜月次（{start.month}月・{today.month}/{today.day}まで）"
+        return "\n".join([head] + (_team_lines(agg, _budgets(start.strftime("%Y-%m"))) if agg else ["まだ報告がありません。"]))
+    # 直近3ヶ月（今月を含む3暦月）
+    y, m = today.year, today.month - 2
+    if m < 1:
+        y, m = y - 1, m + 12
+    start = date(y, m, 1)
+    rows = _perf_rows(start, today)
+    by_month: dict = {}
+    for r in rows:
+        d = row_date_iso(r)
+        if d:
+            by_month.setdefault(d[:7], []).append(r)
+    lines = [f"📊 全員の数字｜直近3ヶ月（{start.month}月〜{today.month}月）", "【月ごとの全体】"]
+    for ym in sorted(by_month):
+        t = _aggregate(by_month[ym])
+        tot_net = sum(_net(a) for a in t.values())
+        lines.append(f"・{int(ym[5:])}月 訪問{sum(a['visit'] for a in t.values()):.0f}・アポ{sum(a['apo'] for a in t.values()):.0f}"
+                     f"・契約{sum(a['contract'] for a in t.values()):.0f}件・実質売上{tot_net:.1f}万")
+    lines.append("【3ヶ月の合計（個人別）】")
+    lines += _team_lines(_aggregate(rows))[1:]
+    return "\n".join(lines)
+
+
+def handle_team_numbers(event: dict, closer: dict) -> None:
+    reply_token = event["replyToken"]
+    text = event["message"]["text"].strip()
+    period = text[len(TEAM_TEXT):].strip()
+    if period not in TEAM_PERIODS:
+        line_reply(reply_token, [{"type": "text", "text": "どの期間の全員の数字を見ますか？",
+                                  "quickReply": quick_reply([f"{TEAM_TEXT} {p}" for p in TEAM_PERIODS])}])
+        return
+    try:
+        out = team_numbers_text(period)
+    except Exception as e:  # noqa: BLE001
+        print(f"handle_team_numbers failed: {e}")
+        out = "数字を取得できませんでした。少し待ってもう一度お試しください。"
+    line_reply(reply_token, [{"type": "text", "text": out[:4800],
+                              "quickReply": quick_reply([f"{TEAM_TEXT} {p}" for p in TEAM_PERIODS])}])
+
+
 def handle_event(event: dict):
     if event.get("type") != "message":
         return  # フォロー/アンフォロー等は今回は無視
@@ -3106,6 +3272,8 @@ def handle_event(event: dict):
         handle_analysis_request(event, closer)
     elif message_type == "text" and event["message"]["text"].strip() == ANALYSIS_DETAIL_TEXT:
         handle_analysis_detail(event, closer)
+    elif message_type == "text" and event["message"]["text"].strip().startswith(TEAM_TEXT) and is_admin(closer):
+        handle_team_numbers(event, closer)   # 管理者だけ（自動送信なし。見たい時だけ）
     elif message_type == "text" and event["message"]["text"] == STATUS_DEFINITION_TEXT:
         handle_status_definition_request(event, closer)
     elif message_type == "text" and event["message"]["text"].strip() == DECLARE_TEXT:
