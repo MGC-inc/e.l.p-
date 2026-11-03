@@ -510,15 +510,33 @@ def learnings(pdf, mem, pdca, cfg, n, agency=ALL):
              if d.get("cause") and (agency == ALL or mem.get(nm, {}).get("agency") == agency)]
     if not items:
         return n
-    pages = [items[i:i+6] for i in range(0, len(items), 6)]
+    # 学びは途中で切らず全文を出す（2026-11-03 今川さん指示）。1件ごとに、全文が収まる最大の文字サイズを選び、
+    # カードの高さは文の長さに合わせる。3列に、いちばん短い列から順に積んで、入りきらなければ次のページへ
+    COL_W, X0, GAP, TOP, BOTTOM = 0.3, 0.035, 0.015, 0.84, 0.05
+    cards = []
+    for nm, txt in items:
+        for fs in (13, 12, 11, 10, 9.5, 9, 8.5):
+            width = int(0.27 * W * 72 / fs)
+            lines = textwrap.wrap(txt.replace("\n", " "), width)
+            h = 0.1 + len(lines) * fs * 1.45 / 72 / H + 0.03
+            if h <= 0.38:
+                break
+        cards.append((nm, "\n".join(lines), fs, min(h, TOP - BOTTOM)))
+    pages, cur, ys = [], [], [TOP, TOP, TOP]
+    for c in cards:
+        col = ys.index(max(ys))   # いちばん空いている列
+        if ys[col] - c[3] < BOTTOM:
+            pages.append(cur); cur, ys = [], [TOP, TOP, TOP]; col = 0
+        cur.append((col, ys[col], c)); ys[col] -= c[3] + GAP
+    pages.append(cur)
     for pi, chunk in enumerate(pages):
         fig = slide(pdf, "⑤ 先週のMTで出たみんなの学び", agency + (f"　{pi+1}/{len(pages)}" if len(pages) > 1 else ""), n); n += 1
-        for i, (nm, txt) in enumerate(chunk):
-            x, y = 0.035 + (i % 3) * 0.315, 0.47 - (i // 3) * 0.39
-            card(fig, x, y, 0.3, 0.36, BG)
-            fig.text(x + 0.015, y + 0.31, nm, fontsize=16, fontweight="bold", color=NAVY)
-            fig.text(x + 0.015, y + 0.275, mem[nm]["agency"], fontsize=10, color=SUB)
-            fig.text(x + 0.015, y + 0.245, wrap(txt, 19, 8), fontsize=12, va="top", color=INK, linespacing=1.45)
+        for col, ytop, (nm, text, fs, h) in chunk:
+            x, y = X0 + col * (COL_W + GAP), ytop - h
+            card(fig, x, y, COL_W, h, BG)
+            fig.text(x + 0.015, ytop - 0.035, nm, fontsize=16, fontweight="bold", color=NAVY, va="center")
+            fig.text(x + 0.015, ytop - 0.07, mem[nm]["agency"], fontsize=10, color=SUB, va="center")
+            fig.text(x + 0.015, ytop - 0.095, text, fontsize=fs, va="top", color=INK, linespacing=1.45)
         save(pdf, fig)
     return n
 
