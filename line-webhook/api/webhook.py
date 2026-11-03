@@ -23,6 +23,7 @@ import mimetypes
 import os
 import re
 import time
+import unicodedata
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -156,7 +157,7 @@ KNOWN_ADMINS = {
 ROLE_WELCOME_MESSAGES = {
     "closer": "登録完了しました。以後、商談録音をMP3形式のファイルで送信してください。",
     "appointer": "登録完了しました。毎週、実績をお送りします。",
-    "admin": "登録完了しました。毎週、チーム全体の実績をお送りします。",
+    "admin": "登録完了しました。メニューの「全員の数字」から、見たい時に全員の数字を見られます（自動の配信はありません）。",
 }
 
 # ---- KNOWN_CLOSERS/KNOWN_APPOINTERS/KNOWN_ADMINSの追加・削除 ----
@@ -2761,6 +2762,120 @@ def handle_text_message(event: dict):
             }])
 
 
+# ---- 新メンバーの名前あいさつ登録（2026-11-02 今川さん指示）-------------------------------
+# 新メンバーは「あいさつ＋名前」を送る → 苗字でKNOWN_*と照合して役割まで自動で確定 →
+# 続けて「フルネーム」「読み」を聞いて、答えをそのまま名簿DB（Notion）に登録する。
+# 返信は、全角/半角・スペース・「です」「と申します」等のブレがあっても読み取る。
+KANJI_RE = re.compile(r"[\u4e00-\u9fff々〆ヶ]")
+GREETING_RE = re.compile(r"^(こんにちは|こんばんは|おはようございます|はじめまして|初めまして|お疲れ様です|お疲れさまです|よろしくお願いします|宜しくお願いします|よろしくお願いいたします)[、,\s]*")
+ROSTER_DATA_SOURCE_ID = "e6f639d2-7d83-488a-a699-276f591c4c1c"   # 👥 営業メンバー名簿DB
+
+
+def _nfkc(s: str) -> str:
+    return unicodedata.normalize("NFKC", s or "").strip()
+
+
+def clean_name(text: str) -> str:
+    """あいさつ・「です」「と申します」などを取り除いて、名前だけにする。"""
+    t = _nfkc(text)
+    for _ in range(3):
+        t = GREETING_RE.sub("", t)
+    t = re.sub(r"[、,。.!！\s]*(よろしく.*|宜しく.*)$", "", t)
+    t = re.sub(r"(と申します|といいます|と言います|です|でーす|っす)?[。.!！\s]*$", "", t)
+    return t.strip(" 、,。")
+
+
+def match_known_member(text: str):
+    """文中の苗字（姓のみ・姓名・スペース有無）をKNOWN_CLOSERS/APPOINTERS/ADMINSと照合する。
+    一致すれば (登録名, role)。「小林」の中の「林」のように、漢字の途中にある一致は無視する。"""
+    t = _nfkc(text)
+    variants = [(t, False), (re.sub(r"\s+", "", t), True)]
+    best = None
+    for role, d in (("closer", KNOWN_CLOSERS), ("appointer", KNOWN_APPOINTERS), ("admin", KNOWN_ADMINS)):
+        for key, canon in d.items():
+            k = _nfkc(key)
+            for body, nospace in variants:
+                kk = re.sub(r"\s+", "", k) if nospace else k
+                if not kk or (nospace and len(kk) < 2):
+                    continue
+                for m in re.finditer(re.escape(kk), body):
+                    i, j = m.start(), m.end()
+                    if i > 0 and KANJI_RE.match(body[i - 1]):
+                        continue
+                    if len(kk) == 1 and j < len(body) and KANJI_RE.match(body[j]):
+                        continue
+                    if best is None or len(kk) > best[0]:
+                        best = (len(kk), canon, role)
+    return (best[1], best[2]) if best else None
+
+
+def parse_role(text: str):
+    """役割の返事の表記ゆれ（「アポインターです」「アポ」「ｱﾎﾟ」「クロ」「管理」など）を読み取る。"""
+    t = _nfkc(text).lower()
+    if "兼" in t or re.search(r"クロ|くろ|closer", t):
+        return "closer"
+    if re.search(r"アポ|あぽ|appo", t):
+        return "appointer"
+    if re.search(r"管理|admin", t):
+        return "admin"
+    return None
+
+
+def update_roster_profile(surname: str, fullname: str, reading: str) -> bool:
+    """名簿DB（Notion）の該当行の名前・読みを、本人から聞いたとおりに書く。見つからなければFalse。"""
+    try:
+        res = notion_call("POST", f"data_sources/{ROSTER_DATA_SOURCE_ID}/query",
+                          {"filter": {"property": "名前", "title": {"contains": surname}}, "page_size": 20}, NOTION_VERSION_V2)
+        for row in res.get("results", []):
+            title = "".join(t.get("plain_text", "") for t in (row["properties"].get("名前") or {}).get("title", []))
+            if _nfkc(title).replace(" ", "").startswith(surname):
+                props = {"名前": {"title": [{"text": {"content": fullname}}]}}
+                if reading:
+                    props["読み"] = {"rich_text": [{"text": {"content": reading}}]}
+                notion_call("PATCH", f"pages/{row['id']}", {"properties": props}, NOTION_VERSION_V2)
+                return True
+    except Exception as e:  # noqa: BLE001
+        print(f"update_roster_profile failed: {e}")
+    return False
+
+
+def start_profile_flow(line_user_id: str, surname: str) -> None:
+    flow_start(line_user_id, "profile", "fullname", {"surname": surname})
+
+
+def handle_profile_flow(event: dict, closer: dict) -> bool:
+    """登録直後の「フルネーム→読み」の質問。答えはそのまま名簿DBに登録する。処理したらTrue。"""
+    message = event.get("message", {})
+    if message.get("type") != "text":
+        return False
+    uid = event["source"]["userId"]
+    row = flow_active(uid, "profile")
+    if not row:
+        return False
+    reply_token = event["replyToken"]
+    surname = closer.get("closer_name") or ""
+    if row.get("expired"):
+        start_profile_flow(uid, surname)
+        line_reply(reply_token, [{"type": "text", "text": f"時間が空いたので、もう一度お願いします。フルネームを教えてください（例：{surname} ○○）。"}])
+        return True
+    raw = message.get("text", "").strip()
+    data = flow_data(row)
+    if row.get("result") == "fullname":
+        if surname not in _nfkc(raw).replace(" ", ""):
+            line_reply(reply_token, [{"type": "text", "text": f"フルネームは苗字（{surname}）から入れて送ってください。例：{surname} ○○"}])
+            return True
+        data["fullname"] = raw
+        flow_update(row, step="reading", data=data)
+        line_reply(reply_token, [{"type": "text", "text": "ありがとうございます。読み方（ひらがな）も教えてください。分からなければ「なし」と送ってください。"}])
+        return True
+    reading = "" if re.fullmatch(r"(なし|ない|不明|わからない|分からない|-|ー)", _nfkc(raw)) else raw
+    flow_update(row, status="profile_done")
+    ok = update_roster_profile(surname, data.get("fullname", surname), reading)
+    line_reply(reply_token, [{"type": "text", "text": f"{data.get('fullname', surname)}さん、ありがとうございます。登録が完了しました。"
+                              + ("" if ok else "\n（名簿への反映は今川さんが確認します）")}])
+    return True
+
+
 def handle_registration(event: dict, closer: dict, is_first_contact: bool) -> bool:
     """closer_name・role が未確定の相手からのメッセージをあいさつ登録フローで処理する。
     処理した（＝これ以上event側で扱う必要がない）場合True、
@@ -2770,13 +2885,24 @@ def handle_registration(event: dict, closer: dict, is_first_contact: bool) -> bo
     message = event.get("message", {})
 
     if closer.get("closer_name") is None:
-        if is_first_contact:
+        hit = match_known_member(message.get("text", "")) if message.get("type") == "text" else None
+        if hit:   # あいさつ＋名前から、苗字で照合できた。役割まで確定して、続けてフルネームを聞く
+            canon, role = hit
+            sb("PATCH", f"closer_line_users?id=eq.{closer['id']}", {"closer_name": canon, "role": role})
+            if role == "closer":
+                link_closer_richmenu(closer["line_user_id"])
+            elif role == "admin":
+                link_admin_richmenu(closer["line_user_id"])
+            start_profile_flow(closer["line_user_id"], canon)
+            line_reply(reply_token, [{"type": "text", "text": f"{canon}さん、ご連絡ありがとうございます。{ROLE_WELCOME_MESSAGES[role]}\n"
+                                      f"あと2つだけ教えてください。まず、フルネームを教えてください（例：{canon} ○○）。"}])
+        elif is_first_contact:
             line_reply(reply_token, [{
                 "type": "text",
-                "text": "はじめまして。ユメイク営業分析botです。担当者確認のため、お名前（苗字）を送ってください。",
+                "text": "はじめまして。ユメイク営業分析botです。担当者確認のため、あいさつと一緒にお名前を送ってください（例：野間です。よろしくお願いします）。",
             }])
         elif message.get("type") == "text" and message.get("text", "").strip():
-            name = message["text"].strip()
+            name = clean_name(message["text"]) or message["text"].strip()
             sb("PATCH", f"closer_line_users?id=eq.{closer['id']}", {"closer_name": name})
             line_reply(reply_token, [{
                 "type": "text",
@@ -2790,9 +2916,8 @@ def handle_registration(event: dict, closer: dict, is_first_contact: bool) -> bo
 
     if closer.get("role") is None:
         text = message.get("text", "") if message.get("type") == "text" else ""
-        role_map = {"クローザー": "closer", "アポインター": "appointer", "管理者": "admin"}
-        if text in role_map:
-            role = role_map[text]
+        role = parse_role(text)
+        if role:
             sb("PATCH", f"closer_line_users?id=eq.{closer['id']}", {"role": role})
             if role == "closer":
                 link_closer_richmenu(closer["line_user_id"])
@@ -3254,6 +3379,12 @@ def handle_event(event: dict):
 
     if handle_registration(event, closer, is_first_contact):
         return
+    if handle_profile_flow(event, closer):
+        return   # 登録直後のフルネーム・読みの質問
+    if welcome_messages and is_first_contact:
+        # LINE表示名で自動一致した新しい人にも、続けてフルネーム・読みを聞く（名簿DBにそのまま登録する）
+        start_profile_flow(line_user_id, closer["closer_name"])
+        welcome_messages[0]["text"] += f"\nあと2つだけ教えてください。まず、フルネームを教えてください（例：{closer['closer_name']} ○○）。"
 
     message_type = event.get("message", {}).get("type")
     if message_type == "text" and event["message"]["text"].strip() in MENU_TEXTS:
