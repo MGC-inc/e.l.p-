@@ -13,29 +13,43 @@
 
 全社共通の従業員登録（内線・タスク等）が目的なら、これとは別に `elp-goals` の `/staff` を案内する（このスキルの対象外）。
 
-## 最初に確認すること（これだけ）
+## 最初に確認すること（最初の返信で1回だけ、まとめて聞く）
 
-- 苗字（必須。フルネームが分かれば表記ゆれ対応のため合わせて聞く）
-- 役割: クローザー／アポインター／管理者（指定がなければクローザー）
-- 代理店所属なら会社名
-- **クローザーを新規登録する場合のみ**: 今月の予算金額（万円）。分からない・まだ決まっていない場合は、この予算行の追加だけスキップし（手順は止めない）、決まり次第追加する旨を最後の報告に一言添える
+依頼を受けたら、作業に入る前に**足りない情報を1回の返信にまとめて**聞く。聞いた後は最後まで止まらず、1回で完了させる（今川さん指示 2026-11-02）。依頼文で分かるものは聞かない。
 
-これ以外は都度確認せず、最後まで実行する。
+- 苗字（必須）と、分かればフルネーム・読み（表記ゆれ対応と名簿DB用）
+- 役割: クローザー／アポインター／アポ兼クローザー／管理者
+- 所属（代理店名・個人事業主・自社）。新しい会社名なら、各DBの選択肢にその名前で追加してよいか
+- 稼働開始日（初日報の日）と、研修・時短など特例があるか
+- 今月の予算（万円）。「予算なし」なら0万円で行を作る。月次配分と一緒に決める場合は、行だけ0万円で作って後で更新する
+- クローザーの場合のみ: アポ兼クローザーか、クローザー開始日
+
+聞き忘れ防止: 次の「全DBの反映先」の表を見て、埋められない欄があれば、その場で聞く。
+
+## 全DBの反映先（新規参入時はこの全部に作る）
+
+| # | 場所 | やること |
+|---|---|---|
+| 1 | `line-webhook/api/webhook.py` の `KNOWN_*` | `add_closer.py` が追加 |
+| 2 | `従業員.md` 代理店メンバー表 | `add_closer.py` が追加 |
+| 3 | Supabase `closer_line_users` | 本人がBotに最初のメッセージを送ると結び付く。事前に送ってもらうよう依頼文に書く |
+| 4 | Notion 商談案件一覧 `8958bbaf-…` | 「アポインター」または「クローザー」の選択肢＋「代理店」の選択肢（新しい会社名のとき） |
+| 5 | Notion 👥営業メンバー名簿DB `e6f639d2-…` | 「所属」の選択肢（新しい会社名のとき）＋本人の行（役割・在籍状況=稼働中・実績DB集計対象・アポ集計行・クロ集計行・追加日・備考） |
+| 6 | Notion 💰予算と達成率 `b1809b1a-…` | 「メンバー」「代理店」の選択肢＋当月分の行（予算0でも作る。実績DBの日次行がここにひも付く） |
+| 7 | Notion 📉営業部 実績DB `f11afda4-…` | 「メンバー」の選択肢。日次行は本人のLINE報告で自動作成 |
+| 8 | Notion 📊個人別KPI逆算データ `24592ef5-…` | 「代理店」の選択肢（新しい会社名のとき）＋本人の行（メンバー・役割・代理店・メンバーマスタ(名簿DB)=5の行・今月予算万円・データ基準日） |
+| 9 | Notion 📝週次PDCA記録DB `17f23c69-…` | 「氏名」の選択肢 |
+| 10 | 月次配分 `scripts/monthly_plan.py` | 初回の月次計画から含める（予算なしなら対象外のまま） |
+
+select列の追加は、必ず直前にスキーマを取得し、**既存optionを全件含めて**`ALTER COLUMN … SET SELECT(…)`する。複数DBは並列で更新してよい。
 
 ## 手順（追加）
 
-1. `python3 scripts/add_closer.py <苗字> [--full-name "<姓 名>"] [--role closer|appointer|admin] [--agency "<会社名>"]` を実行する（`--goalmap`は付けない）。
-   - webhook.pyのKNOWN_*辞書・Supabase（本人が既にBotにメッセージ済みの場合）・従業員.mdが更新される
-2. Notion「DB 商談分析＆アポ分析」(`collection://8958bbaf-2c24-4e94-97b2-4c801e60cb37`)の該当select列に苗字を追加する（クローザーなら`クローザー`列、アポインターなら`アポインター`列。管理者は元々このDBの対象外なのでスキップ）:
-   a. `mcp__Notion__notion-fetch`でこのデータソースの最新スキーマ（該当列の`options`一覧: name・color）を取得する
-   b. 既存の全option＋新しい苗字（他と被らない色）を含む完全なリストを組み立て、`mcp__Notion__notion-update-data-source`の
-      `ALTER COLUMN "<列名>" SET SELECT('既存1':color1, '既存2':color2, ..., '<苗字>':新色)`
-      で更新する（**既存options全件を必ず含める**。一部でも欠けると選択肢が消えるため、bで取得した一覧をそのまま使い、新しい1件だけ足す）
-3. **クローザーの場合のみ、かつ予算金額が確認できた場合のみ**、Notion「💰 予算と達成率」(`collection://b1809b1a-e82d-4032-ac86-a32d165d475d`)に今月分の予算行を`mcp__Notion__notion-create-pages`で追加する:
-   - `メンバー` = 苗字、`予算（万円）` = 確認した金額、`年月（YYYY-MM）` = 実行月、タイトル = `<苗字>_<YYYY-MM>`
-4. `line-webhook/api/webhook.py`・`従業員.md`の差分をgit commit・push する（このリポジトリのこのブランチが本番LINE Webhookのデプロイ起点。詳細は商談分析運用.md参照）
-5. pushした差分に`line-webhook/`配下が含まれる場合、Vercelプロジェクト`e-l-p`（team: `iyiyiyi`）の最新デプロイがpush後のコミットに追従しているか`mcp__Vercel__list_deployments`で確認する。追従していなければ`mcp__Vercel__create_deployment`で明示的にデプロイする（`gitSource`にこのブランチ・最新コミットSHA、`projectSettings.rootDirectory: "line-webhook"`を指定。過去に自動デプロイが追従しないケースが確認済みのため、待つのではなく毎回確認する）
-6. 完了報告を1メッセージで簡潔に行う（登録した苗字・役割・反映先の一覧。予算行をスキップした場合はその旨も一言）
+1. `python3 scripts/add_closer.py <苗字> [--full-name "<姓 名>"] [--role closer|appointer|admin] [--agency "<会社名>"]` を実行する（`--goalmap`は付けない）。上の表の1・2が終わる。複数人なら人数分実行する。
+2. 上の表の4〜9を、Notion MCP（`notion-fetch` → `notion-update-data-source` → `notion-create-pages`）で反映する。select列の追加を先にまとめて実行し、そのあとで行を作る（名簿DBの行を先に作り、そのURLをKPIの行のメンバーマスタに入れる）。
+3. `line-webhook/api/webhook.py`・`従業員.md`をgit commit・pushする。
+4. `line-webhook/`配下が含まれるので、Vercelプロジェクト`e-l-p`（team: `iyiyiyi`）の本番デプロイを`mcp__Vercel__create_deployment`で実行する（`requestBody`に`name`・`project`・`target: "production"`・`gitSource`（type/org/repo/ref/sha）・`projectSettings.rootDirectory: "line-webhook"`。`slug: "iyiyiyi"`）。`get_deployment`でREADYを確認する。
+5. 完了報告を1メッセージで行う。反映先を上の表の番号で一覧にし、「できていないこと」と「本人にやってもらうこと」（Botへの最初のメッセージなど）を最後に書く。
 
 ## 手順（削除・退社時）
 
