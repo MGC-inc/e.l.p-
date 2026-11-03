@@ -2869,8 +2869,10 @@ def handle_profile_flow(event: dict, closer: dict) -> bool:
         line_reply(reply_token, [{"type": "text", "text": "ありがとうございます。読み方（ひらがな）も教えてください。分からなければ「なし」と送ってください。"}])
         return True
     reading = "" if re.fullmatch(r"(なし|ない|不明|わからない|分からない|-|ー)", _nfkc(raw)) else raw
-    flow_update(row, status="profile_done")
+    data["reading"] = reading
     ok = update_roster_profile(surname, data.get("fullname", surname), reading)
+    # 名簿DBに書けなかった時も答えを残す（status=profile_unsynced）。あとから反映できるように
+    flow_update(row, data=data, status="profile_done" if ok else "profile_unsynced")
     line_reply(reply_token, [{"type": "text", "text": f"{data.get('fullname', surname)}さん、ありがとうございます。登録が完了しました。"
                               + ("" if ok else "\n（名簿への反映は今川さんが確認します）")}])
     return True
