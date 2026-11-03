@@ -147,7 +147,9 @@ KNOWN_APPOINTERS = {
 
 # 管理者（週次のチーム全体の結果だけ受け取る役割）。通常は人数が少ないため空でよい。
 # クローザー・アポインターと同様、LINE表示名が一致すれば即座に本登録される（role="admin"）。
-KNOWN_ADMINS = {}
+KNOWN_ADMINS = {
+    "伊藤": "伊藤", "伊藤 大生": "伊藤", "伊藤大生": "伊藤",
+}
 
 # 役割ごとの登録完了メッセージ。手動登録フロー（handle_registration）と自動一致登録
 # （handle_event、KNOWN_CLOSERS等にLINE表示名が完全一致した場合）の両方から参照する。
