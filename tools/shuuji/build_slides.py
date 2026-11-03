@@ -466,6 +466,32 @@ def learnings(pdf, mem, pdca, cfg, n, agency=ALL):
     return n
 
 
+# ---------- 今川からのひとこと（その週の分だけ。tools/shuuji/hitokoto/<水曜の日付>.txt があるとき） ----------
+def hitokoto_slides(pdf, n):
+    h = B.hitokoto()
+    if not h:
+        return n
+    head, paras = h
+    lines_by_para = [wrap(p.replace("\n", " "), 56).split("\n") for p in paras]
+    pages, cur, used = [], [], 0
+    for ls in lines_by_para:
+        need = len(ls) + 1
+        if cur and used + need > 14:
+            pages.append(cur); cur, used = [], 0
+        cur.append(ls); used += need
+    if cur:
+        pages.append(cur)
+    for pi, page in enumerate(pages):
+        fig = slide(pdf, "今川からのひとこと", head + (f"　{pi+1}/{len(pages)}" if len(pages) > 1 else ""), n); n += 1
+        card(fig, 0.035, 0.06, 0.93, 0.80, BG)
+        y = 0.82
+        for ls in page:
+            fig.text(0.06, y, "\n".join(ls), fontsize=15.5, color=INK, va="top", linespacing=1.55)
+            y -= (len(ls) + 1) * 0.0525
+        save(pdf, fig)
+    return n
+
+
 # ---------- 8. BOTへ送る内容 ----------
 def send_guide(pdf, cfg, n):
     fig = slide(pdf, "⑦ MTの最後に、BOTへ送る内容", "今朝LINEに届いた記入テンプレをコピーして書く", n)
@@ -530,6 +556,7 @@ def build_deck(path, agency, members, mem, res, pdca, cfg):
         for m in members:
             n = person(pdf, m, mem, res, pdca, cfg, n)
         n = learnings(pdf, mem, pdca, cfg, n, agency)
+        n = hitokoto_slides(pdf, n)
         n = send_guide(pdf, cfg, n)
         week_flow(pdf, cfg, n)
 

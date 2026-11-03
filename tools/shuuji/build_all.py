@@ -340,6 +340,28 @@ def review_page(members, pdca):
     return [Paragraph("⑤ 先週アクションの振り返り（今日のMTで記入）", H1), Spacer(1, 3*mm),
             grid(rows, [22*mm, 78*mm, 18*mm, 62*mm]), Spacer(1, 4*mm), blank("気づき・共有したいこと", 3)]
 
+def hitokoto():
+    """今川さんからのひとこと。tools/shuuji/hitokoto/<配信する水曜の日付>.txt があるときだけ返す
+    （1行目=見出し、あとは空行区切りの段落）。火曜夜に作っても水曜の配信分として拾う。ファイルが無い週は何も足さない"""
+    today = datetime.datetime.now(ZoneInfo("Asia/Tokyo")).date()
+    wed = today + datetime.timedelta(days=(2 - today.weekday()) % 7)
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "hitokoto", f"{wed.isoformat()}.txt")
+    if not os.path.exists(path):
+        return None
+    paras = [x.strip() for x in open(path, encoding="utf-8").read().strip().split("\n\n") if x.strip()]
+    return (paras[0], paras[1:]) if paras else None
+
+def hitokoto_page():
+    h = hitokoto()
+    if not h:
+        return []
+    head, paras = h
+    B2 = ParagraphStyle("hk", parent=B, fontSize=10.5, leading=17)
+    story = [Paragraph("今川からのひとこと", H1), Spacer(1, 4*mm), band(head), Spacer(1, 3*mm)]
+    for para in paras:
+        story += [Paragraph(para.replace("\n", "<br/>"), B2), Spacer(1, 3*mm)]
+    return [story]
+
 def write_pdf(path, pages):
     story = []
     for i, p in enumerate(pages):
@@ -432,7 +454,7 @@ def main(inp, out, strict=False):
     for agency in dict.fromkeys(m["agency"] for m in mem.values()):
         members = [n for n, m in mem.items() if m["agency"] == agency]
         members.sort(key=lambda n: (mem[n]["role"] != "appointer", mem[n]["is_manager"] != "yes"))  # アポインタ→クローザーの順
-        pages = common + [pg for n in members for pg in sheet(n, res, mem, cfg)] + [review_page(members, pdca)]
+        pages = common + [pg for n in members for pg in sheet(n, res, mem, cfg)] + [review_page(members, pdca)] + hitokoto_page()
         fn = f"{secrets.token_urlsafe(9)}.pdf"; write_pdf(os.path.join(pub, fn), pages)
         for n in members: rows.append([agency, n, mem[n]["line_user_id"], mem[n]["role"], mem[n]["is_manager"], fn, len(members)])
         print(f"{agency}: {len(members)}人分 → {fn}")
