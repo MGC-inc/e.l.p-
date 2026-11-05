@@ -1,35 +1,41 @@
 #!/usr/bin/env python3
-"""商談録音分析パイプラインに新しい営業マン（クローザー／アポインター）を登録する。
+"""商談録音分析パイプラインに新しい営業マン（クローザー／アポインター／管理者）を登録する。
 
-前提: 本人が一度「ユメイク営業分析bot」にLINEでメッセージを送っていること。
-Webhook（line-webhook/api/webhook.py）が自動で closer_line_users に
-line_user_id + display_name（LINEの表示名）を仮登録する（closer_name は空のまま）。
-このスクリプトはその仮登録行を見つけて、正式な氏名（closer_name）を確定させる。
+「ユメイク営業分析bot」は、LINE表示名が line-webhook/api/webhook.py の
+KNOWN_CLOSERS / KNOWN_APPOINTERS / KNOWN_ADMINS に一致すれば、初回メッセージで
+即座に本登録される（あいさつ→苗字→役割選択の2問を省略できる）。
+このスクリプトはその一致リストに名前を追加する（メイン機能）。
+
+表記が一致しなくても、本人はBotとのやり取り（苗字→クローザー/アポインター/管理者を
+選ぶだけ）で自己登録できるので、このスクリプトを使わなくても新規メンバーは
+Botを使える。このスクリプトは「あいさつの2問を省略したい」「Supabase・従業員.md・
+ゴールマップも一括で整えたい」場合の時短ツール。
 
 使い方:
-  # 仮登録待ち（closer_name未設定）の一覧を確認
-  python3 scripts/add_closer.py --list-pending
+  # クローザーとして登録（最小構成）
+  python3 scripts/add_closer.py 山田太郎 --full-name "山田 太郎"
 
-  # 表示名を指定して本登録（クローザーとして）
-  python3 scripts/add_closer.py 山田太郎 --display-name "やまだ太郎"
+  # アポインターとして登録
+  python3 scripts/add_closer.py 山田太郎 --full-name "山田 太郎" --role appointer
 
-  # アポインターとしても選べるようにする（LINEクイックリプライに追加）
-  python3 scripts/add_closer.py 山田太郎 --display-name "やまだ太郎" --appointer
+  # 管理者として登録（週次のチーム全体結果のみ受け取る）
+  python3 scripts/add_closer.py 山田太郎 --role admin
 
   # 代理店所属の場合（従業員.mdの代理店メンバー表に追加）
-  python3 scripts/add_closer.py 山田太郎 --display-name "やまだ太郎" \\
-      --agency 株式会社ピタサチ --role 営業
+  python3 scripts/add_closer.py 山田太郎 --full-name "山田 太郎" \\
+      --agency 株式会社ピタサチ --role closer
 
-  # ゴールマップの雛形も作る場合
-  python3 scripts/add_closer.py 山田太郎 --display-name "やまだ太郎" --goalmap
+  # ゴールマップの雛形も作る場合（クローザーのみ想定）
+  python3 scripts/add_closer.py 山田太郎 --full-name "山田 太郎" --goalmap
 
-  # display_nameでの一致が複数/不明な場合は line_user_id を直接指定
-  python3 scripts/add_closer.py 山田太郎 --line-user-id U1234...
+  # 本人が既に一度Botにメッセージを送っている場合、Supabaseの仮登録行を確認できる
+  python3 scripts/add_closer.py --list-pending
 
 このスクリプトが自動でやること:
-  1. Supabase closer_line_users: 該当する仮登録行に closer_name（・任意で
-     goalmap_member_name）を設定する
-  2. （--appointer時）line-webhook/api/webhook.py の APPOINTER_OPTIONS に追加する
+  1. line-webhook/api/webhook.py の KNOWN_CLOSERS / KNOWN_APPOINTERS / KNOWN_ADMINS
+     （--roleで指定した方）に、苗字・姓名（スペースあり/なし）の表記ゆれを登録する
+  2. 本人が既にBotへメッセージ済みで closer_line_users に仮登録行がある場合、
+     closer_name・role をその場でSupabaseに反映する（redeployを待たずに使えるようにする）
   3. 従業員.md に行を追加する
   4. （--goalmap時）tools/goalmap/members/<氏名>.json をテンプレートから作成する
 
@@ -39,6 +45,10 @@ line_user_id + display_name（LINEの表示名）を仮登録する（closer_nam
     Claude Codeセッションでこのスクリプトを実行した流れで、Notion MCPで追加してもらう）
   - webhook.py の変更を実際にデプロイする（git commit・push は別途。デプロイ先は
     今川さん個人のVercelプロジェクトで、mainブランチへのpushで自動反映される想定）
+  - 予算と達成率DB（Notion）への月次予算行の追加（クローザーの場合、週次実績配信の
+    KPI逆算に使われる。Claude+Notion MCPで別途対応）
+
+退社時の削除は scripts/remove_closer.py を使う。
 """
 import argparse
 import json
@@ -55,6 +65,9 @@ WEBHOOK_PATH = os.path.join(REPO, "line-webhook", "api", "webhook.py")
 EMPLOYEES_PATH = os.path.join(REPO, "従業員.md")
 GOALMAP_DIR = os.path.join(REPO, "tools", "goalmap", "members")
 GOALMAP_TEMPLATE = os.path.join(GOALMAP_DIR, "_template.json")
+
+ROLE_DICT_NAME = {"closer": "KNOWN_CLOSERS", "appointer": "KNOWN_APPOINTERS", "admin": "KNOWN_ADMINS"}
+ROLE_LABEL = {"closer": "クローザー", "appointer": "アポインター", "admin": "管理者"}
 
 
 def log(msg):
@@ -113,59 +126,69 @@ def list_pending(env):
               f"created_at={row.get('created_at')}")
 
 
-def find_pending_row(env, display_name, line_user_id):
-    if line_user_id:
-        rows = sb_request(env, "GET", f"closer_line_users?line_user_id=eq.{urllib.parse.quote(line_user_id)}&select=*")
-        if not rows:
-            sys.exit(f"line_user_id={line_user_id} の行が見つかりません。")
-        return rows[0]
-
-    if not display_name:
-        sys.exit("--display-name か --line-user-id のどちらかを指定してください（--list-pending で確認可）")
-
-    q = urllib.parse.quote(display_name, safe="")
-    rows = sb_request(env, "GET", f"closer_line_users?display_name=eq.{q}&select=*")
-    if not rows:
-        sys.exit(
-            f"表示名「{display_name}」で仮登録された行が見つかりません。\n"
-            "→ 本人が「ユメイク営業分析bot」にまだ一度もメッセージを送っていない可能性があります。\n"
-            "  一度何か送ってもらってから再実行してください（--list-pending で確認できます）。"
-        )
-    if len(rows) > 1:
-        sys.exit(
-            f"表示名「{display_name}」に一致する行が複数見つかりました。--line-user-id で対象を指定してください:\n"
-            + "\n".join(f"  - {r['line_user_id']} (created_at={r.get('created_at')})" for r in rows)
-        )
-    return rows[0]
+def name_variants(surname, full_name):
+    variants = {surname}
+    if full_name:
+        variants.add(full_name.replace(" ", "").replace("　", ""))
+        if " " not in full_name and "　" not in full_name:
+            pass  # スペース無し表記のみ渡された場合はそのまま
+        else:
+            variants.add(full_name)
+    return variants
 
 
-def update_webhook_appointer_options(closer_name):
+def update_known_dict(role, surname, full_name):
+    dict_name = ROLE_DICT_NAME[role]
     if not os.path.exists(WEBHOOK_PATH):
-        log(f"警告: {WEBHOOK_PATH} が見つかりません。APPOINTER_OPTIONS の更新をスキップします。")
+        log(f"警告: {WEBHOOK_PATH} が見つかりません。{dict_name} の更新をスキップします。")
         return False
     with open(WEBHOOK_PATH, encoding="utf-8") as f:
         content = f.read()
 
-    m = re.search(r'APPOINTER_OPTIONS = (\[[^\]]*\])', content)
+    m = re.search(dict_name + r" = (\{[^}]*\})", content, re.DOTALL)
     if not m:
-        log("警告: webhook.py 内に APPOINTER_OPTIONS が見つかりませんでした。手動で追加してください。")
+        log(f"警告: webhook.py 内に {dict_name} が見つかりませんでした。手動で追加してください。")
         return False
 
-    options = json.loads(m.group(1).replace("'", '"'))
-    if closer_name in options:
-        log(f"APPOINTER_OPTIONS には既に「{closer_name}」が含まれています。変更なし。")
+    dict_literal = m.group(1)
+    if f'"{surname}"' in dict_literal:
+        log(f"{dict_name} には既に「{surname}」が含まれています。変更なし。")
         return False
 
-    options.append(closer_name)
-    new_literal = json.dumps(options, ensure_ascii=False)
+    entries = ", ".join(f'"{v}": "{surname}"' for v in sorted(name_variants(surname, full_name)))
+    # 末尾の "}" の直前（末尾カンマの有無を問わない）に新しい行を挿入する
+    insert_pos = m.end(1) - 1
+    inner = dict_literal[1:-1].rstrip()
+    if inner.endswith(","):
+        new_inner = f"{inner}\n    {entries},\n"
+    elif inner:
+        new_inner = f"{inner},\n    {entries},\n"
+    else:
+        new_inner = f"\n    {entries},\n"
+    new_literal = "{" + new_inner + "}"
     content = content[:m.start(1)] + new_literal + content[m.end(1):]
     with open(WEBHOOK_PATH, "w", encoding="utf-8") as f:
         f.write(content)
-    log(f"line-webhook/api/webhook.py の APPOINTER_OPTIONS に「{closer_name}」を追加しました。")
+    log(f"line-webhook/api/webhook.py の {dict_name} に「{surname}」を追加しました。")
     return True
 
 
-def update_employees_doc(closer_name, role, agency):
+def patch_pending_row_if_exists(env, surname, role):
+    rows = sb_request(env, "GET", f"closer_line_users?closer_name=is.null&order=created_at.desc&select=*")
+    if not rows:
+        return
+    if len(rows) == 1:
+        target = rows[0]
+    else:
+        log(f"仮登録待ちが複数（{len(rows)}件）あるため、Supabaseの即時反映はスキップします。"
+            "本人の初回メッセージ送信後に再実行するか、次回デプロイ後の自己登録に任せてください。")
+        return
+    sb_request(env, "PATCH", f"closer_line_users?id=eq.{target['id']}", {"closer_name": surname, "role": role})
+    log(f"Supabase closer_line_users: line_user_id={target['line_user_id']} に "
+        f"closer_name=「{surname}」・role=「{role}」を即時反映しました。")
+
+
+def update_employees_doc(closer_name, role_label, agency):
     if not os.path.exists(EMPLOYEES_PATH):
         log(f"警告: {EMPLOYEES_PATH} が見つかりません。従業員.mdの更新をスキップします。")
         return False
@@ -190,9 +213,9 @@ def update_employees_doc(closer_name, role, agency):
         insert_idx += 1
 
     if agency:
-        row = f"| {closer_name} | {agency} | {role} | | | |\n"
+        row = f"| {closer_name} | {agency} | {role_label} | | | |\n"
     else:
-        row = f"| {closer_name} | {role} | | | |\n"
+        row = f"| {closer_name} | {role_label} | | | |\n"
 
     lines.insert(insert_idx, row)
     with open(EMPLOYEES_PATH, "w", encoding="utf-8") as f:
@@ -221,12 +244,11 @@ def create_goalmap_member(closer_name):
 
 def main():
     ap = argparse.ArgumentParser(description="商談録音分析パイプラインに新しい営業マンを登録する")
-    ap.add_argument("closer_name", nargs="?", help="正式な氏名（クローザー名として使う表記）")
-    ap.add_argument("--display-name", help="LINEの表示名（closer_line_users の仮登録行を検索するキー）")
-    ap.add_argument("--line-user-id", help="display_nameで一意に絞れない場合に直接指定")
-    ap.add_argument("--appointer", action="store_true", help="アポインターとしても登録する（webhook.pyのクイックリプライに追加）")
+    ap.add_argument("surname", nargs="?", help="苗字（クローザー名・KNOWN_*の登録キーとして使う表記）")
+    ap.add_argument("--full-name", help="フルネーム（スペースあり推奨。表記ゆれ登録に使う。例: '山田 太郎'）")
+    ap.add_argument("--role", choices=["closer", "appointer", "admin"], default="closer",
+                     help="役割（既定: closer）")
     ap.add_argument("--agency", help="代理店所属の場合の会社名（従業員.mdの代理店メンバー表に追加）")
-    ap.add_argument("--role", default="営業", help="従業員.mdに記載する役職（既定: 営業）")
     ap.add_argument("--goalmap", action="store_true", help="tools/goalmap/members/<氏名>.json の雛形も作成する")
     ap.add_argument("--list-pending", action="store_true", help="仮登録待ち（closer_name未設定）の一覧を表示して終了")
     args = ap.parse_args()
@@ -237,29 +259,23 @@ def main():
         list_pending(env)
         return
 
-    if not args.closer_name:
-        sys.exit("氏名を指定するか --list-pending を使ってください（-h でヘルプ）")
+    if not args.surname:
+        sys.exit("苗字を指定するか --list-pending を使ってください（-h でヘルプ）")
 
-    row = find_pending_row(env, args.display_name, args.line_user_id)
-    patch = {"closer_name": args.closer_name}
+    update_known_dict(args.role, args.surname, args.full_name)
+    patch_pending_row_if_exists(env, args.surname, args.role)
+    update_employees_doc(args.surname, ROLE_LABEL[args.role], args.agency)
     if args.goalmap:
-        patch["goalmap_member_name"] = args.closer_name
-
-    sb_request(env, "PATCH", f"closer_line_users?id=eq.{row['id']}", patch)
-    log(f"Supabase closer_line_users: line_user_id={row['line_user_id']} に closer_name=「{args.closer_name}」を設定しました。")
-
-    if args.appointer:
-        update_webhook_appointer_options(args.closer_name)
-    update_employees_doc(args.closer_name, args.role, args.agency)
-    if args.goalmap:
-        create_goalmap_member(args.closer_name)
+        create_goalmap_member(args.surname)
 
     print("\n--- 残りの手動ステップ ---")
-    print(f"1. Notion「DB 商談分析＆アポ分析」の クローザー{'／アポインター' if args.appointer else ''} 選択肢に"
-          f"「{args.closer_name}」を追加する（Claude+Notion MCPで実施）")
-    if args.appointer:
-        print("2. line-webhook/api/webhook.py の変更をコミット・pushする（今川さん個人のVercelプロジェクトに自動反映）")
-    print("3. 従業員.md ・（該当すれば）goalmapファイルの中身を確認・コミットする")
+    if args.role in ("closer", "appointer"):
+        print(f"1. Notion「DB 商談分析＆アポ分析」の {ROLE_LABEL[args.role]} 選択肢に「{args.surname}」を追加する"
+              "（Claude+Notion MCPで実施）")
+    if args.role == "closer":
+        print("2. Notion「💰 予算と達成率」に今月分の予算行を追加する（週次実績配信のKPI逆算に使う。Claude+Notion MCPで実施）")
+    print("3. line-webhook/api/webhook.py の変更をコミット・pushする（今川さん個人のVercelプロジェクトに自動反映）")
+    print("4. 従業員.md ・（該当すれば）goalmapファイルの中身を確認・コミットする")
 
 
 if __name__ == "__main__":
