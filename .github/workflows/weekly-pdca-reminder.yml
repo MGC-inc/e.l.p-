@@ -1,6 +1,6 @@
 name: weekly-pdca-reminder
 
-# 今週の宿題（週次PDCA）をBOTに送っていない人への催促（tools/shuuji/pdca_reminder.py）。
+# 今週の宣言（週次PDCA）をBOTに送っていない人への催促（tools/shuuji/pdca_reminder.py）。
 # 誰に送るかはNotionの記録で判定する（LINEで送った人も、議事録から反映された人も「提出済み」）。
 # Claude／LLMを一切経由しない決定的コード。送るのは平日の日中だけ（月火は定休）。
 #   水 14:30 JST  stage 1   MTのあと（BOT送信の締切11:15・議事録の反映11:50のあと）
@@ -32,7 +32,7 @@ jobs:
       - uses: actions/setup-python@v5
         with: { python-version: "3.12" }
 
-      - name: 宿題が未提出の人への催促
+      - name: 宣言が未提出の人への催促
         env:
           DEAL_LINE_CHANNEL_ACCESS_TOKEN: ${{ secrets.DEAL_LINE_CHANNEL_ACCESS_TOKEN }}
           IMAGAWA_LINE_USER_ID: ${{ secrets.IMAGAWA_LINE_USER_ID }}

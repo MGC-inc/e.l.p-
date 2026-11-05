@@ -43,7 +43,7 @@ def week_start_and_label(out_dir: str) -> tuple[str, str]:
     cfg = {row["key"]: row["value"] for row in csv.DictReader(open(f"{out_dir}/config.csv", encoding="utf-8-sig"))}
     start = datetime.date.fromisoformat(cfg["data_week_start"])
     # 記録のキー（pdca_pending_week）は集計対象週（先週）の月曜のまま。表示ラベルは
-    # 宿題と目標の対象＝MTを開く今週（月〜日）にする
+    # 宣言と目標の対象＝MTを開く今週（月〜日）にする
     this_mon = start + datetime.timedelta(days=7)
     end = this_mon + datetime.timedelta(days=6)
     label = f"{this_mon.month}/{this_mon.day}〜{end.month}/{end.day}"
@@ -73,7 +73,7 @@ def pdca_template(name: str, week_label: str, role: str) -> str:
         f"📝週次PDCA｜{name}さん（今週：{week_label}）\n\n"
         "週次MTの最後に、下の3つに書いてこのまま返信してください。\n\n"
         "①先週の振り返り・学び（うまくいったこと／いかなかったことと、その理由）\n\n\n"
-        "②今週の宿題を1つ（いつ・誰と・何を）\n\n\n"
+        "②今週の宣言を1つ（いつ・誰と・何を）\n\n\n"
         "③今週の目標（数字で。日曜までの分）\n" + target_lines
     )
 
@@ -96,11 +96,11 @@ if os.path.exists(f"{out}/slides_manifest.csv"):
     slides = {r["agency"]: r["file"] for r in csv.DictReader(open(f"{out}/slides_manifest.csv", encoding="utf-8-sig"))}
 
 HOW_TO = (
-    "【MTの最後に、次のメッセージの「宿題を登録する」ボタンを押す】\n"
+    "【MTの最後に、次のメッセージの「宣言を登録する」ボタンを押す】\n"
     "質問に答えるだけ（約30秒）です。\n"
-    "①今週の宿題 ②いつ ③誰と ④今週の数字の目標（過去データからのおすすめ付き） ⑤先週の学び（スキップ可）"
+    "①今週の宣言 ②いつ ③誰と ④今週の数字の目標（過去データからのおすすめ付き） ⑤先週の学び（スキップ可）"
 )
-REGISTER_BUTTON = "宿題を登録する"   # line-webhook/api/webhook.py の HW_TRIGGER と同じ文言
+REGISTER_BUTTON = "宣言を登録する"   # line-webhook/api/webhook.py の HW_TRIGGER と同じ文言
 
 for r in csv.DictReader(open(f"{out}/manifest.csv", encoding="utf-8-sig")):
     if mgr and r["is_manager"] != "yes":
@@ -110,7 +110,7 @@ for r in csv.DictReader(open(f"{out}/manifest.csv", encoding="utf-8-sig")):
         pdf_text += f"▼MTスライド\n{base}/{slides[r['agency']]}\n"
     pdf_text += f"▼個人PDCAシート\n{base}/{r['file']}\n\n{HOW_TO}"
     template_text = (f"📝週次PDCA｜{r['name']}さん（今週：{week_label}）\n\n"
-                     "週次MTで決めた「宿題」と「数字の目標」を、下のボタンから登録してください。")
+                     "週次MTで決めた「宣言」と「数字の目標」を、下のボタンから登録してください。")
     to = test_to or r["line_user_id"]
     if test_to:
         pdf_text = f"【テスト送信・本来の宛先: {r['name']}さん（{r['agency']}）】\n{pdf_text}"

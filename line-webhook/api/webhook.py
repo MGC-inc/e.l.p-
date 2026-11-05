@@ -884,7 +884,7 @@ PDCA_TARGET_LABELS = {
 # 返信されても本文に混ざらないよう取り除く（tools/shuuji/deliver.pyのテンプレと揃える）
 PDCA_PROMPTS = [
     "先週の振り返り・学び（うまくいったこと／いかなかったことと、その理由）", "先週の振り返り・学び",
-    "今週の宿題を1つ（いつ・誰と・何を）", "今週の目標（数字で。日曜までの分）",
+    "今週の宣言を1つ（いつ・誰と・何を）", "今週の宿題を1つ（いつ・誰と・何を）", "今週の目標（数字で。日曜までの分）",
     "なぜ低いと思いますか？（原因）", "良くするために、今週何をしますか？（いつ・誰と・何を）", "今週の目標（数字で）",
 ]
 
@@ -1370,7 +1370,7 @@ def handle_target(event: dict, closer: dict) -> bool:
 
 
 
-# ---- 新メニュー（困ったメモ・宿題の登録・うまくいったトーク・有力な共有・契約後の案件確認） ----
+# ---- 新メニュー（困ったメモ・宣言の登録・うまくいったトーク・有力な共有・契約後の案件確認） ----
 # 状態は deal_recordings のマーカー行（storage_path=種類、status='awaiting_種類'）で持つ。
 # 手順は result 列、途中の入力は customer_name 列（JSON）、NotionページIDは notion_url 列に入れる。
 TROUBLE_TRIGGER = "困ったメモ"
@@ -1378,12 +1378,13 @@ TROUBLE_REVIEW_TEXT = "困ったメモを見返す"
 TALK_TEXT = "全員の商談のうまくいったトーク"
 SHARE_TEXT = "最近の有力な共有"
 POST_CONTRACT_TEXT = "契約後の案件確認"
-HW_TRIGGER = "宿題を登録する"
+HW_TRIGGER = "宣言を登録する"
+HW_TRIGGER_OLD = "宿題を登録する"   # 旧ボタン（送信済みのメッセージに残っている）も受け付ける
 MENU_TEXTS = {GOAL_BUTTON_TEXT, KPI_BUTTON_TEXT, ANALYSIS_BUTTON_TEXT, STATUS_DEFINITION_TEXT, DECLARE_TEXT,
               KPI_MONTH_TEXT, TARGET_TRIGGER, TROUBLE_TRIGGER, TROUBLE_REVIEW_TEXT, TALK_TEXT, SHARE_TEXT,
               POST_CONTRACT_TEXT, HW_TRIGGER}
 FLOW_EXPIRE_MINUTES = 60
-# 宿題の登録は、途中で手が止まっても続きから再開できるよう長めにする（2026-11-05 今川さん指示）
+# 宣言の登録は、途中で手が止まっても続きから再開できるよう長めにする（2026-11-05 今川さん指示）
 FLOW_EXPIRE_MINUTES_BY_KIND = {"homework": 12 * 60}
 TROUBLE_DB = "406da094-9999-81ca-ab25-ff9f1b7933f5"   # 🆘 困ったメモ
 TALK_DB = "406da094-9999-81e7-8615-d19651c1f165"     # 🗣 うまくいったトーク集（scripts/talk_share_sync.py が作る）
@@ -1392,8 +1393,8 @@ COOLING_OFF_DAYS = 8
 
 
 def cancel_flows(line_user_id: str, keep: tuple = ()) -> None:
-    """メニューが押されたら、途中だった質問（フィードバック・目標・困ったメモ。宿題は残す）は閉じる。
-    keepに入れた種類は閉じない（宿題は、ほかのボタンを押しても消さず、あとから続きから再開できる）。"""
+    """メニューが押されたら、途中だった質問（フィードバック・目標・困ったメモ。宣言は残す）は閉じる。
+    keepに入れた種類は閉じない（宣言は、ほかのボタンを押しても消さず、あとから続きから再開できる）。"""
     kinds = ",".join(k for k in ("feedback", "target", "homework", "trouble") if k not in keep)
     if kinds:
         sb("PATCH", f"deal_recordings?line_user_id=eq.{line_user_id}&storage_path=in.({kinds})"
@@ -1610,7 +1611,7 @@ def handle_trouble(event: dict, closer: dict) -> bool:
     return False
 
 
-# ---------- 宿題の登録（ボタンで答える） ----------
+# ---------- 宣言の登録（ボタンで答える） ----------
 HW_OTHER = "その他（自分で書く）"
 HW_CHOICES = {
     "appointer": ["アポ取りトークのロープレ", "訪問の入りのセリフ練習", "断られた場面の切り返し練習",
@@ -1625,11 +1626,11 @@ APPOINTER_SKIP_METRICS = {"商談数"}   # アポインターは商談数を聞�
 
 
 def hw_metrics_of(d: dict) -> list:
-    """この人に聞く数字の項目。宿題登録の開始時に役割から決めて d["metrics"] に入れておく。"""
+    """この人に聞く数字の項目。宣言登録の開始時に役割から決めて d["metrics"] に入れておく。"""
     labels = d.get("metrics") or [label for label, _ in HW_METRICS]
     return [m for m in HW_METRICS if m[0] in labels]
 HW_DEFAULT_OPTS = {"訪問数": [20, 40, 60, 80], "アポ数": [3, 5, 8, 10], "商談数": [1, 2, 3, 5], "契約数": [0, 1, 2, 3]}
-HW_QUESTION_Q1 = "📝 今週の宿題を登録します（約30秒・全5問）\n\n① 今週の宿題を1つ選んでください"
+HW_QUESTION_Q1 = "📝 今週の宣言を登録します（約30秒・全5問）\n\n① 今週の宣言を1つ選んでください"
 
 
 def recommended_targets(member: str) -> dict | None:
@@ -1704,7 +1705,7 @@ def hw_week_key(closer: dict) -> str:
 
 def hw_summary(d: dict) -> str:
     nums = "・".join(f"{label}{d.get('t_' + label, '-')}" for label, _ in hw_metrics_of(d))
-    s = f"宿題：{d.get('what')}\nいつ：{d.get('when')}／誰と：{d.get('who')}\n数字：{nums}"
+    s = f"宣言：{d.get('what')}\nいつ：{d.get('when')}／誰と：{d.get('who')}\n数字：{nums}"
     if d.get("learn"):
         s += f"\n先週の学び：{d['learn']}"
     return s
@@ -1773,16 +1774,16 @@ def hw_ask_targets(reply: str, row: dict, d: dict, name: str, prefix: str = "") 
 
 
 def hw_progress_text(d: dict) -> str:
-    """宿題の登録で、何が済んでいて何がまだかを一覧にする（再開のときと、催促で使う）。"""
+    """宣言の登録で、何が済んでいて何がまだかを一覧にする（再開のときと、催促で使う）。"""
     labels = [label for label, _ in hw_metrics_of(d)]
     nums = [f"{label}{d['t_' + label]}" for label in labels if d.get("t_" + label) is not None]
-    items = [("① 宿題", d.get("what")), ("② いつやるか", d.get("when")), ("③ 誰とやるか", d.get("who")),
+    items = [("① 宣言", d.get("what")), ("② いつやるか", d.get("when")), ("③ 誰とやるか", d.get("who")),
              ("④ 数字の目標", "・".join(nums) if nums else None)]
     return "\n".join(f"{'✅' if v else '⬜'} {k}" + (f"：{v}" if v else "：まだ") for k, v in items)
 
 
 def hw_resume_row(uid: str, closer: dict) -> dict | None:
-    """途中まで進んだ宿題の登録があれば、その行を生き返らせて返す（取り消し・期限切れになった直近72時間のものも含む）。"""
+    """途中まで進んだ宣言の登録があれば、その行を生き返らせて返す（取り消し・期限切れになった直近72時間のものも含む）。"""
     since = (datetime.now(timezone.utc) - timedelta(hours=72)).strftime("%Y-%m-%dT%H:%M:%SZ")
     rows = sb("GET", f"deal_recordings?line_user_id=eq.{uid}&storage_path=eq.homework"
                      f"&status=in.(awaiting_homework,homework_expired,flow_cancelled)&received_at=gte.{since}"
@@ -1799,7 +1800,7 @@ def hw_resume_row(uid: str, closer: dict) -> dict | None:
 
 
 def hw_log_unhandled(uid: str, reason: str, text: str) -> None:
-    """宿題の登録に失敗した（読み取れなかった・横取りしなかった）文面を残す。あとから原因を追えるように。"""
+    """宣言の登録に失敗した（読み取れなかった・横取りしなかった）文面を残す。あとから原因を追えるように。"""
     try:
         sb("POST", "deal_recordings", {"line_user_id": uid, "storage_path": "homework_log", "status": "logged",
                                        "result": reason, "customer_name": text[:300]})
@@ -1808,12 +1809,12 @@ def hw_log_unhandled(uid: str, reason: str, text: str) -> None:
 
 
 def hw_next(reply: str, row: dict, d: dict, name: str, choices: list, prefix: str = "") -> None:
-    """まだ決まっていない項目を、①宿題→②いつ→③誰と→④数字→⑤学び→確認 の順に聞く。
+    """まだ決まっていない項目を、①宣言→②いつ→③誰と→④数字→⑤学び→確認 の順に聞く。
     ボタンで1問ずつ答えた場合も、文面で送られた内容を読み取った場合も、同じ順で足りない所だけ聞く。"""
     labels = [label for label, _ in hw_metrics_of(d)]
     if not d.get("what"):
         flow_update(row, step="what", data=d)
-        line_reply(reply, [{"type": "text", "text": prefix + "① 今週の宿題を1つ選んでください", "quickReply": quick_reply(choices)}])
+        line_reply(reply, [{"type": "text", "text": prefix + "① 今週の宣言を1つ選んでください", "quickReply": quick_reply(choices)}])
     elif not d.get("when"):
         flow_update(row, step="when", data=d)
         line_reply(reply, [{"type": "text", "text": prefix + "② いつやりますか？", "quickReply": quick_reply(HW_WHENS)}])
@@ -1837,7 +1838,7 @@ def hw_next(reply: str, row: dict, d: dict, name: str, choices: list, prefix: st
 
 
 def hw_parse_text(text: str, labels: list) -> dict | None:
-    """文面で送られた宿題・数字の目標を、Geminiで項目ごとに読み取る。宿題の話でなければ {"is_homework": False}。
+    """文面で送られた宣言・数字の目標を、Geminiで項目ごとに読み取る。宣言の話でなければ {"is_homework": False}。
     読み取れなかった（キー未設定・通信エラー）ときは None。"""
     key = os.environ.get("GEMINI_API_KEY")
     if not key:
@@ -1845,12 +1846,12 @@ def hw_parse_text(text: str, labels: list) -> dict | None:
     keys = {label: f"n{i}" for i, label in enumerate(labels)}   # 日本語のキーだと抜けることがあるため英数字のキーで聞く
     nums = "、".join(f'"{keys[label]}": {label}の目標（数字かnull）' for label in labels)
     prompt = (
-        "訪問販売の営業メンバーが、週次ミーティングで決めた「今週の宿題」と「今週の数字の目標」をLINEで送ってきました。"
+        "訪問販売の営業メンバーが、週次ミーティングで決めた「今週の宣言」と「今週の数字の目標」をLINEで送ってきました。"
         "次のJSONだけを返してください。書かれていない項目は null にし、推測で埋めないでください。"
-        "what は本人の言葉をできるだけそのまま短く（1文。宿題が複数あれば「、」でつなぐ）。数字は今週の目標の数（日報の実績報告ではない）。"
+        "what は本人の言葉をできるだけそのまま短く（1文。宣言が複数あれば「、」でつなぐ）。数字は今週の目標の数（日報の実績報告ではない）。"
         "when・who は本文に書かれているときだけ入れる（「今週」はwhenに入れない）。\n"
-        '{"is_homework": 今週の宿題か数字の目標を伝える文ならtrue（日報・質問・雑談ならfalse）, '
-        '"what": 今週の宿題, "when": いつやるか, "who": 誰とやるか, ' + nums +
+        '{"is_homework": 今週の宣言か数字の目標を伝える文ならtrue（日報・質問・雑談ならfalse）, '
+        '"what": 今週の宣言, "when": いつやるか, "who": 誰とやるか, ' + nums +
         ', "learn": 先週の学び・反省}\n\n文面:\n' + text)
     body = json.dumps({"contents": [{"parts": [{"text": prompt}]}],
                        "generationConfig": {"temperature": 0, "responseMimeType": "application/json", "responseSchema": {
@@ -1895,8 +1896,8 @@ def _gemini_json(model: str, key: str, body: bytes):
 
 
 def handle_homework_text(event: dict, closer: dict) -> bool:
-    """宿題・目標を文面で送ってきた人の内容を読み取り、足りない項目だけボタンで聞いて、確認してから登録する。
-    宿題の話ではなかったら False（ほかの処理に回す）。"""
+    """宣言・目標を文面で送ってきた人の内容を読み取り、足りない項目だけボタンで聞いて、確認してから登録する。
+    宣言の話ではなかったら False（ほかの処理に回す）。"""
     uid, reply, text = event["source"]["userId"], event["replyToken"], event["message"]["text"].strip()
     name, role = closer.get("closer_name") or "", closer.get("role") or "appointer"
     choices = HW_CHOICES["closer" if role == "closer" else "appointer"]
@@ -1904,7 +1905,7 @@ def handle_homework_text(event: dict, closer: dict) -> bool:
     parsed = hw_parse_text(text, labels)
     if parsed is None:   # 読み取りに失敗したときは、これまでどおりボタンへ案内する
         hw_log_unhandled(uid, "unparsed", text)
-        line_reply(reply, [{"type": "text", "text": "宿題はボタンで登録します（質問に答えるだけで30秒）。下のボタンを押してください。",
+        line_reply(reply, [{"type": "text", "text": "宣言はボタンで登録します（質問に答えるだけで30秒）。下のボタンを押してください。",
                             "quickReply": quick_reply([HW_TRIGGER])}])
         return True
     if not parsed.get("is_homework"):
@@ -1928,7 +1929,7 @@ def handle_homework_text(event: dict, closer: dict) -> bool:
     row = flow_active(uid, "homework")
     if not row or row.get("expired"):
         return False
-    hw_next(reply, row, d, name, choices, prefix="📝 送ってくれた内容を宿題として読み取りました。\n\n")
+    hw_next(reply, row, d, name, choices, prefix="📝 送ってくれた内容を宣言として読み取りました。\n\n")
     return True
 
 
@@ -1944,7 +1945,7 @@ def handle_homework(event: dict, closer: dict) -> bool:
             hw_next(reply, resumed, d, name, d.get("choices") or choices,
                     prefix="📝 途中まで登録されています。\n" + hw_progress_text(d) + "\n\n続きから進めます。\n\n")
             return True
-        plan = member_month_plan(name)   # 月次MTの改善ポイントがあれば、先に見せて宿題の選択肢にも足す
+        plan = member_month_plan(name)   # 月次MTの改善ポイントがあれば、先に見せて宣言の選択肢にも足す
         q1 = hw_choices_for(plan, choices) if plan else choices
         flow_start(uid, "homework", "what", {"week": hw_week_key(closer), "metrics": metric_labels, "choices": q1})
         msgs = [{"type": "text", "text": hw_plan_intro(plan)}] if plan else []
@@ -1966,9 +1967,9 @@ def handle_homework(event: dict, closer: dict) -> bool:
     if step == "what":
         if text == HW_OTHER:
             flow_update(row, step="what_free")
-            line_reply(reply, [{"type": "text", "text": "宿題の内容を、そのまま送ってください。"}])
+            line_reply(reply, [{"type": "text", "text": "宣言の内容を、そのまま送ってください。"}])
             return True
-        if text not in choices and not d.get("source_text"):   # 文面から始まった人は、宿題も文面で受け取る
+        if text not in choices and not d.get("source_text"):   # 文面から始まった人は、宣言も文面で受け取る
             line_reply(reply, [{"type": "text", "text": "ボタンから選んでください。", "quickReply": quick_reply(choices)}])
             return True
         d["what"] = text
@@ -2419,16 +2420,17 @@ def handle_share_consent(event: dict, closer: dict) -> bool:
     return True
 
 
-# ---------------------------------------------------------------- 月次MTの改善ポイントを、毎週の宿題に落とす（2026-11から）
-# 月次MTで scripts/monthly_plan.py が出した「どこをどれだけ改善すれば何万円増えるか」（計画JSON）を、宿題の登録の
-# 最初に見せ、その改善のための宿題（いつ・誰と・何を）を決めてもらう。月単位のアクションプランはイメージしにくいので、
-# 毎週の宿題で回す（2026-10-29 今川さん指示）。宿題の実行日の前日夕方のリマインドと、実行日の夜の「できましたか？」は
+# ---------------------------------------------------------------- 月次MTの改善ポイントを、毎週の宣言に落とす（2026-11から）
+# 月次MTで scripts/monthly_plan.py が出した「どこをどれだけ改善すれば何万円増えるか」（計画JSON）を、宣言の登録の
+# 最初に見せ、その改善のための宣言（いつ・誰と・何を）を決めてもらう。月単位のアクションプランはイメージしにくいので、
+# 毎週の宣言で回す（2026-10-29 今川さん指示）。宣言の実行日の前日夕方のリマインドと、実行日の夜の「できましたか？」は
 # scripts/homework_reminder.py が送り、ここで返事を📝週次PDCAの「実行チェック」に記録する。
 PLAN_PATH = "plans/{month}.json"   # Supabase Storage（deal-recordingsバケット。非公開）
-HW_DONE, HW_NOT_DONE = "宿題やった！", "宿題できなかった"
+HW_DONE, HW_NOT_DONE = "宣言やった！", "宣言できなかった"
+HW_DONE_OLD, HW_NOT_DONE_OLD = "宿題やった！", "宿題できなかった"   # 旧ボタンも受け付ける
 LEVER_TEXT = {"対面率": "訪問→対面", "対話率": "対面→対話", "アポ率": "対話→アポ", "アポ→契約率": "アポ1件あたりの契約",
               "商談→契約率": "商談→契約", "残る率": "契約が残る率"}
-LEVER_SUGGEST = {   # 宿題①の選択肢の先頭に足す（ボタンの文字は20字まで）
+LEVER_SUGGEST = {   # 宣言①の選択肢の先頭に足す（ボタンの文字は20字まで）
     "対面率": ["時間帯を変えて回る", "インターホンの一言を変える"],
     "対話率": ["玄関先の最初の一言を変える", "ロープレで切り返しを練習"],
     "アポ率": ["同行してアポの取り切りを学ぶ", "アポトークを作り直して見てもらう"],
@@ -2455,7 +2457,7 @@ def member_month_plan(name: str) -> dict | None:
     try:
         raw = sb_storage_get("deal-recordings", PLAN_PATH.format(month=datetime.now(JST).strftime("%Y-%m")))
         return next((m for m in json.loads(raw).get("members", []) if m.get("name") == name), None) if raw else None
-    except Exception as e:  # noqa: BLE001 - 計画が読めなくても宿題の登録は続ける
+    except Exception as e:  # noqa: BLE001 - 計画が読めなくても宣言の登録は続ける
         print(f"month plan read error: {e}")
         return None
 
@@ -2471,7 +2473,7 @@ def hw_plan_intro(m: dict) -> str:
     for i, lv in enumerate((m.get("levers") or [])[:2], 1):
         apo = f"アポ+{lv['gain_apo']:.0f}件→" if lv.get("gain_apo") else ""
         lines.append(f"{i}. {LEVER_TEXT.get(lv['key'], lv['key'])} {plan_pct(lv['now'])}→{plan_pct(lv['bench'])}で {apo}+{lv['gain_sales']:.0f}万")
-    lines.append("\nここを良くするための宿題を、今週1つ決めましょう。")
+    lines.append("\nここを良くするための宣言を、今週1つ決めましょう。")
     return "\n".join(lines)
 
 
@@ -2484,13 +2486,13 @@ def hw_choices_for(m: dict | None, base: list[str]) -> list[str]:
 
 
 def hw_check_week_key(today: date) -> str:
-    """今やっている宿題の週初日（scripts/daily_mission.py の week_homework と同じ決め方）。"""
+    """今やっている宣言の週初日（scripts/daily_mission.py の week_homework と同じ決め方）。"""
     monday = today - timedelta(days=today.weekday())
     return (monday - timedelta(days=7 if today.weekday() >= 2 else 14)).isoformat()
 
 
 def handle_homework_check(event: dict, closer: dict) -> bool:
-    """宿題の実行日の夜に聞いた「できましたか？」への返事を記録する。"""
+    """宣言の実行日の夜に聞いた「できましたか？」への返事を記録する。"""
     text = event["message"]["text"].strip()
     if text not in (HW_DONE, HW_NOT_DONE):
         return False
@@ -2501,7 +2503,7 @@ def handle_homework_check(event: dict, closer: dict) -> bool:
             {"property": "氏名", "select": {"equals": name}},
             {"property": "週初日", "date": {"equals": hw_check_week_key(today)}}]}, "page_size": 1}, NOTION_VERSION_V2)["results"]
         if not found:
-            line_reply(reply, [{"type": "text", "text": "今週の宿題が見つかりませんでした。「宿題を登録する」から登録してください。",
+            line_reply(reply, [{"type": "text", "text": "今週の宣言が見つかりませんでした。「宣言を登録する」から登録してください。",
                                 "quickReply": quick_reply([HW_TRIGGER])}])
             return True
         log = plain(found[0], "実行チェック")
@@ -2522,7 +2524,7 @@ def handle_homework_check(event: dict, closer: dict) -> bool:
 
 
 def handle_new_menu(event: dict, closer: dict) -> bool:
-    """新メニューのボタンと、困ったメモ・宿題登録の質問への返信を処理する。処理したらTrue。"""
+    """新メニューのボタンと、困ったメモ・宣言登録の質問への返信を処理する。処理したらTrue。"""
     text = event["message"]["text"].strip()
     views = {TALK_TEXT: handle_talk_share, SHARE_TEXT: handle_share, POST_CONTRACT_TEXT: handle_post_contract,
              TROUBLE_REVIEW_TEXT: handle_trouble_review}
@@ -3437,8 +3439,13 @@ def handle_event(event: dict):
         welcome_messages[0]["text"] += f"\nあと2つだけ教えてください。まず、フルネームを教えてください（例：{closer['closer_name']} ○○）。"
 
     message_type = event.get("message", {}).get("type")
+    if message_type == "text":   # 旧ボタン（宿題…）の文言は新しい文言（宣言…）に読み替える（2026-11-05 呼び方変更）
+        old_new = {HW_TRIGGER_OLD: HW_TRIGGER, HW_DONE_OLD: HW_DONE, HW_NOT_DONE_OLD: HW_NOT_DONE}
+        t = (event["message"].get("text") or "").strip()
+        if t in old_new:
+            event["message"]["text"] = old_new[t]
     if message_type == "text" and event["message"]["text"].strip() in MENU_TEXTS:
-        cancel_flows(line_user_id, keep=("homework",))   # メニューが押されたら、途中だった質問は閉じる（宿題は残す）
+        cancel_flows(line_user_id, keep=("homework",))   # メニューが押されたら、途中だった質問は閉じる（宣言は残す）
     if message_type in ("audio", "file"):
         handle_audio_message(event, closer, extra_messages=welcome_messages)
     elif welcome_messages:
@@ -3462,17 +3469,17 @@ def handle_event(event: dict):
     elif message_type == "text" and event["message"]["text"].strip() == KPI_MONTH_TEXT:
         handle_kpi_month_request(event, closer)
     elif message_type == "text" and handle_new_menu(event, closer):
-        pass  # 新メニュー（困ったメモ・宿題の登録・うまくいったトーク・有力な共有・契約後の案件確認）。処理済み
+        pass  # 新メニュー（困ったメモ・宣言の登録・うまくいったトーク・有力な共有・契約後の案件確認）。処理済み
     elif message_type == "text" and handle_target(event, closer):
         pass  # 今月のアポ目標の宣言（開始・数字）。処理済み
     elif message_type == "text" and handle_feedback(event, closer):
         pass  # 分析結果へのフィードバック（開始・本文）。処理済み
     elif (message_type == "text" and latest_pending_recording(line_user_id) is None
-          and (re.search(r"宿題", event["message"]["text"])
+          and (re.search(r"宣言|宿題", event["message"]["text"])
                or (closer.get("pdca_pending_week") and re.search(r"[①②③④]|目標", event["message"]["text"])))
           and handle_homework_text(event, closer)):
-        # 宿題・数字の目標を文面で送ってきた場合は、Geminiで読み取って足りない項目だけボタンで聞き、確認してから登録する
-        # （2026-10-28 今川さん指示。ボタンが基本だが、文面の人も取りこぼさない）。宿題の話でなければ下の通常処理へ。
+        # 宣言・数字の目標を文面で送ってきた場合は、Geminiで読み取って足りない項目だけボタンで聞き、確認してから登録する
+        # （2026-10-28 今川さん指示。ボタンが基本だが、文面の人も取りこぼさない）。宣言の話でなければ下の通常処理へ。
         # 商談録音の確認フロー中（お客様名・結果ボタン待ち等）は、その回答を横取りしないよう対象外にする
         pass
     elif message_type == "text":

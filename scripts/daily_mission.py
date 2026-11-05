@@ -69,8 +69,8 @@ BUCKET = "weekly-pdca"
 FOLDER = "daily-mission"
 NO_CARD = {"藤江"}
 PDCA_DB = "17f23c69-8a24-429a-8957-6b5490a87680"   # 📝 週次PDCA記録DB（data_source_id）
-HW_BUTTON = "宿題を登録する"                        # line-webhook/api/webhook.py の HW_TRIGGER と同じ文言
-NO_HOMEWORK = {"今川", "藤江"}                      # 宿題の対象外（tools/shuuji/pdca_reminder.py の NO_REMINDER と同じ）  # 週次の対象外（tools/shuuji/notion_to_csv.py の WEEKLY_HIDDEN と同じ）
+HW_BUTTON = "宣言を登録する"                        # line-webhook/api/webhook.py の HW_TRIGGER と同じ文言
+NO_HOMEWORK = {"今川", "藤江"}                      # 宣言の対象外（tools/shuuji/pdca_reminder.py の NO_REMINDER と同じ）  # 週次の対象外（tools/shuuji/notion_to_csv.py の WEEKLY_HIDDEN と同じ）
 MEETING_FACTOR = {0: 1.0, 1: 0.5}  # クローザーの今日の商談数 → アポ目標にかける割合。2件以上は MEETING_FACTOR_MANY
 MEETING_FACTOR_MANY = 0.25
 
@@ -736,9 +736,9 @@ def flex_message(m: dict, url1: str, h1: int, url2: str, h2: int, today: dt.date
         {"type": "button", "style": "primary", "color": "#1F3A5F", "action": {"type": "message", "label": "今日やる！", "text": "今日やる！"}},
         {"type": "button", "style": "secondary", "action": {"type": "message", "label": "今月の進み具合を見る", "text": "今月の進み具合を見る"}},
     ]
-    if homework:   # 自分で決めた今週の宿題を、毎朝思い出してもらう
+    if homework:   # 自分で決めた今週の宣言を、毎朝思い出してもらう
         body.append({"type": "separator", "margin": "md"})
-        body.append({"type": "text", "text": "📝 今週、自分で決めた宿題", "size": "xs", "color": "#888888", "margin": "md"})
+        body.append({"type": "text", "text": "📝 今週、自分で決めた宣言", "size": "xs", "color": "#888888", "margin": "md"})
         body.append({"type": "text", "text": homework, "size": "sm", "wrap": True, "weight": "bold", "color": "#1F3A5F"})
     elif ask_homework:   # まだ登録していない人には、登録ボタンを付ける（前日のボタンは新しいメッセージで消えるため）
         footer.append({"type": "button", "style": "primary", "color": "#C0392B",
@@ -770,8 +770,8 @@ def flex_message(m: dict, url1: str, h1: int, url2: str, h2: int, today: dt.date
 
 
 def week_homework(today: dt.date) -> dict[str, str]:
-    """今週の宿題（📝週次PDCA記録DB）。キーは宿題を実行する週の前週の月曜（tools/shuuji/deliver.pyのpdca_pending_week）。
-    水曜のMTで決めるので、月火（祝日の稼働日）はまだ先週の宿題を出す。"""
+    """今週の宣言（📝週次PDCA記録DB）。キーは宣言を実行する週の前週の月曜（tools/shuuji/deliver.pyのpdca_pending_week）。
+    水曜のMTで決めるので、月火（祝日の稼働日）はまだ先週の宣言を出す。"""
     monday = today - dt.timedelta(days=today.weekday())
     key = monday - dt.timedelta(days=7 if today.weekday() >= 2 else 14)
     out = {}
@@ -783,12 +783,12 @@ def week_homework(today: dt.date) -> dict[str, str]:
         name = prop_text(r, "氏名")
         if name and plan:
             out[name] = plan + (f"\n数字：{'・'.join(nums)}" if nums else "")
-            try:   # 宿題の「いつ」が今日なら、実行日だと目立たせる（scripts/homework_reminder.py と同じ判定）
+            try:   # 宣言の「いつ」が今日なら、実行日だと目立たせる（scripts/homework_reminder.py と同じ判定）
                 import homework_reminder as HR
                 if today in HR.action_days(HR.when_who(r)[1], key):
-                    out[name] = "🔥 今日は宿題の実行日です\n" + out[name]
+                    out[name] = "🔥 今日は宣言の実行日です\n" + out[name]
             except Exception as e:  # noqa: BLE001
-                print(f"宿題の実行日の判定に失敗（印なしで出します）: {e}")
+                print(f"宣言の実行日の判定に失敗（印なしで出します）: {e}")
     return out
 
 
@@ -873,8 +873,8 @@ def main() -> int:
 
     try:
         homeworks = week_homework(today)
-    except Exception as e:  # noqa: BLE001 - 宿題が読めなくてもカードは送る
-        print(f"今週の宿題の読み込みに失敗（宿題欄なしで送ります）: {e}")
+    except Exception as e:  # noqa: BLE001 - 宣言が読めなくてもカードは送る
+        print(f"今週の宣言の読み込みに失敗（宣言欄なしで送ります）: {e}")
         homeworks = {}
     only_agency = PARTIAL_WORKDAYS.get(today.isoformat())
     agency_set = agency_members(only_agency, month) if only_agency else None
@@ -908,8 +908,8 @@ def main() -> int:
               + (" 【褒める】" if m["big_ahead"] else "") + (" 【まず1件】" if m["fierce"] else "")
               + (f" | 売上{mo['sales']:.1f}/{mo['budget']:.1f}万 あと{mo['remaining']:.1f} 今週+{mo['week_aim']}" if mo else "")
               + (f" ※前回稼働日{m['stale_since']}までで計算" if m["stale_since"] else "")
-              + (f" | 宿題: {homeworks[name].splitlines()[0][:30]}" if name in homeworks
-                 else (" | 宿題未登録→ボタン" if ask_hw_day and name not in NO_HOMEWORK else "")))
+              + (f" | 宣言: {homeworks[name].splitlines()[0][:30]}" if name in homeworks
+                 else (" | 宣言未登録→ボタン" if ask_hw_day and name not in NO_HOMEWORK else "")))
         if args.dry_run:
             continue
         to = users.get(name)

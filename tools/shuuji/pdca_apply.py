@@ -15,10 +15,10 @@ DBの突き合わせと書き込みはこの決定的コードが行う）。
 
 週の対応（水曜MT。tools/shuuji/deliver.pyのpdca_pending_weekと同じキー）:
   今週の記録 = 週初日がMTの前週の月曜（LINEでMTの最後に送った行）
-  評価する記録 = その1週前の月曜（先週のMTで決めた宿題の行）
+  評価する記録 = その1週前の月曜（先週のMTで決めた宣言の行）
 
 反映ルール:
-  - 先週の宿題の行に MT評価（◎○×）と MTメモ を書く
+  - 先週の宣言の行に MT評価（◎○×）と MTメモ を書く
   - 今週の行が無い（LINE未送信）→ 議事録の内容で行を作る（記録元=議事録）
   - 今週の行がある → 議事録で言った内容と違う項目だけ議事録の内容で上書きし、
     記録元=LINE＋議事録で修正。LINEの原文は「元メッセージ」に残っている
@@ -69,7 +69,7 @@ def main() -> None:
     for m in data["members"]:
         name = m["name"]
         lines = []
-        # 1) 先週の宿題の評価
+        # 1) 先週の宣言の評価
         ev = m.get("evaluation")
         if ev in EVALS:
             prev = find_row(name, prev_week)
@@ -81,10 +81,10 @@ def main() -> None:
                     props["議事録URL"] = {"url": url}
                 if not dry:
                     notion("PATCH", f"/pages/{prev['id']}", {"properties": props})
-                lines.append(f"先週の宿題 {ev}")
+                lines.append(f"先週の宣言 {ev}")
             else:
-                lines.append(f"先週の宿題 {ev}（先週の記録が無いため保存先なし）")
-        # 2) 今週の宿題・目標
+                lines.append(f"先週の宣言 {ev}（先週の記録が無いため保存先なし）")
+        # 2) 今週の宣言・目標
         want: dict = {}
         if m.get("learning"):
             want["原因"] = m["learning"]
@@ -119,7 +119,7 @@ def main() -> None:
                         changed.append(f"{k.replace('目標', '')} {old if old is not None else '空'}→{v}")
                         props[k] = {"number": v}
                 elif rich(cur, k).strip() != v.strip():
-                    label = "学び" if k == "原因" else "宿題"
+                    label = "学び" if k == "原因" else "宣言"
                     changed.append(f"{label}を議事録の内容に修正")
                     props[k] = rt(v)
             props["記録元"] = {"select": {"name": "LINE＋議事録で修正" if changed else "LINE"}}

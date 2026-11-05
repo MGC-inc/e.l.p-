@@ -7,13 +7,13 @@ notion_to_csv.pyとは計算方法を変えてある（同じ書き間違いで�
   - 売上: notion_to_csv.pyは「契約金額−キャンセル金額」を自分で計算 → ここはNotionの数式列「実質売上（万円）」を読む
   - 全社の契約数: notion_to_csv.pyは商談一覧の件数 → ここは実績DBの「契約−クーリン−審査落」
   - 月の売上目標: 💰予算と達成率を読み直す
-  - 先週の宿題: 📝週次PDCA記録DBを週初日の完全一致で読み直す
+  - 先週の宣言: 📝週次PDCA記録DBを週初日の完全一致で読み直す
 照合する数字:
   個人: 訪問・対面・アポ・売上・日報の日数（実績DB。対面はランキングの対面→アポ率に使う）、商談・契約（商談一覧）
   代理店: 代理店の合計の和＝全社の合計
   全社: 訪問・アポ・商談・契約・売上、月の契約・売上の実績と売上目標
   直近の週: 週ごとの売上（全社・個人。先週の前4週を含む）
-  宿題: スライドに出す宿題の文が、正しい週の記録と同じか
+  宣言: スライドに出す宣言の文が、正しい週の記録と同じか
 
 使い方: python3 tools/shuuji/audit_outputs.py <notion_to_csv.pyの出力フォルダ> [--notify-on-error | --notify]
 """
@@ -133,7 +133,7 @@ def main() -> int:
         last = [r for r in ws_rows if r["kind"] == "agency" and r["key"] == "全社" and r["week_start"] == ws.isoformat()]
         check("先週の売上（週ごとの表）＝全社の合計", float(last[0]["sales"]) if last else -1, t["sales"])
 
-    # ---- 先週の宿題 ----
+    # ---- 先週の宣言 ----
     key = (ws - datetime.timedelta(days=7)).isoformat()
     recs = query_all(f"/data_sources/{PDCA_DB}/query", {"property": "週初日", "date": {"equals": key}}, NOTION_VERSION_V2)
     truth = {prop_text(r, "氏名"): "".join(x.get("plain_text", "") for x in r["properties"]["アクションプラン"]["rich_text"])
@@ -141,7 +141,7 @@ def main() -> int:
     for name in members:
         shown = (pdca.get(name) or {}).get("action", "")
         if bool(shown) != bool(truth.get(name, "").strip()):
-            errors.append(f"・{name} 先週の宿題: 資料{'あり' if shown else 'なし'}／Notion（週初日{key}）{'あり' if truth.get(name) else 'なし'}")
+            errors.append(f"・{name} 先週の宣言: 資料{'あり' if shown else 'なし'}／Notion（週初日{key}）{'あり' if truth.get(name) else 'なし'}")
 
     head = f"週次MT資料の再確認（{ws.month}/{ws.day}〜{we.month}/{we.day}）"
     if errors:
@@ -150,7 +150,7 @@ def main() -> int:
         if "--notify-on-error" in sys.argv or "--notify" in sys.argv:
             notify_admin(text)
         return 1
-    text = f"✅ {head}: 個人{len(results)}名・代理店・全社・月・宿題の数字がすべてNotionと一致"
+    text = f"✅ {head}: 個人{len(results)}名・代理店・全社・月・宣言の数字がすべてNotionと一致"
     print(text)
     if "--notify" in sys.argv:
         notify_admin(text)

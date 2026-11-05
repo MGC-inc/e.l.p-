@@ -1,10 +1,10 @@
 """使い方: python pdca_reminder.py --stage 1|2|report [--dry-run]
 
-今週の宿題（週次PDCA）をBOTに送っていない人へ、催促LINEを送る（商談分析運用.md 8章参照）。
+今週の宣言（週次PDCA）をBOTに送っていない人へ、催促LINEを送る（商談分析運用.md 8章参照）。
 
 ■ 誰に送るか（判定はNotionの記録が正）
   Supabase closer_line_users.pdca_pending_week が立っている（配信済みで未返信の）人のうち、
-  📝週次PDCA記録DBに「その週の宿題（アクションプラン）が入った行」が無い人。
+  📝週次PDCA記録DBに「その週の宣言（アクションプラン）が入った行」が無い人。
   ・LINEで送った場合も、MTの議事録から反映した場合（pdca_apply.py）も、Notionに行ができるので同じ扱い
   ・pdca_pending_weekは再配信などで立ち直ることがあり、それだけで判定すると提出済みの人にも送ってしまう。
     Notionに記録がある人は、印（pdca_pending_week）も外す
@@ -14,7 +14,7 @@
   --stage 1       水 14:30 JST  MTのあと（BOT送信の締切11:15と、議事録の反映11:50のあと）。やさしく「届いていません」
   --stage 2       木 09:00 JST  木曜は「アポ中心」の日。今日の動きを決めるために、今日18時までに送ってもらう
   --stage report  木 18:00 JST  まだ出していない人を、代理店ごとに今川さんだけに知らせる（本人には送らない）
-  --stage guide   手動（今川さんの指示のとき）。宿題の決め方が分からない人向けに、本人のKPIページ（先週分・直近4週の推移）の
+  --stage guide   手動（今川さんの指示のとき）。宣言の決め方が分からない人向けに、本人のKPIページ（先週分・直近4週の推移）の
                   リンクを付けて「先週の数字を見る→もったいない所を1つ選ぶ→今週やることを決める」を順に案内する
   催促には、本人ごとに「何が登録済みで何がまだか」の一覧を付ける（途中まで進めた人は、済んでいる所は飛ばして続きから）
   催促は本人あてに最大2回まで。それでも出ない人は、リーダー／今川さんが声をかける（マニュアル/週次MT.md）
@@ -57,7 +57,7 @@ def sb(method: str, path: str, data: dict | None = None):
         return json.loads(body) if body else None
 
 
-REGISTER_BUTTON = "宿題を登録する"   # line-webhook/api/webhook.py の HW_TRIGGER と同じ文言
+REGISTER_BUTTON = "宣言を登録する"   # line-webhook/api/webhook.py の HW_TRIGGER と同じ文言
 
 
 def push(to: str, text: str, button: str | None = None) -> int | str:
@@ -77,7 +77,7 @@ def push(to: str, text: str, button: str | None = None) -> int | str:
 
 
 def week_label(week_start_iso: str) -> str:
-    # week_start_isoは集計対象週（先週）の月曜。表示は宿題の対象＝その翌週（deliver.pyと同じ）
+    # week_start_isoは集計対象週（先週）の月曜。表示は宣言の対象＝その翌週（deliver.pyと同じ）
     start = datetime.date.fromisoformat(week_start_iso) + datetime.timedelta(days=7)
     end = start + datetime.timedelta(days=6)
     return f"{start.month}/{start.day}〜{end.month}/{end.day}"
@@ -87,7 +87,7 @@ def template(role: str) -> str:
     # deliver.pyのpdca_template()と同じ項目（webhook.pyのPDCA_TARGET_LABELSと一致させること）
     targets = ("訪問数：\nアポ数：\n商談数（自アポ）：\n商談数（他アポ）：\n契約数（自アポ）：\n契約数（他アポ）：\n"
                if role == "closer" else "訪問数：\nアポ数：\n商談数：\n契約数：\n")
-    return ("①先週の振り返り・学び\n\n\n②今週の宿題を1つ（いつ・誰と・何を）\n\n\n③今週の目標（数字で。日曜までの分）\n" + targets)
+    return ("①先週の振り返り・学び\n\n\n②今週の宣言を1つ（いつ・誰と・何を）\n\n\n③今週の目標（数字で。日曜までの分）\n" + targets)
 
 
 def kpi_url(name: str, view: str) -> str:
@@ -99,7 +99,7 @@ def kpi_url(name: str, view: str) -> str:
 
 
 def hw_state(uid: str, week: str) -> dict:
-    """宿題の登録を途中まで進めた人の、入力済みの内容（Botの質問の途中経過。直近72時間の分）。なければ空。"""
+    """宣言の登録を途中まで進めた人の、入力済みの内容（Botの質問の途中経過。直近72時間の分）。なければ空。"""
     since = (datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(hours=72)).strftime("%Y-%m-%dT%H:%M:%SZ")
     rows = sb("GET", f"deal_recordings?line_user_id=eq.{urllib.parse.quote(uid)}&storage_path=eq.homework"
                      f"&status=in.(awaiting_homework,homework_expired,flow_cancelled)&received_at=gte.{since}"
@@ -116,7 +116,7 @@ def hw_state(uid: str, week: str) -> dict:
 
 def hw_items(d: dict) -> list[tuple[str, str | None]]:
     nums = [f"{k[2:]}{v}" for k, v in d.items() if k.startswith("t_") and v is not None]
-    return [("① 宿題", d.get("what")), ("② いつやるか", d.get("when")), ("③ 誰とやるか", d.get("who")),
+    return [("① 宣言", d.get("what")), ("② いつやるか", d.get("when")), ("③ 誰とやるか", d.get("who")),
             ("④ 数字の目標", "・".join(nums) if nums else None)]
 
 
@@ -139,8 +139,8 @@ def message(stage: str, name: str, role: str, label: str, d: dict | None = None)
                    if role != "closer" else
                    "・商談からの契約率が低い → 毎日、自分の録音を1本聞き返して、断られた場面の切り返しを直す\n"
                    "・クーリングオフが多い → 契約の場でご主人の同意を必ず取る（電話でもOK）")
-        return (f"📝{name}さん、今週（{label}）の宿題がまだ登録されていません。\n"
-                "宿題の決め方を、3ステップでご案内します。\n\n"
+        return (f"📝{name}さん、今週（{label}）の宣言がまだ登録されていません。\n"
+                "宣言の決め方を、3ステップでご案内します。\n\n"
                 "① まず、先週の自分の数字を見る\n"
                 f"▼先週のKPI（どこで数字が落ちているか）\n{kpi_url(name, 'week')}\n"
                 f"▼直近4週の推移\n{kpi_url(name, 'trend')}\n"
@@ -149,16 +149,16 @@ def message(stage: str, name: str, role: str, label: str, d: dict | None = None)
                 "平均より低い所、先週うまくいかなかった所の中から、一番もったいない所を1つだけ。\n\n"
                 "③ その反省点を改善するために、今週どんなアクションを起こすかを1つ決める\n"
                 "「いつ・誰と・何をするか」まで決めてください。例：\n" + example + "\n\n"
-                "決まったら、下の「宿題を登録する」ボタンを押して、質問に答えるだけです（約30秒）。\n"
-                "文章で「宿題：〜　いつ：〜　誰と：〜　訪問◯・アポ◯」と送ってもOKです。")
+                "決まったら、下の「宣言を登録する」ボタンを押して、質問に答えるだけです（約30秒）。\n"
+                "文章で「宣言：〜　いつ：〜　誰と：〜　訪問◯・アポ◯」と送ってもOKです。")
     d = d or {}
     how = ("済んでいる所は飛ばして、続きから進められます（約30秒）。" if d.get("what")
            else "質問に答えるだけで進められます（約30秒）。")
     status = f"【登録の状況】\n{checklist(d)}\n\n"
     if stage == "1":
-        return (f"📝{name}さん、今週（{label}）の宿題の登録が、まだ終わっていません。\n\n{status}"
-                f"今朝の週次MTで決めた「宿題」と「数字の目標」を、下のボタンから登録してください。{how}")
-    return (f"📝{name}さん、今週（{label}）の宿題の登録が、まだ終わっていません。\n\n{status}"
+        return (f"📝{name}さん、今週（{label}）の宣言の登録が、まだ終わっていません。\n\n{status}"
+                f"今朝の週次MTで決めた「宣言」と「数字の目標」を、下のボタンから登録してください。{how}")
+    return (f"📝{name}さん、今週（{label}）の宣言の登録が、まだ終わっていません。\n\n{status}"
             "今日（木）は「アポ中心」の日です。今日の動きを決めるためにも、今日18時までに、下のボタンから登録してください。"
             f"{how}")
 
@@ -171,14 +171,14 @@ def main() -> None:
     if not rows:
         print("配信済みで未返信の人は0人です。")
         return
-    week = max(r["pdca_pending_week"] for r in rows)  # 今週の宿題の対象（deliver.pyが付けた週）
+    week = max(r["pdca_pending_week"] for r in rows)  # 今週の宣言の対象（deliver.pyが付けた週）
     rows = [r for r in rows if r["pdca_pending_week"] == week]
 
     recs = query_all(f"/data_sources/{PDCA_DB}/query", {"property": "週初日", "date": {"equals": week}}, "2025-09-03")
     submitted = {prop_text(r, "氏名") for r in recs
                  if "".join(t.get("plain_text", "") for t in r["properties"]["アクションプラン"]["rich_text"]).strip()}
 
-    # Notionに宿題がある人は、再配信などで立ち直った「未返信」の印を外す
+    # Notionに宣言がある人は、再配信などで立ち直った「未返信」の印を外す
     for r in rows:
         if r["closer_name"] in submitted and not dry:
             sb("PATCH", f"closer_line_users?line_user_id=eq.{urllib.parse.quote(r['line_user_id'])}", {"pdca_pending_week": None})
@@ -200,7 +200,7 @@ def main() -> None:
         for r in missing:
             st = state_label(hw_state(r["line_user_id"], week))
             by.setdefault(agency.get(r["closer_name"], "（所属なし）"), []).append(f"{r['closer_name']}（{st}）")
-        text = (f"📝今週（{label}）の宿題、木曜18時時点の未提出は{len(missing)}名です。\n"
+        text = (f"📝今週（{label}）の宣言、木曜18時時点の未提出は{len(missing)}名です。\n"
                 + "\n".join(f"・{a}: {'、'.join(ns)}" for a, ns in by.items())
                 + "\n\n本人への催促は済んでいます。各代理店のリーダーから声をかけてもらうか、1対1で確認してください。")
         print(text)

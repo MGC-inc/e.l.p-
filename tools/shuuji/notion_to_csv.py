@@ -468,7 +468,7 @@ def _rich_text_plain(row: dict, prop_name: str) -> str:
 # 見出しをコピーしたまま返信されると本文の先頭に混ざる。スライドに出す前に取り除く
 PDCA_PROMPTS = [
     "先週の振り返り・学び（うまくいったこと／いかなかったことと、その理由）", "先週の振り返り・学び",
-    "今週の宿題を1つ（いつ・誰と・何を）", "なぜ低いと思いますか？（原因）",
+    "今週の宣言を1つ（いつ・誰と・何を）", "今週の宿題を1つ（いつ・誰と・何を）", "なぜ低いと思いますか？（原因）",
     "良くするために、今週何をしますか？（いつ・誰と・何を）",
 ]
 
@@ -480,7 +480,7 @@ def _strip_prompts(text: str) -> str:
 
 
 def pdca_missing_reason(pending_week: str | None, key: str) -> str:
-    """先週の宿題（週初日=key）の記録が無い理由。Supabase closer_line_users.pdca_pending_week は
+    """先週の宣言（週初日=key）の記録が無い理由。Supabase closer_line_users.pdca_pending_week は
     deliver.pyが配信時にキーをセットし、LINEで返信を受け取るとNULLに戻る（webhook.py handle_pdca_reply）。"""
     if pending_week == key:
         return "先週のMT後、LINEの記入テンプレに返信がありません（未送信）"
@@ -497,9 +497,9 @@ def build_pdca(members: dict[str, dict], week_start: datetime.date) -> dict[str,
     「先週決めたアクション」に自動転記される。行が無い人は結果から自然に省かれる
     （build_all.py側で「（記録なし）」表示）。
     """
-    # 先週のMTで決めた宿題＝週初日が「対象週の前週の月曜」の行だけを使う（deliver.pyがその週のキーで
-    # 配信し、LINE返信・議事録反映もそのキーで保存する）。それより古い記録を「先週の宿題」として
-    # 出さない（以前は直近の記録を拾っていたため、2週以上前の宿題が先週分として表示されていた）
+    # 先週のMTで決めた宣言＝週初日が「対象週の前週の月曜」の行だけを使う（deliver.pyがその週のキーで
+    # 配信し、LINE返信・議事録反映もそのキーで保存する）。それより古い記録を「先週の宣言」として
+    # 出さない（以前は直近の記録を拾っていたため、2週以上前の宣言が先週分として表示されていた）
     key = (week_start - datetime.timedelta(days=7)).isoformat()
     rows = notion_query_all(PDCA_DB, {
         "property": "週初日", "date": {"before": week_start.isoformat()},
@@ -532,7 +532,7 @@ def build_pdca(members: dict[str, dict], week_start: datetime.date) -> dict[str,
     for name, m in members.items():
         if name in latest_by_name and latest_by_name[name][1]["action"]:
             continue
-        reason = ("先週のLINE返信に宿題（②）が書かれていません" if name in latest_by_name
+        reason = ("先週のLINE返信に宣言（②）が書かれていません" if name in latest_by_name
                   else pdca_missing_reason(m.get("pdca_pending_week"), key))
         out.setdefault(name, dict(empty))["missing_reason"] = reason
     return out

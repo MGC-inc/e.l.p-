@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
-"""今週の宿題（📝週次PDCA記録DB）の実行日に合わせたLINE。宿題＝改善のためのアクションプラン（2026-10-29 今川さん指示）。
+"""今週の宣言（📝週次PDCA記録DB）の実行日に合わせたLINE。宣言＝改善のためのアクションプラン（2026-10-29 今川さん指示）。
 
-  python3 scripts/homework_reminder.py --when eve     # 夕方: 明日が実行日の人へ「明日は宿題の実行日です」
-  python3 scripts/homework_reminder.py --when check   # 夜:   今日が実行日の人へ「できましたか？［宿題やった！］［宿題できなかった］」
+  python3 scripts/homework_reminder.py --when eve     # 夕方: 明日が実行日の人へ「明日は宣言の実行日です」
+  python3 scripts/homework_reminder.py --when check   # 夜:   今日が実行日の人へ「できましたか？［宣言やった！］［宣言できなかった］」
   python3 scripts/homework_reminder.py --when eve --date 2026-11-05 --dry-run
 
-・実行日は宿題の「いつ」から決める（木曜／金曜／木・金／土日／毎日、または文中の曜日）。宿題の週は、水曜のMTの翌日（木）
+・実行日は宣言の「いつ」から決める（木曜／金曜／木・金／土日／毎日、または文中の曜日）。宣言の週は、水曜のMTの翌日（木）
   から翌週火曜まで。会社の稼働日（水〜日と、祝日の月火）だけを数える
 ・夕方のリマインドは、相手がいれば「再度確認で○○さんに予約のLINE入れて、実行にこだわって徹底しましょう！」と添える。
-  「毎日」の宿題は毎晩の確認だけにして、前日のリマインドは最初の日だけ送る（毎日同じ連絡が続かないように）
-・朝は、毎朝のカード（scripts/daily_mission.py）が今週の宿題を出し、実行日には「今日は宿題の実行日です」と目立たせる
+  「毎日」の宣言は毎晩の確認だけにして、前日のリマインドは最初の日だけ送る（毎日同じ連絡が続かないように）
+・朝は、毎朝のカード（scripts/daily_mission.py）が今週の宣言を出し、実行日には「今日は宣言の実行日です」と目立たせる
 ・返事は LINE Bot（line-webhook/api/webhook.py の handle_homework_check）が「実行チェック」列に記録する
 ・同じ日に同じ人へ2回送らないよう、送った人をSupabase Storageに記録する
 
@@ -37,15 +37,15 @@ except ImportError:
     jpholiday = None
 
 PDCA_DB = "17f23c69-8a24-429a-8957-6b5490a87680"   # 📝 週次PDCA記録DB（data_source_id）
-NO_HOMEWORK = {"今川", "藤江"}                       # 宿題の対象外（scripts/daily_mission.py と同じ）
-DONE, NOT_DONE = "宿題やった！", "宿題できなかった"  # line-webhook/api/webhook.py の HW_DONE / HW_NOT_DONE と同じ文言
+NO_HOMEWORK = {"今川", "藤江"}                       # 宣言の対象外（scripts/daily_mission.py と同じ）
+DONE, NOT_DONE = "宣言やった！", "宣言できなかった"  # line-webhook/api/webhook.py の HW_DONE / HW_NOT_DONE と同じ文言
 JST = ZoneInfo("Asia/Tokyo")
 WEEKDAYS = "月火水木金土日"
 BUCKET = "weekly-pdca"
 
 
 def week_key(day: dt.date) -> dt.date:
-    """その日にやっている宿題の週初日（daily_mission.week_homework と同じ）。"""
+    """その日にやっている宣言の週初日（daily_mission.week_homework と同じ）。"""
     monday = day - dt.timedelta(days=day.weekday())
     return monday - dt.timedelta(days=7 if day.weekday() >= 2 else 14)
 
@@ -55,21 +55,21 @@ def is_workday(d: dt.date) -> bool:
 
 
 def when_who(row: dict) -> tuple[str, str, str]:
-    """（宿題, いつ, 誰と）。Botで登録した行は元メッセージに「宿題：／いつ：／誰と：」がある。"""
+    """（宣言, いつ, 誰と）。Botで登録した行は元メッセージに「宣言：／いつ：／誰と：」がある。"""
     src = prop_text(row, "元メッセージ")
     plan = prop_text(row, "アクションプラン").strip()
     m = re.search(r"いつ：(.+?)／誰と：(.+)", src)
-    what = re.search(r"宿題：(.+)", src)
+    what = re.search(r"(?:宣言|宿題)：(.+)", src)
     if m:
         return (what.group(1).strip() if what else plan), m.group(1).strip(), m.group(2).strip()
-    m = re.search(r"（([^（）／]+)／([^（）]+)）\s*$", plan)   # 「宿題（いつ／誰と）」の形
+    m = re.search(r"（([^（）／]+)／([^（）]+)）\s*$", plan)   # 「宣言（いつ／誰と）」の形
     if m:
         return plan[:m.start()].strip(), m.group(1).strip(), m.group(2).strip()
     return plan, plan, ""   # 議事録から入った行など。文中の曜日・「毎日」だけ拾う
 
 
 def action_days(when: str, key: dt.date) -> list[dt.date]:
-    """宿題の実行日。宿題の週＝MT（週初日+9日の水曜）の翌日から翌週火曜まで。"""
+    """宣言の実行日。宣言の週＝MT（週初日+9日の水曜）の翌日から翌週火曜まで。"""
     window = [key + dt.timedelta(days=k) for k in range(10, 16)]
     window = [d for d in window if is_workday(d)]
     if "毎日" in when:
@@ -113,7 +113,7 @@ def homework_rows(day: dt.date) -> list[dict]:
 
 
 def is_action_day_for(name: str, day: dt.date, rows: list[dict] | None = None) -> bool:
-    """毎朝のカードで「今日は宿題の実行日です」を出すかどうか（scripts/daily_mission.py から使う）。"""
+    """毎朝のカードで「今日は宣言の実行日です」を出すかどうか（scripts/daily_mission.py から使う）。"""
     return any(h["name"] == name and day in h["days"] for h in (rows if rows is not None else homework_rows(day)))
 
 
@@ -159,7 +159,7 @@ def push(to: str, text: str, buttons: list[str] | None = None) -> int | str:
 
 
 def eve_text(h: dict, day: dt.date) -> str:
-    lines = [f"📅 明日{label(day)}は、今週の宿題の実行日です。", f"\n【宿題】{h['what']}"]
+    lines = [f"📅 明日{label(day)}は、今週の宣言の実行日です。", f"\n【宣言】{h['what']}"]
     if h["partner"]:
         lines += [f"【相手】{h['partner']}", "",
                   f"再度確認で{h['partner']}に予約のLINE入れて、実行にこだわって徹底しましょう！"]
@@ -169,7 +169,7 @@ def eve_text(h: dict, day: dt.date) -> str:
 
 
 def check_text(h: dict, day: dt.date) -> str:
-    return (f"📝 今日{label(day)}は、今週の宿題の実行日でした。\n\n【宿題】{h['what']}\n\n"
+    return (f"📝 今日{label(day)}は、今週の宣言の実行日でした。\n\n【宣言】{h['what']}\n\n"
             "できましたか？ 下のボタンで教えてください（来週のMTの答え合わせに使います）。")
 
 
@@ -188,12 +188,12 @@ def main() -> None:
         if day not in h["days"]:
             continue
         if args.when == "eve" and h["daily"] and day != h["days"][0]:
-            continue   # 毎日の宿題は、前日のリマインドを最初の日だけにする
+            continue   # 毎日の宣言は、前日のリマインドを最初の日だけにする
         if args.when == "check" and f"{day.month}/{day.day} " in prop_text(h["row"], "実行チェック"):
             continue   # 今日の分はもう返事がある
         targets.append(h)
     if not targets:
-        print(f"{day} が実行日の宿題はありません（{args.when}）。")
+        print(f"{day} が実行日の宣言はありません（{args.when}）。")
         return
     base = os.environ["ELP_SUPABASE_URL"].rstrip("/")
     key = os.environ["ELP_SUPABASE_SERVICE_ROLE_KEY"]

@@ -3,14 +3,14 @@
 入力は build_all.py と同じ（members/results/config/pdca の4CSV。notion_to_csv.pyが作る）。
 出力: 出力フォルダ/public/<ランダム名>.pdf（代理店ごと）＋ slides_manifest.csv（代理店→ファイル名）
 
-毎週変わるのは数字と、各自がLINEで送った宿題・学び（pdca.csv）だけ。並び・デザインは固定。
+毎週変わるのは数字と、各自がLINEで送った宣言・学び（pdca.csv）だけ。並び・デザインは固定。
   1. 表紙と今日の進行
-  2. （宿題の答え合わせは個人スライドの上段に入れる。一覧では出さない）
+  2. （宣言の振り返りは個人スライドの上段に入れる。一覧では出さない）
   3. チームの数字（代理店の先週実績＋全社の月・週進捗）
      ＋売上 直近4週との比較（代理店と全社の週ごとの売上。個人の推移はリッチメニューで見る）
   4. 全社ランキング（部門別の表彰台）
   5. 宣言達成者（LINEで宣言した数字目標を全部クリアした人）＋代理店ランキング
-  6. 個人スライド（1人1枚。上段=先週の宿題の答え合わせ、下段=平均比と最優先の改善項目。データのない人は1ページにまとめる）
+  6. 個人スライド（1人1枚。上段=先週の宣言の振り返り、下段=平均比と最優先の改善項目。データのない人は1ページにまとめる）
   7. 先週MTで出たみんなの学び（全社）
   8. MTの最後にBOTへ送る内容（記入例つき）
   9. 今週の動き方（水:MT／木:アポ中心／金:クロ中心）
@@ -98,10 +98,10 @@ def cover(pdf, agency, cfg, n):
     fig = plt.figure(figsize=(W, H)); fig.patch.set_facecolor(NAVY)
     fig.text(0.06, 0.74, "週次MT", color="white", fontsize=54, fontweight="bold")
     fig.text(0.06, 0.64, f"{agency}　｜　対象：{cfg['week']}", color="#C9D6E8", fontsize=20)
-    fig.text(0.06, 0.55, "今日のゴール：全員が「今週の宿題1つ」と「数字の目標」を決めて、BOTに送って帰る",
+    fig.text(0.06, 0.55, "今日のゴール：全員が「今週の宣言1つ」と「数字の目標」を決めて、BOTに送って帰る",
              color=GOLD, fontsize=17, fontweight="bold")
-    steps = [("5分", "チームの数字"), ("5分", "ランキング\n宣言達成者"), ("25分", "1人ずつ\n宿題の答え合わせ\n＋数字の振り返り"),
-             ("10分", "今週の宿題決め\n数字の目標"), ("5分", "BOTに送信\n宣言")]
+    steps = [("5分", "チームの数字"), ("5分", "ランキング\n宣言達成者"), ("25分", "1人ずつ\n宣言の振り返り\n＋数字の振り返り"),
+             ("10分", "今週の宣言決め\n数字の目標"), ("5分", "BOTに送信\n宣言")]
     x0, w = 0.06, 0.168
     for i, (t, s) in enumerate(steps):
         x = x0 + i * (w + 0.012)
@@ -113,12 +113,12 @@ def cover(pdf, agency, cfg, n):
     save(pdf, fig)
 
 
-# ---------- 2. 宿題の答え合わせ ----------
+# ---------- 2. 宣言の振り返り ----------
 ROW_H, REVIEW_SPACE = 0.148, 0.74  # 答え合わせの1人分の最小の高さ／1ページに使える高さ（図の高さに対する割合）
 
 
 def action_block(text):
-    """先週の宿題は省略せず全文出す（今川さん指示 2026-10-21）。長い文は文字を小さくし、行の高さを伸ばす。
+    """先週の宣言は省略せず全文出す（今川さん指示 2026-10-21）。長い文は文字を小さくし、行の高さを伸ばす。
     戻り値: (折り返した文, 文字サイズ, 行の高さ)"""
     for fs, width, max_lines in ((12, 24, 3), (10.5, 27, 8), (9, 32, None)):
         lines = textwrap.wrap(text.replace("\n", " "), width)
@@ -128,22 +128,22 @@ def action_block(text):
     return "\n".join(lines), fs, rh
 
 
-REVIEW_HIDDEN = {"今川"}  # 先週の宿題の答え合わせに出さない人（2026-10-27 今川さん指示）
+REVIEW_HIDDEN = {"今川"}  # 先週の宣言の振り返りに出さない人（2026-10-27 今川さん指示）
 
 
 def review(pdf, members, mem, res, pdca, cfg, n):
     members = [m for m in members if m not in REVIEW_HIDDEN]
     heights = {m: action_block(pdca[m]["action"])[2] if (pdca.get(m) or {}).get("action") else ROW_H for m in members}
     pages, cur, used = [], [], 0.0
-    for m in members:  # 宿題が長い人の行を高くした分、1ページに入る人数を減らす
+    for m in members:  # 宣言が長い人の行を高くした分、1ページに入る人数を減らす
         if cur and used + heights[m] > REVIEW_SPACE + 1e-9:
             pages.append(cur); cur, used = [], 0.0
         cur.append(m); used += heights[m]
     pages = pages + [cur] if cur else (pages or [[]])
     for pi, chunk in enumerate(pages):
-        fig = slide(pdf, "① 先週の宿題の答え合わせ", cfg["week"] + (f"　{pi+1}/{len(pages)}" if len(pages) > 1 else ""), n); n += 1
+        fig = slide(pdf, "① 先週の宣言の振り返り", cfg["week"] + (f"　{pi+1}/{len(pages)}" if len(pages) > 1 else ""), n); n += 1
         top = 0.84
-        fig.text(0.035, top, "名前", fontsize=12, color=SUB); fig.text(0.16, top, "先週決めた宿題", fontsize=12, color=SUB)
+        fig.text(0.035, top, "名前", fontsize=12, color=SUB); fig.text(0.16, top, "先週決めた宣言", fontsize=12, color=SUB)
         fig.text(0.56, top, "宣言した数字 → 実績（緑＝達成）", fontsize=12, color=SUB); fig.text(0.905, top, "評価", fontsize=12, color=SUB)
         y = top - 0.03
         for name in chunk:
@@ -157,7 +157,7 @@ def review(pdf, members, mem, res, pdca, cfg, n):
                          color=RED if plan["last_eval"] == "×" else SUB)
             if not plan or not plan.get("action"):
                 why = (plan or {}).get("missing_reason") or "記録なし"
-                fig.text(0.16, y + rh / 2, f"データがありません\n理由：{why}\n→ MTの最初に口頭で先週の宿題を確認", fontsize=11.5,
+                fig.text(0.16, y + rh / 2, f"データがありません\n理由：{why}\n→ MTの最初に口頭で先週の宣言を確認", fontsize=11.5,
                          color=RED, va="center", linespacing=1.4)
             else:
                 text, fs, _ = action_block(plan["action"])
@@ -365,7 +365,7 @@ def achievers(pdf, mem, res, pdca, cfg, n):
 
 # ---------- 6. 個人スライド ----------
 def hw_wrap(text):
-    """宿題の全文を、1人1枚の上段に収まる大きさで折り返す。戻り値: (折り返した文, 文字サイズ, 行数)"""
+    """宣言の全文を、1人1枚の上段に収まる大きさで折り返す。戻り値: (折り返した文, 文字サイズ, 行数)"""
     for fs, width in ((12, 44), (10.5, 50), (9.5, 58), (8.5, 66)):
         lines = textwrap.wrap(text.replace("\n", " "), width)
         if len(lines) * fs * 1.35 / 72 / H <= 0.13:
@@ -374,14 +374,14 @@ def hw_wrap(text):
 
 
 def person(pdf, name, mem, res, pdca, cfg, n):
-    """1人1枚：上段に「先週の宿題の答え合わせ」、下段にKPI（平均比・最優先の改善項目・4つの質問）をまとめる
-    （2026-11-03 今川さん指示:「宿題がズラーっと並んでからKPIがズラーっと並ぶ出力はやめる」）。
+    """1人1枚：上段に「先週の宣言の振り返り」、下段にKPI（平均比・最優先の改善項目・4つの質問）をまとめる
+    （2026-11-03 今川さん指示:「宣言がズラーっと並んでからKPIがズラーっと並ぶ出力はやめる」）。
     データのない人は、この関数ではなく no_data_page に1ページでまとめる。"""
     role = mem[name]["role"]; is_mgr = mem[name].get("is_manager") == "yes"
     tname = "アポインター" if role == "appointer" else "クローザー"
     fig = slide(pdf, f"④ {name}　（{tname}）", cfg["week"], n)
     r = res[name]
-    # --- 上段: 先週の宿題の答え合わせ（今川さんは出さない） ---
+    # --- 上段: 先週の宣言の振り返り（今川さんは出さない） ---
     top, strip_h = 0.86, 0.0
     if name not in REVIEW_HIDDEN:
         plan = pdca.get(name) or {}
@@ -392,7 +392,7 @@ def person(pdf, name, mem, res, pdca, cfg, n):
             strip_h = max(strip_h, nl * fs * 1.35 / 72 / H + 0.06)
         y0 = top - strip_h
         card(fig, 0.03, y0, 0.94, strip_h, BG)
-        fig.text(0.04, top - 0.03, "先週の宿題の答え合わせ", fontsize=12, color=SUB, va="top")
+        fig.text(0.04, top - 0.03, "先週の宣言の振り返り", fontsize=12, color=SUB, va="top")
         if plan.get("last_eval"):
             fig.text(0.04, top - 0.075, f"前回の評価 {plan['last_eval']}", fontsize=11, va="top",
                      color=RED if plan["last_eval"] == "×" else SUB)
@@ -406,7 +406,7 @@ def person(pdf, name, mem, res, pdca, cfg, n):
                          color=GREEN if ok else RED)
         else:
             why = plan.get("missing_reason") or "記録なし"
-            fig.text(0.2, y0 + strip_h / 2, f"宿題のデータがありません　理由：{why}\n→ MTの最初に口頭で先週の宿題を確認", fontsize=11.5,
+            fig.text(0.2, y0 + strip_h / 2, f"宣言のデータがありません　理由：{why}\n→ MTの最初に口頭で先週の宣言を確認", fontsize=11.5,
                      color=RED, va="center", linespacing=1.4)
         fig.text(0.92, y0 + strip_h / 2, "◎ ○ ×", fontsize=15, ha="center", va="center", color=LINE)
     # 下段（KPI）は、元の配置（高さ0.08〜0.82）を、上段を除いた残りの高さに縮めて置く
@@ -486,7 +486,7 @@ def no_data_page(pdf, names, mem, pdca, cfg, n):
     if not names:
         return n
     fig = slide(pdf, "④ データがないメンバー", cfg["week"], n)
-    fig.text(0.035, 0.84, "先週の日報（実績DB）が1日分もありません。MTでは口頭で先週の動きと宿題を確認する", fontsize=13, color=RED)
+    fig.text(0.035, 0.84, "先週の日報（実績DB）が1日分もありません。MTでは口頭で先週の動きと宣言を確認する", fontsize=13, color=RED)
     gap = min(0.14, 0.72 / len(names))
     for i, nm in enumerate(names):
         y = 0.76 - (i + 1) * gap
@@ -496,9 +496,9 @@ def no_data_page(pdf, names, mem, pdca, cfg, n):
         fig.text(0.04, y + gap / 2 - 0.035, role, fontsize=9, va="center", color=SUB)
         plan = pdca.get(nm) or {}
         if plan.get("action"):
-            fig.text(0.2, y + gap / 2, "先週の宿題：" + textwrap.fill(plan["action"].replace("\n", " "), 70), fontsize=10, va="center", color=INK)
+            fig.text(0.2, y + gap / 2, "先週の宣言：" + textwrap.fill(plan["action"].replace("\n", " "), 70), fontsize=10, va="center", color=INK)
         else:
-            fig.text(0.2, y + gap / 2, f"理由：{plan.get('missing_reason') or '日報・宿題とも記録なし'}", fontsize=10.5, va="center", color=RED)
+            fig.text(0.2, y + gap / 2, f"理由：{plan.get('missing_reason') or '日報・宣言とも記録なし'}", fontsize=10.5, va="center", color=RED)
     save(pdf, fig)
     return n + 1
 
@@ -570,7 +570,7 @@ def send_guide(pdf, cfg, n):
     blocks = [
         ("①", "先週の振り返り・学び", "うまくいったこと／いかなかったことと、その理由を1〜2行で",
          "例：価格を聞かれてすぐ答えたら、そこで話が終わった。先に「何と比べていますか」と聞けば続いた"),
-        ("②", "今週の宿題（1つだけ）", "いつ・誰と・何を。来週のMTで「やった／やってない」を答えられる形で",
+        ("②", "今週の宣言（1つだけ）", "いつ・誰と・何を。来週のMTで「やった／やってない」を答えられる形で",
          "例：木曜と金曜の朝、〇〇さんと価格質問の切り返しロープレを10分ずつ"),
         ("③", "今週の数字の目標（日曜まで）", "テンプレに並んでいる項目に数字だけ入れる",
          "例：訪問数：60　アポ数：6　商談数：3　契約数：1"),
@@ -592,10 +592,10 @@ def send_guide(pdf, cfg, n):
 def week_flow(pdf, cfg, n):
     fig = slide(pdf, "⑦ 今週の動き方", "毎週同じリズムで回す", n)
     days = [
-        ("水", "週次MT", NAVY, ["朝イチに週次MT", "宿題と数字の目標を決める", "MTの最後にBOTへ送る"]),
-        ("木", "アポ中心の日", TEAL, ["アポインターの宿題を実行", "ロープレ・同行はこの日", "夕方にリーダーが訪問とアポ数を確認"]),
+        ("水", "週次MT", NAVY, ["朝イチに週次MT", "宣言と数字の目標を決める", "MTの最後にBOTへ送る"]),
+        ("木", "アポ中心の日", TEAL, ["アポインターの宣言を実行", "ロープレ・同行はこの日", "夕方にリーダーが訪問とアポ数を確認"]),
         ("金", "クロ中心の日", BLUE, ["週末の商談に向けて準備", "商談分析の断り文句と転換点を見直す", "切り返しロープレを1本"]),
-        ("土日", "商談・訪問", "#5B7DB1", ["宿題を実行しながら本番", "商談は録音してBOTへ送る", "実績は毎日いつもどおり報告"]),
+        ("土日", "商談・訪問", "#5B7DB1", ["宣言を実行しながら本番", "商談は録音してBOTへ送る", "実績は毎日いつもどおり報告"]),
         ("月火", "資料づくり", SUB, ["今川が実績を締めて資料を作る", "水曜の朝にLINEで届く", ""]),
     ]
     w = 0.178

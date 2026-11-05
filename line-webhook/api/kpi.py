@@ -587,7 +587,7 @@ def goal_block_html(member_name: str, role: str, key: date, start: date, end: da
     date_label = f"{start.month}/{start.day}〜{end.month}/{end.day}"
     if not recs:
         return (f'<h3 class="sec">{html.escape(title)}</h3>'
-                f'<p class="note">データがありません：週次MTのあと、LINEの記入テンプレ（①学び②宿題③目標）が送られていません。'
+                f'<p class="note">データがありません：週次MTのあと、LINEの記入テンプレ（①学び②宣言③目標）が送られていません。'
                 f'MTの最後に送ってください（議事録から反映された場合もここに出ます）。</p>')
     rec = recs[0]
     perf = notion_query_performance_range(member_name, start.isoformat(), end.isoformat()) if start <= end else []
@@ -626,7 +626,7 @@ def goal_block_html(member_name: str, role: str, key: date, start: date, end: da
                    f'<td class="num">{int(actual)}</td><td class="num">{rest_html}</td></tr>')
     table = ('<table><thead><tr><th class="label">項目</th><th>目標</th><th>実績</th><th>残り</th></tr></thead>'
              f'<tbody>{"".join(trs)}</tbody></table>') if trs else '<p class="note">データがありません：数字の目標（③）が記入されていません。</p>'
-    action = rich_plain(rec, "アクションプラン") or "（宿題の記入なし）"
+    action = rich_plain(rec, "アクションプラン") or "（宣言の記入なし）"
     learning = rich_plain(rec, "原因")
     src = select_name(rec, "記録元") or "LINE"
     days = sorted({row_date_iso(r) for r in perf if row_date_iso(r)})
@@ -640,14 +640,14 @@ def goal_block_html(member_name: str, role: str, key: date, start: date, end: da
     else:
         missing_note = '<p class="note info">今週の実績はまだありません（明日から反映されます）</p>'
     return (f'<h3 class="sec">{html.escape(title)}</h3>'
-            f'<div class="goal"><div class="goal-label">宿題</div><div>{html.escape(action)}</div></div>'
+            f'<div class="goal"><div class="goal-label">宣言</div><div>{html.escape(action)}</div></div>'
             + (f'<div class="goal"><div class="goal-label">学び</div><div>{html.escape(learning)}</div></div>' if learning else "")
             + table + missing_note
             + f'<p class="legend">実績は{date_label}の記録（訪問・アポ＝日報、商談・契約＝商談一覧。クーリングオフ除く）｜記録元：{html.escape(src)}</p>')
 
 
 def render_goal_page(member_name: str, token: str) -> tuple[int, str]:
-    """今週の目標（水曜の週次MTで決めてLINEで送った宿題・数字）と、月曜〜昨日までの実績。
+    """今週の目標（水曜の週次MTで決めてLINEで送った宣言・数字）と、月曜〜昨日までの実績。
     月・火（MT前）は今週の目標がまだ無いので、先週の目標と先週1週間の結果を出す。"""
     if not NOTION_TOKEN:
         return 503, error_page("設定未完了", "NOTION_TOKENが未設定のため表示できません。今川さんに確認してください。")
