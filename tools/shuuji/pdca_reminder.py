@@ -16,6 +16,7 @@
   --stage report  木 18:00 JST  まだ出していない人を、代理店ごとに今川さんだけに知らせる（本人には送らない）
   --stage guide   手動（今川さんの指示のとき）。宿題の決め方が分からない人向けに、本人のKPIページ（先週分・直近4週の推移）の
                   リンクを付けて「先週の数字を見る→もったいない所を1つ選ぶ→今週やることを決める」を順に案内する
+  催促には、本人ごとに「何が登録済みで何がまだか」の一覧を付ける（途中まで進めた人は、済んでいる所は飛ばして続きから）
   催促は本人あてに最大2回まで。それでも出ない人は、リーダー／今川さんが声をかける（マニュアル/週次MT.md）
 
 環境変数: DEAL_LINE_CHANNEL_ACCESS_TOKEN, ELP_SUPABASE_URL, ELP_SUPABASE_SERVICE_ROLE_KEY, NOTION_TOKEN,
@@ -97,7 +98,41 @@ def kpi_url(name: str, view: str) -> str:
     return f"{KPI_BASE_URL}/api/kpi?token={urllib.parse.quote(name)}.{exp}.{sig}&view={view}"
 
 
-def message(stage: str, name: str, role: str, label: str) -> str:
+def hw_state(uid: str, week: str) -> dict:
+    """宿題の登録を途中まで進めた人の、入力済みの内容（Botの質問の途中経過。直近72時間の分）。なければ空。"""
+    since = (datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(hours=72)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    rows = sb("GET", f"deal_recordings?line_user_id=eq.{urllib.parse.quote(uid)}&storage_path=eq.homework"
+                     f"&status=in.(awaiting_homework,homework_expired,flow_cancelled)&received_at=gte.{since}"
+                     "&order=received_at.desc&limit=5&select=customer_name") or []
+    for r in rows:
+        try:
+            d = json.loads(r.get("customer_name") or "{}")
+        except json.JSONDecodeError:
+            continue
+        if d.get("week") == week and d.get("what"):
+            return d
+    return {}
+
+
+def hw_items(d: dict) -> list[tuple[str, str | None]]:
+    nums = [f"{k[2:]}{v}" for k, v in d.items() if k.startswith("t_") and v is not None]
+    return [("① 宿題", d.get("what")), ("② いつやるか", d.get("when")), ("③ 誰とやるか", d.get("who")),
+            ("④ 数字の目標", "・".join(nums) if nums else None)]
+
+
+def checklist(d: dict) -> str:
+    """何が登録済みで、何がまだかの一覧（webhook.pyのhw_progress_textと同じ形）。"""
+    return "\n".join(f"{'✅' if v else '⬜'} {k}" + (f"：{v}" if v else "：まだ") for k, v in hw_items(d))
+
+
+def state_label(d: dict) -> str:
+    if not d:
+        return "未着手"
+    todo = [k.split(" ")[0] for k, v in hw_items(d) if not v]
+    return "途中:" + ("".join(todo) + "がまだ" if todo else "確認の返事待ち")
+
+
+def message(stage: str, name: str, role: str, label: str, d: dict | None = None) -> str:
     if stage == "guide":
         example = ("・対話からのアポ率が低い → 木曜に、アポが取れている人の同行に入って、取り切り方を見て学ぶ\n"
                    "・訪問数が足りない → 毎日、昼までに◯件回ってから休憩する"
@@ -116,12 +151,16 @@ def message(stage: str, name: str, role: str, label: str) -> str:
                 "「いつ・誰と・何をするか」まで決めてください。例：\n" + example + "\n\n"
                 "決まったら、下の「宿題を登録する」ボタンを押して、質問に答えるだけです（約30秒）。\n"
                 "文章で「宿題：〜　いつ：〜　誰と：〜　訪問◯・アポ◯」と送ってもOKです。")
+    d = d or {}
+    how = ("済んでいる所は飛ばして、続きから進められます（約30秒）。" if d.get("what")
+           else "質問に答えるだけで進められます（約30秒）。")
+    status = f"【登録の状況】\n{checklist(d)}\n\n"
     if stage == "1":
-        return (f"📝{name}さん、今週（{label}）の宿題がまだ届いていません。\n\n"
-                "今朝の週次MTで決めた「宿題」と「数字の目標」を、下のボタンから登録してください。質問に答えるだけで30秒です。")
-    return (f"📝{name}さん、今週（{label}）の宿題がまだ届いていません。\n\n"
+        return (f"📝{name}さん、今週（{label}）の宿題の登録が、まだ終わっていません。\n\n{status}"
+                f"今朝の週次MTで決めた「宿題」と「数字の目標」を、下のボタンから登録してください。{how}")
+    return (f"📝{name}さん、今週（{label}）の宿題の登録が、まだ終わっていません。\n\n{status}"
             "今日（木）は「アポ中心」の日です。今日の動きを決めるためにも、今日18時までに、下のボタンから登録してください。"
-            "質問に答えるだけで30秒です。")
+            f"{how}")
 
 
 def main() -> None:
@@ -159,7 +198,8 @@ def main() -> None:
                 if (b["properties"].get("代理店") or {}).get("select") else "（所属なし）"
         by: dict[str, list[str]] = {}
         for r in missing:
-            by.setdefault(agency.get(r["closer_name"], "（所属なし）"), []).append(r["closer_name"])
+            st = state_label(hw_state(r["line_user_id"], week))
+            by.setdefault(agency.get(r["closer_name"], "（所属なし）"), []).append(f"{r['closer_name']}（{st}）")
         text = (f"📝今週（{label}）の宿題、木曜18時時点の未提出は{len(missing)}名です。\n"
                 + "\n".join(f"・{a}: {'、'.join(ns)}" for a, ns in by.items())
                 + "\n\n本人への催促は済んでいます。各代理店のリーダーから声をかけてもらうか、1対1で確認してください。")
@@ -172,7 +212,7 @@ def main() -> None:
 
     targets = [r for r in missing if r["closer_name"] not in NO_REMINDER]
     for r in targets:
-        text = message(stage, r["closer_name"], r["role"], label)
+        text = message(stage, r["closer_name"], r["role"], label, hw_state(r["line_user_id"], week))
         if dry:
             print("[DRY]", r["closer_name"])
             continue

@@ -1383,20 +1383,25 @@ MENU_TEXTS = {GOAL_BUTTON_TEXT, KPI_BUTTON_TEXT, ANALYSIS_BUTTON_TEXT, STATUS_DE
               KPI_MONTH_TEXT, TARGET_TRIGGER, TROUBLE_TRIGGER, TROUBLE_REVIEW_TEXT, TALK_TEXT, SHARE_TEXT,
               POST_CONTRACT_TEXT, HW_TRIGGER}
 FLOW_EXPIRE_MINUTES = 60
+# 宿題の登録は、途中で手が止まっても続きから再開できるよう長めにする（2026-11-05 今川さん指示）
+FLOW_EXPIRE_MINUTES_BY_KIND = {"homework": 12 * 60}
 TROUBLE_DB = "406da094-9999-81ca-ab25-ff9f1b7933f5"   # 🆘 困ったメモ
 TALK_DB = "406da094-9999-81e7-8615-d19651c1f165"     # 🗣 うまくいったトーク集（scripts/talk_share_sync.py が作る）
 LEARN_DB = "1390f330-7195-4624-a22f-a2af7361e179"     # 📚 学び・共有ログDB
 COOLING_OFF_DAYS = 8
 
 
-def cancel_flows(line_user_id: str) -> None:
-    """メニューが押されたら、途中だった質問（フィードバック・目標・宿題・困ったメモ）は閉じる。"""
-    sb("PATCH", f"deal_recordings?line_user_id=eq.{line_user_id}&storage_path=in.(feedback,target,homework,trouble)"
-                "&status=like.awaiting*", {"status": "flow_cancelled"})
+def cancel_flows(line_user_id: str, keep: tuple = ()) -> None:
+    """メニューが押されたら、途中だった質問（フィードバック・目標・困ったメモ。宿題は残す）は閉じる。
+    keepに入れた種類は閉じない（宿題は、ほかのボタンを押しても消さず、あとから続きから再開できる）。"""
+    kinds = ",".join(k for k in ("feedback", "target", "homework", "trouble") if k not in keep)
+    if kinds:
+        sb("PATCH", f"deal_recordings?line_user_id=eq.{line_user_id}&storage_path=in.({kinds})"
+                    "&status=like.awaiting*", {"status": "flow_cancelled"})
 
 
 def flow_start(line_user_id: str, kind: str, step: str, data: dict | None = None, page_id: str | None = None) -> None:
-    cancel_flows(line_user_id)
+    cancel_flows(line_user_id, keep=() if kind == "homework" else ("homework",))
     sb("POST", "deal_recordings", {"line_user_id": line_user_id, "storage_path": kind, "status": f"awaiting_{kind}",
                                   "result": step, "customer_name": json.dumps(data or {}, ensure_ascii=False),
                                   "notion_url": page_id})
@@ -1408,7 +1413,7 @@ def flow_active(line_user_id: str, kind: str) -> dict | None:
     if not rows:
         return None
     received = datetime.fromisoformat(rows[0]["received_at"].replace("Z", "+00:00"))
-    if datetime.now(timezone.utc) - received > timedelta(minutes=FLOW_EXPIRE_MINUTES):
+    if datetime.now(timezone.utc) - received > timedelta(minutes=FLOW_EXPIRE_MINUTES_BY_KIND.get(kind, FLOW_EXPIRE_MINUTES)):
         sb("PATCH", f"deal_recordings?id=eq.{rows[0]['id']}", {"status": f"{kind}_expired"})
         return {"expired": True}   # 呼び出し側で「時間が空いたので…」と返す（無言にしない）
     return rows[0]
@@ -1767,6 +1772,41 @@ def hw_ask_targets(reply: str, row: dict, d: dict, name: str, prefix: str = "") 
     line_reply(reply, [{"type": "text", "text": "\n\n".join(lines), "quickReply": quick_reply(buttons)}])
 
 
+def hw_progress_text(d: dict) -> str:
+    """宿題の登録で、何が済んでいて何がまだかを一覧にする（再開のときと、催促で使う）。"""
+    labels = [label for label, _ in hw_metrics_of(d)]
+    nums = [f"{label}{d['t_' + label]}" for label in labels if d.get("t_" + label) is not None]
+    items = [("① 宿題", d.get("what")), ("② いつやるか", d.get("when")), ("③ 誰とやるか", d.get("who")),
+             ("④ 数字の目標", "・".join(nums) if nums else None)]
+    return "\n".join(f"{'✅' if v else '⬜'} {k}" + (f"：{v}" if v else "：まだ") for k, v in items)
+
+
+def hw_resume_row(uid: str, closer: dict) -> dict | None:
+    """途中まで進んだ宿題の登録があれば、その行を生き返らせて返す（取り消し・期限切れになった直近72時間のものも含む）。"""
+    since = (datetime.now(timezone.utc) - timedelta(hours=72)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    rows = sb("GET", f"deal_recordings?line_user_id=eq.{uid}&storage_path=eq.homework"
+                     f"&status=in.(awaiting_homework,homework_expired,flow_cancelled)&received_at=gte.{since}"
+                     "&order=received_at.desc&limit=5&select=*") or []
+    week = hw_week_key(closer)
+    for r in rows:
+        d = flow_data(r)
+        if d.get("week") == week and d.get("what"):
+            sb("PATCH", f"deal_recordings?id=eq.{r['id']}",
+               {"status": "awaiting_homework", "received_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")})
+            r["status"] = "awaiting_homework"
+            return r
+    return None
+
+
+def hw_log_unhandled(uid: str, reason: str, text: str) -> None:
+    """宿題の登録に失敗した（読み取れなかった・横取りしなかった）文面を残す。あとから原因を追えるように。"""
+    try:
+        sb("POST", "deal_recordings", {"line_user_id": uid, "storage_path": "homework_log", "status": "logged",
+                                       "result": reason, "customer_name": text[:300]})
+    except Exception as e:  # noqa: BLE001 - 記録に失敗しても本処理は止めない
+        print(f"hw_log_unhandled failed: {e}")
+
+
 def hw_next(reply: str, row: dict, d: dict, name: str, choices: list, prefix: str = "") -> None:
     """まだ決まっていない項目を、①宿題→②いつ→③誰と→④数字→⑤学び→確認 の順に聞く。
     ボタンで1問ずつ答えた場合も、文面で送られた内容を読み取った場合も、同じ順で足りない所だけ聞く。"""
@@ -1782,9 +1822,8 @@ def hw_next(reply: str, row: dict, d: dict, name: str, choices: list, prefix: st
         line_reply(reply, [{"type": "text", "text": prefix + "③ 誰とやりますか？\n（名前を入力してもOKです）", "quickReply": quick_reply(HW_WHOS)}])
     elif not any(d.get("t_" + label) is not None for label in labels):
         hw_ask_targets(reply, row, d, name, prefix)
-    elif "learn" not in d:
-        hw_ask_learn(reply, row, d)
     else:
+        d.setdefault("learn", "")   # 先週の学びは任意。聞かずに確認へ進める（2026-11-05 今川さん指示）
         missing = [label for label in labels if d.get("t_" + label) is None]
         if missing:   # 文面に一部の数字しか無いときは、過去データのおすすめで埋めて確認で見せる（違えば「やり直す」）
             rec = recommended_targets(name) or {}
@@ -1864,10 +1903,12 @@ def handle_homework_text(event: dict, closer: dict) -> bool:
     labels = [label for label, _ in HW_METRICS if role == "closer" or label not in APPOINTER_SKIP_METRICS]
     parsed = hw_parse_text(text, labels)
     if parsed is None:   # 読み取りに失敗したときは、これまでどおりボタンへ案内する
+        hw_log_unhandled(uid, "unparsed", text)
         line_reply(reply, [{"type": "text", "text": "宿題はボタンで登録します（質問に答えるだけで30秒）。下のボタンを押してください。",
                             "quickReply": quick_reply([HW_TRIGGER])}])
         return True
     if not parsed.get("is_homework"):
+        hw_log_unhandled(uid, "not_homework", text)
         return False
 
     def clean(v):
@@ -1897,6 +1938,12 @@ def handle_homework(event: dict, closer: dict) -> bool:
     choices = HW_CHOICES["closer" if role == "closer" else "appointer"]
     metric_labels = [label for label, _ in HW_METRICS if role == "closer" or label not in APPOINTER_SKIP_METRICS]
     if text == HW_TRIGGER:
+        resumed = hw_resume_row(uid, closer)
+        if resumed:   # 途中まで入っている。何が済んでいて何がまだかを見せて、続きから聞く
+            d = flow_data(resumed)
+            hw_next(reply, resumed, d, name, d.get("choices") or choices,
+                    prefix="📝 途中まで登録されています。\n" + hw_progress_text(d) + "\n\n続きから進めます。\n\n")
+            return True
         plan = member_month_plan(name)   # 月次MTの改善ポイントがあれば、先に見せて宿題の選択肢にも足す
         q1 = hw_choices_for(plan, choices) if plan else choices
         flow_start(uid, "homework", "what", {"week": hw_week_key(closer), "metrics": metric_labels, "choices": q1})
@@ -1913,6 +1960,7 @@ def handle_homework(event: dict, closer: dict) -> bool:
     choices = d.get("choices") or choices
     long_ok = step in ("what_free", "learn") or (step == "what" and d.get("source_text"))
     if len(text) > (300 if long_ok else 30):
+        hw_log_unhandled(uid, f"too_long_at_{step}", text)
         return False   # 長い文章は別の用件（日報など）なので横取りしない
 
     if step == "what":
@@ -3390,7 +3438,7 @@ def handle_event(event: dict):
 
     message_type = event.get("message", {}).get("type")
     if message_type == "text" and event["message"]["text"].strip() in MENU_TEXTS:
-        cancel_flows(line_user_id)   # メニューが押されたら、途中だった質問は閉じる
+        cancel_flows(line_user_id, keep=("homework",))   # メニューが押されたら、途中だった質問は閉じる（宿題は残す）
     if message_type in ("audio", "file"):
         handle_audio_message(event, closer, extra_messages=welcome_messages)
     elif welcome_messages:
