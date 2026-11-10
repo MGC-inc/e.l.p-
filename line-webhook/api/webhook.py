@@ -1385,7 +1385,7 @@ MENU_TEXTS = {GOAL_BUTTON_TEXT, KPI_BUTTON_TEXT, ANALYSIS_BUTTON_TEXT, STATUS_DE
               POST_CONTRACT_TEXT, HW_TRIGGER}
 FLOW_EXPIRE_MINUTES = 60
 # 宣言の登録は、途中で手が止まっても続きから再開できるよう長めにする（2026-11-05 今川さん指示）
-FLOW_EXPIRE_MINUTES_BY_KIND = {"homework": 12 * 60}
+FLOW_EXPIRE_MINUTES_BY_KIND = {"homework": 12 * 60, "postcheck": 3 * 60}
 TROUBLE_DB = "406da094-9999-81ca-ab25-ff9f1b7933f5"   # 🆘 困ったメモ
 TALK_DB = "406da094-9999-81e7-8615-d19651c1f165"     # 🗣 うまくいったトーク集（scripts/talk_share_sync.py が作る）
 LEARN_DB = "1390f330-7195-4624-a22f-a2af7361e179"     # 📚 学び・共有ログDB
@@ -1395,7 +1395,7 @@ COOLING_OFF_DAYS = 8
 def cancel_flows(line_user_id: str, keep: tuple = ()) -> None:
     """メニューが押されたら、途中だった質問（フィードバック・目標・困ったメモ。宣言は残す）は閉じる。
     keepに入れた種類は閉じない（宣言は、ほかのボタンを押しても消さず、あとから続きから再開できる）。"""
-    kinds = ",".join(k for k in ("feedback", "target", "homework", "trouble") if k not in keep)
+    kinds = ",".join(k for k in ("feedback", "target", "homework", "trouble", "postcheck") if k not in keep)
     if kinds:
         sb("PATCH", f"deal_recordings?line_user_id=eq.{line_user_id}&storage_path=in.({kinds})"
                     "&status=like.awaiting*", {"status": "flow_cancelled"})
@@ -2332,6 +2332,127 @@ def handle_build_done(event: dict, closer: dict) -> bool:
     return True
 
 
+# ---------- 契約後の確認連絡（電話）の記録 ----------
+# 契約したお客様へ電話で確認連絡をするのを必須の工程にし（2026-11-10 今川さん指示）、毎週水曜に scripts/post_contract_check.py が
+# まだの案件をボタンつきのカードで催促する。ボタンの返事はここで受け、Notion（商談案件一覧）の更新まで行う。
+#   確認した → 契約後確認＝確認済み／既にクーリングオフ → 結果＝クーリングオフ／審査落ちだった → 結果＝審査落ち
+#   工事日延期 → 新しい工事日を聞いて 工事予定日 に記録（契約後確認＝工事日延期）
+# 結果を変える2つは、間違って押しても戻せるよう「本当に変更しますか？」を一度はさむ。催促の誤爆（すでに結果が変わっている案件）にも備える。
+PC_PREFIX = "契約後確認 "
+PC_ACTIONS = {"確認した": "ok", "クーリングオフ": "co", "審査落ち": "ng", "延期": "delay",
+              "変更CO": "do_co", "変更審査": "do_ng", "取消": "cancel"}
+PC_RESULT_OF = {"do_co": "クーリングオフ", "do_ng": "審査落ち"}
+
+
+def parse_postcheck_date(text: str, today: date) -> date | None:
+    t = text.translate(str.maketrans("０１２３４５６７８９／－", "0123456789/-")).strip()
+    m = re.search(r"(\d{4})[-/年.](\d{1,2})[-/月.](\d{1,2})", t)
+    try:
+        if m:
+            return date(int(m.group(1)), int(m.group(2)), int(m.group(3)))
+        m = re.search(r"(\d{1,2})\s*[/月.]\s*(\d{1,2})", t)
+        if not m:
+            return None
+        d = date(today.year, int(m.group(1)), int(m.group(2)))
+        return d.replace(year=today.year + 1) if d < today - timedelta(days=30) else d
+    except ValueError:
+        return None
+
+
+def pc_load(page_id: str, closer: dict) -> tuple[dict | None, str]:
+    """案件を読み、この人の「契約」のままの案件か確かめる。戻り値: (案件, 問題があるときの返信文)"""
+    try:
+        p = notion_call("GET", f"pages/{page_id}")
+    except Exception:
+        return None, "案件が見つかりませんでした。『契約後の案件確認』のボタンから確認してください。"
+    name = plain(p, "お客様名")
+    if plain(p, "クローザー") != (closer.get("closer_name") or ""):
+        return None, f"{name}は、あなたの案件ではありません。"
+    if plain(p, "結果") != "契約":
+        return None, f"{name}は、すでに結果が「{plain(p, '結果')}」になっています。催促が行き違いだったようです。変更は不要です。"
+    return p, ""
+
+
+def handle_postcheck_button(event: dict, closer: dict) -> bool:
+    text = event["message"]["text"].strip()
+    if not text.startswith(PC_PREFIX):
+        return False
+    m = re.match(r"^契約後確認\s+(\S+)\s+([0-9a-fA-F-]{32,36})$", text)
+    reply, uid = event["replyToken"], event["source"]["userId"]
+    if not m or m.group(1) not in PC_ACTIONS:
+        line_reply(reply, [{"type": "text", "text": "ボタンの内容が読み取れませんでした。『契約後の案件確認』のボタンから確認してください。"}])
+        return True
+    act, page_id = PC_ACTIONS[m.group(1)], m.group(2)
+    today = datetime.now(JST).date()
+    p, problem = pc_load(page_id, closer)
+    if not p:
+        line_reply(reply, [{"type": "text", "text": problem}])
+        return True
+    name = plain(p, "お客様名")
+    if act == "ok":
+        notion_call("PATCH", f"pages/{p['id']}", {"properties": {"契約後確認": {"select": {"name": "確認済み"}},
+                                                                 "契約後確認日": {"date": {"start": today.isoformat()}}}})
+        line_reply(reply, [{"type": "text", "text": f"✅ {name}の契約後の確認連絡を記録しました。ありがとうございます！"}])
+    elif act in ("co", "ng"):
+        label = "クーリングオフ" if act == "co" else "審査落ち"
+        line_reply(reply, [{"type": "text", "text": f"{name}の結果を「契約」から「{label}」に変更します。よろしいですか？\n（売上の数字に影響します）",
+                            "quickReply": {"items": [
+                                {"type": "action", "action": {"type": "message", "label": "はい、変更する",
+                                                              "text": f"{PC_PREFIX}{'変更CO' if act == 'co' else '変更審査'} {p['id']}"}},
+                                {"type": "action", "action": {"type": "message", "label": "やめる", "text": f"{PC_PREFIX}取消 {p['id']}"}}]}}])
+    elif act in PC_RESULT_OF:
+        new = PC_RESULT_OF[act]
+        history = plain(p, "結果履歴")
+        note = f"{today.isoformat()} 契約→{new}（契約後確認で本人が報告）"
+        notion_call("PATCH", f"pages/{p['id']}", {"properties": {
+            "結果": {"status": {"name": new}},
+            "結果履歴": {"rich_text": [{"type": "text", "text": {"content": (history + "\n" if history else "") + note}}]}}})
+        line_reply(reply, [{"type": "text", "text": f"{name}を「{new}」に変更しました。"
+                            + ("\n今川さんにもクーリングオフの連絡が届きます。" if new == "クーリングオフ" else "")}])
+    elif act == "cancel":
+        line_reply(reply, [{"type": "text", "text": f"{name}は変更しませんでした。"}])
+    elif act == "delay":
+        flow_start(uid, "postcheck", "date", {"page": p["id"]})
+        line_reply(reply, [{"type": "text", "text": f"{name}の工事日は、いつに延期になりましたか？\n例: 11/25 または 2026-11-25"
+                            "\n（やめるときは「やめる」と送ってください）"}])
+    return True
+
+
+def handle_postcheck_date(event: dict, closer: dict) -> bool:
+    """「工事日延期」を押したあとの、新しい工事日の返事。"""
+    row = flow_active(event["source"]["userId"], "postcheck")
+    if not row:
+        return False
+    reply = event["replyToken"]
+    if row.get("expired"):
+        line_reply(reply, [{"type": "text", "text": "時間が空いたので、いったん閉じました。もう一度『工事日延期』のボタンを押してください。"}])
+        return True
+    text = event["message"]["text"].strip()
+    if text in ("やめる", "キャンセル", "中止"):
+        flow_update(row, status="postcheck_cancelled")
+        line_reply(reply, [{"type": "text", "text": "やめました。"}])
+        return True
+    today = datetime.now(JST).date()
+    d = parse_postcheck_date(text, today)
+    if not d:
+        line_reply(reply, [{"type": "text", "text": "日付が読み取れませんでした。「11/25」や「2026-11-25」の形で送ってください。"}])
+        return True
+    page_id = flow_data(row).get("page")
+    p, problem = pc_load(page_id, closer)
+    if not p:
+        flow_update(row, status="postcheck_cancelled")
+        line_reply(reply, [{"type": "text", "text": problem}])
+        return True
+    notion_call("PATCH", f"pages/{p['id']}", {"properties": {
+        "契約後確認": {"select": {"name": "工事日延期"}}, "契約後確認日": {"date": {"start": today.isoformat()}},
+        "工事予定日": {"date": {"start": d.isoformat()}}}})
+    flow_update(row, status="postcheck_done")
+    line_reply(reply, [{"type": "text", "text": f"📅 {plain(p, 'お客様名')}の工事日を {d.month}/{d.day} に更新しました。"
+                        "\nその日が近づいたら、もう一度確認の連絡をお願いします。"}])
+    return True
+
+
+
 def line_push(to: str, messages: list) -> None:
     _line_request("https://api.line.me/v2/bot/message/push", "POST", json.dumps({"to": to, "messages": messages}).encode(),
                   {"Content-Type": "application/json"})
@@ -2537,7 +2658,7 @@ def handle_new_menu(event: dict, closer: dict) -> bool:
         return True
     return (handle_admin_answer(event, closer) or handle_share_consent(event, closer) or handle_homework_check(event, closer)
             or handle_trouble(event, closer) or handle_homework(event, closer) or handle_talk_phase(event, closer)
-            or handle_build_done(event, closer))
+            or handle_build_done(event, closer) or handle_postcheck_button(event, closer) or handle_postcheck_date(event, closer))
 
 
 def handle_audio_message(event: dict, closer: dict, extra_messages=None):
