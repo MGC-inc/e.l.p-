@@ -4,7 +4,7 @@ name: weekly-shuuji
 # 商談分析運用.md 8章参照。Claude／LLMを一切経由しない決定的コード（tools/shuuji/）。
 #
 # 2026-09-29 今川さんがテスト送信の内容を確認し、本番運用に切り替え済み。
-# 毎週水曜8:00 JST（朝イチの週次MTの前）に自動実行され、代理店の全員へ本番配信する（scheduleトリガーは
+# 毎週水曜8:30 JST（朝イチの週次MTの前）に自動実行され、代理店の全員へ本番配信する（scheduleトリガーは
 # 常にproduction扱い。send_mode入力はworkflow_dispatchで手動実行する時だけ効く）。
 # send_mode=test（既定）: 今川さんのLINEにだけ、全員分の内容をテスト送信する
 # send_mode=production: 各代理店の全員に本番配信する
@@ -21,7 +21,7 @@ on:
         type: boolean
         default: false
   schedule:
-    - cron: "0 23 * * 2"  # 火曜 23:00 UTC = 水曜 08:00 JST
+    - cron: "30 23 * * 2"  # 火曜 23:30 UTC = 水曜 08:30 JST（配信は8:30に。今川さん指示 2026-11-11。GitHubの定時実行はこれより遅れるだけなので、8:30より前には配信されない）
 
 jobs:
   # GitHubの定時実行は毎回2〜5時間遅れる（実績: 10:19〜13:20 JSTに起動）。遅いときは手動で本番配信するので、
