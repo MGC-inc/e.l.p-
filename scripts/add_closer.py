@@ -66,8 +66,8 @@ EMPLOYEES_PATH = os.path.join(REPO, "従業員.md")
 GOALMAP_DIR = os.path.join(REPO, "tools", "goalmap", "members")
 GOALMAP_TEMPLATE = os.path.join(GOALMAP_DIR, "_template.json")
 
-ROLE_DICT_NAME = {"closer": "KNOWN_CLOSERS", "appointer": "KNOWN_APPOINTERS", "admin": "KNOWN_ADMINS"}
-ROLE_LABEL = {"closer": "クローザー", "appointer": "アポインター", "admin": "管理者"}
+ROLE_DICT_NAME = {"closer": "KNOWN_CLOSERS", "appointer": "KNOWN_APPOINTERS", "admin": "KNOWN_ADMINS", "construction": "KNOWN_CONSTRUCTION"}
+ROLE_LABEL = {"closer": "クローザー", "appointer": "アポインター", "admin": "管理者", "construction": "施工担当"}
 
 
 def log(msg):
@@ -246,7 +246,7 @@ def main():
     ap = argparse.ArgumentParser(description="商談録音分析パイプラインに新しい営業マンを登録する")
     ap.add_argument("surname", nargs="?", help="苗字（クローザー名・KNOWN_*の登録キーとして使う表記）")
     ap.add_argument("--full-name", help="フルネーム（スペースあり推奨。表記ゆれ登録に使う。例: '山田 太郎'）")
-    ap.add_argument("--role", choices=["closer", "appointer", "admin"], default="closer",
+    ap.add_argument("--role", choices=["closer", "appointer", "admin", "construction"], default="closer",
                      help="役割（既定: closer）")
     ap.add_argument("--agency", help="代理店所属の場合の会社名（従業員.mdの代理店メンバー表に追加）")
     ap.add_argument("--goalmap", action="store_true", help="tools/goalmap/members/<氏名>.json の雛形も作成する")

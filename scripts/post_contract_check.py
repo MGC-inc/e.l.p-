@@ -17,8 +17,9 @@
   施工案件に紐づいていない契約・施工日時が空の契約は送れないので、実行結果の末尾に一覧で出す。
 
 カードのボタン（返事は line-webhook/api/webhook.py の handle_postcheck_button が受けて Notion を更新する）:
-  確認した → 契約後確認＝確認済み（施工側へ送る連絡文も返す）／既にクーリングオフ・審査落ちだった → 結果を変更（確認つき）／
-  工事日延期 → 新しい工事日を聞いて記録（施工案件も「延期・再調整」に）
+  確認した → 契約後確認＝確認済み／既にクーリングオフ・審査落ちだった → 「工事中止案件として処理します。よろしいですか？」→ はい で確定／
+  工事日延期 → 「日程が決まった／お客様と調整中」を選ばせ、決まった日を記録（施工案件も「延期・再調整」に）。調整中の案件は、決まるまで毎週水曜に確認
+  どのボタンも、施工側へは自動で送らない。更新は夜のまとめ（scripts/construction_digest.py）にためて、今川さんの承認後に施工担当へ送る
 完工日はここでは書かない（完工報告が入ったときだけ記録する）。
 
 環境変数: NOTION_TOKEN, ELP_SUPABASE_URL, ELP_SUPABASE_SERVICE_ROLE_KEY, DEAL_LINE_CHANNEL_ACCESS_TOKEN
@@ -96,6 +97,11 @@ def pending_deals(today: dt.date, since: str) -> tuple[list[dict], list[str]]:
         if cons and prop_text(cons, "進捗") in DONE_PROGRESS:
             continue
         work, _ = work_info(p, cons)
+        adjusting = prop_text(p, "契約後確認") == "工事日延期" and not date_of(p, "工事予定日")
+        if adjusting:   # 延期後の日程を「お客様と調整中」にした案件は、決まるまで毎週水曜に確認する
+            p["_work"], p["_cons"], p["_adjusting"] = work, cons, True
+            out.append(p)
+            continue
         label = f"{prop_text(p, 'クローザー')}／{prop_text(p, 'お客様名')}（{day[5:]}契約）"
         if not cons and not work:
             unsent.append(f"{label}: 施工案件に紐づいていません")
@@ -118,9 +124,12 @@ def bubble(p: dict) -> dict:
     amount = (p["properties"].get("売上金額") or {}).get("number")
     money = f"{amount / 10000:g}万円" if amount else "金額未入力"
     w = p["_work"]
-    sub = f"{int(contract_day(p)[5:7])}/{int(contract_day(p)[8:10])} 契約｜{money}\n工事日 {int(w[5:7])}/{int(w[8:10])}"
-    if prop_text(p, "契約後確認") == "工事日延期":
-        sub += "（延期後）"
+    adjusting = p.get("_adjusting")
+    sub = f"{int(contract_day(p)[5:7])}/{int(contract_day(p)[8:10])} 契約｜{money}"
+    if adjusting:
+        sub += "\n延期・お客様と調整中"
+    else:
+        sub += f"\n工事日 {int(w[5:7])}/{int(w[8:10])}" + ("（延期後）" if prop_text(p, "契約後確認") == "工事日延期" else "")
 
     def btn(label: str, cmd: str, style: str) -> dict:
         return {"type": "button", "style": style, "height": "sm",
@@ -133,8 +142,8 @@ def bubble(p: dict) -> dict:
                      "contents": [{"type": "text", "text": name, "weight": "bold", "size": "lg", "wrap": True},
                                   {"type": "text", "text": sub, "size": "xs", "color": "#666666", "wrap": True}]},
             "footer": {"type": "box", "layout": "vertical", "spacing": "sm", "contents": [
-                btn("確認した", "確認した", "primary"),
-                btn("工事日延期", "延期", "secondary"),
+                *([btn("日程が決まった", "延期日", "primary"), btn("まだ調整中", "調整中", "secondary")] if adjusting else
+                  [btn("確認した", "確認した", "primary"), btn("工事日延期", "延期", "secondary")]),
                 btn("既にクーリングオフ", "クーリングオフ", "secondary"),
                 btn("審査落ちだった", "審査落ち", "secondary")]}}
 
@@ -214,8 +223,8 @@ def main() -> None:
     for name, deals in sorted(by_closer.items()):
         if args.only and name != args.only:
             continue
-        deals.sort(key=lambda p: p['_work'])
-        labels = "、".join(f"{prop_text(p, 'お客様名')}(工事{p['_work'][5:]})" for p in deals)
+        deals.sort(key=lambda p: p['_work'] or '9999')
+        labels = "、".join(f"{prop_text(p, 'お客様名')}({'調整中' if p.get('_adjusting') else '工事' + p['_work'][5:]})" for p in deals)
         if name in done:
             print(f"[送信済み] {name}: {len(deals)}件")
             continue
