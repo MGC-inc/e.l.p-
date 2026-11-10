@@ -324,7 +324,11 @@ def check_week_completeness(week_start: datetime.date, week_end: datetime.date) 
     max_count = max(counts.values(), default=0)
     sparse = [(d.isoformat(), counts.get(d.isoformat(), 0)) for d in check_days
               if max_count and counts.get(d.isoformat(), 0) < max_count * 0.5]
-    if sparse:
+    if sparse and os.environ.get("ELP_ALLOW_THIN_WEEK") == "1":
+        # 確認用の下書きを作るときだけ使う（本番配信では使わない）。薄い日があることは資料の確認メッセージで必ず伝える
+        print("[notion_to_csv] 警告: 反映が薄い日があります（ELP_ALLOW_THIN_WEEK=1のため続行）: "
+              + ", ".join(f"{d}（{c}件）" for d, c in sparse), file=sys.stderr)
+    elif sparse:
         detail = ", ".join(f"{d}（{c}件）" for d, c in sparse)
         sys.exit(
             f"中止: 対象週（{week_start}〜{week_end}）の実績DB反映が不完全です。"
@@ -447,12 +451,18 @@ def build_config(members: dict[str, dict], budget_by_name: dict[str, float], now
         "target_contracts": str(target_contracts),
         "avg_contract_price": str(round(avg_price or YEN_PER_CONTRACT_MAN, 1)),
         "target_sales": str(round(target_sales, 1)),
+        **({"original_target_sales": str(ORIGINAL_TARGET_SALES[month])}
+           if ORIGINAL_TARGET_SALES.get(month) and target_sales > ORIGINAL_TARGET_SALES[month] else {}),
         "actual_contracts": str(actual_contracts),
         "actual_sales": str(round(actual_sales, 1)),
         # 週の目安＝月目標を日数で割り、先週のうち当月に入る日数分
         "week_target_contracts": str(round(target_contracts * days_in_week / ndays, 2)),
         "week_target_sales": str(round(target_sales * days_in_week / ndays, 2)),
     }
+
+
+# 月の全社売上目標を途中で上方修正したとき、当初の目標（万円）を残して、資料で「当初○○万→○○万に上方修正」と見せる（士気のため。今川さん指示 2026-11-10）
+ORIGINAL_TARGET_SALES = {"2026-11": 2200.0}
 
 
 PDCA_TARGET_PROPS = [

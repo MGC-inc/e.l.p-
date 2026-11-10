@@ -68,9 +68,14 @@ def draw_progress(ax_m, ax_w, cfg, tot, fs=1.0):
         ax.barh(ys, pcts, color=["#1F3A5F", "#3B8EA5"], height=0.45)
         if mark is not None:
             ax.axvline(mark*100, color="#D64545", ls="--", lw=1.6*fs); ax.text(mark*100, 1.62, "現時点の目安", color="#D64545", fontsize=8*fs, ha="center")
+        orig = cfg.get("original_target_sales") or 0
+        if title.startswith("月進捗") and orig and tgt.get("売上(万円)") and orig < tgt["売上(万円)"]:   # 上方修正した月は、当初目標の位置も金色の線で見せる
+            op = orig / tgt["売上(万円)"] * 100
+            ax.plot([op, op], [-0.3, 0.3], color="#E0A100", lw=3.0*fs)
+            ax.text(op, -0.36, f"当初目標 {orig:,.0f}万", color="#B07A00", fontsize=8*fs, ha="center", va="top", fontweight="bold")
         for y, k, p in zip(ys, ks, pcts):
             ax.text(0, y+0.36, f"{k}　{act[k]:,.0f} / {tgt[k]:,.0f}　（達成率 {p:.0f}%）", fontsize=9*fs, va="bottom", fontweight="bold")
-        ax.set_xlim(0, max(120, max(pcts)*1.08)); ax.set_ylim(-0.4, 1.9); ax.set_yticks([]); ax.tick_params(labelsize=7*fs)
+        ax.set_xlim(0, max(120, max(pcts)*1.08)); ax.set_ylim(-0.75, 1.9); ax.set_yticks([]); ax.tick_params(labelsize=7*fs)
         ax.set_title(title, fontsize=11*fs, loc="left", fontweight="bold", pad=8)
         for sp in ("top", "right", "left"): ax.spines[sp].set_visible(False)
 
@@ -394,6 +399,7 @@ def build_cfg(inp, strict):
     return {"week": week, "month_elapsed": float(kv.get("month_elapsed") or now.day / ndays),
             "month_label": kv.get("month_label") or f"{now.month}月",
             "data_as_of": kv.get("data_as_of", ""), "check_status": kv.get("check_status", ""),
+            "original_target_sales": float(kv.get("original_target_sales") or 0),
             "week_target": {"契約数": wt("week_target_contracts", "target_contracts"), "売上(万円)": wt("week_target_sales", "target_sales")},
             "month_target": {"契約数": float(kv["target_contracts"]), "売上(万円)": float(kv["target_sales"])},
             "month_actual": {"契約数": float(kv["actual_contracts"]), "売上(万円)": float(kv["actual_sales"])}}

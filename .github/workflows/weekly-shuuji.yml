@@ -16,6 +16,10 @@ on:
         type: choice
         options: [test, production]
         default: test
+      allow_thin_week:
+        description: "true=対象週に日報の反映が薄い日があっても続行する（確認のうえ手動で実行するときだけ）"
+        type: boolean
+        default: false
   schedule:
     - cron: "0 23 * * 2"  # 火曜 23:00 UTC = 水曜 08:00 JST
 
@@ -61,6 +65,7 @@ jobs:
 
       - name: Notion/Supabase → CSV変換
         env:
+          ELP_ALLOW_THIN_WEEK: ${{ inputs.allow_thin_week && '1' || '' }}
           NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
           ELP_SUPABASE_URL: ${{ secrets.ELP_SUPABASE_URL }}
           ELP_SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.ELP_SUPABASE_SERVICE_ROLE_KEY }}
@@ -131,4 +136,12 @@ jobs:
         env:
           DEAL_LINE_CHANNEL_ACCESS_TOKEN: ${{ secrets.DEAL_LINE_CHANNEL_ACCESS_TOKEN }}
           IMAGAWA_LINE_USER_ID: ${{ secrets.IMAGAWA_LINE_USER_ID }}
-        run: python3 tools/shuuji/deliver_meeting.py "${{ steps.publish.outputs.meeting_url }}" "$IMAGAWA_LINE_USER_ID" --slides "${{ steps.publish.outputs.all_slides_url }}"
+          ELP_SUPABASE_URL: ${{ secrets.ELP_SUPABASE_URL }}
+          ELP_SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.ELP_SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          # 今川さんと、全社分の結果を受け取る野間さん（NoMax代表。2026-11-10 今川さん指示）。テストの手動実行は今川さんだけ
+          if [ "${{ github.event_name }}" = "schedule" ] || [ "${{ inputs.send_mode }}" = "production" ]; then
+            python3 tools/shuuji/deliver_meeting.py "${{ steps.publish.outputs.meeting_url }}" "$IMAGAWA_LINE_USER_ID" --slides "${{ steps.publish.outputs.all_slides_url }}" --also-names 野間
+          else
+            python3 tools/shuuji/deliver_meeting.py "${{ steps.publish.outputs.meeting_url }}" "$IMAGAWA_LINE_USER_ID" --slides "${{ steps.publish.outputs.all_slides_url }}"
+          fi

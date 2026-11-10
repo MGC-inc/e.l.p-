@@ -52,7 +52,15 @@ def deals(start: datetime.date, end: datetime.date) -> list[dict]:
 
 
 def net_contracts(rows: list[dict]) -> float:
-    return sum((prop_num(r, "契約") or 0) - (prop_num(r, "クーリン") or 0) - (prop_num(r, "審査落") or 0) for r in rows)
+    """実績DBの「契約−クーリン−審査落」を、メンバーごとに集計してから合計する。
+    メンバーごとの値が負になるときは0とみなす。アポインターの行は契約を「契約（アポ）」列に入れ、クーリン・審査落は
+    同じ案件でクローザーの行にも入るため、そのまま足し引きすると同じ取り消しが二重に引かれる
+    （2026-11-08 沢邸のクーリングオフで、山川の行に契約0・クーリン1が入り、全社の契約が1件少なく出た）。"""
+    by_member: dict[str, float] = {}
+    for r in rows:
+        who = (r["properties"].get("メンバー", {}).get("select") or {}).get("name", "")
+        by_member[who] = by_member.get(who, 0) + (prop_num(r, "契約") or 0) - (prop_num(r, "クーリン") or 0) - (prop_num(r, "審査落") or 0)
+    return sum(max(0, v) for v in by_member.values())
 
 
 def main() -> int:
