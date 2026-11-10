@@ -2418,6 +2418,71 @@ def pc_load(page_id: str, closer: dict) -> tuple[dict | None, str]:
     return p, ""
 
 
+# ---------- 施工側への自動連絡（LINEグループ） ----------
+# 施工側はNotionを共有できないため、更新された案件（確認済み・クーリングオフ・審査落ち・工事日延期）を、施工店ごとのLINEグループへ
+# botが自動でお知らせする（2026-11-10 今川さん指示）。宛先は、botを入れたグループで管理者が「施工連絡先 登録 G.L」のように送って登録する。
+# 登録先は Supabase closer_line_users に closer_name＝「施工:<施工店>」、role＝construction、line_user_id＝グループID で持つ。
+CONSTRUCTION_SHOPS = {"GL": "G.L", "AZ": "AZ"}   # 施工案件一覧の「施工店」の選択肢
+SHOP_PREFIX = "施工:"
+
+
+def construction_group(shop: str) -> str | None:
+    if not shop:
+        return None
+    try:
+        rows = sb("GET", f"closer_line_users?closer_name=eq.{urllib.parse.quote(SHOP_PREFIX + shop)}&role=eq.construction&select=line_user_id") or []
+    except Exception as e:  # noqa: BLE001
+        print(f"construction group lookup failed: {e}")
+        return None
+    return rows[0]["line_user_id"] if rows else None
+
+
+def notify_construction(crow: dict | None, text: str) -> str:
+    """施工案件の施工店のグループへ送る。戻り値: 送った施工店名（送れなければ空文字）。"""
+    shop = plain(crow, "施工店") if crow else ""
+    gid = construction_group(shop)
+    if not gid:
+        return ""
+    try:
+        line_push(gid, [{"type": "text", "text": text}])
+        return shop
+    except Exception as e:  # noqa: BLE001
+        print(f"construction notify failed: {e}")
+        return ""
+
+
+def handle_group_event(event: dict) -> None:
+    """グループでの「施工連絡先 登録 G.L」「施工連絡先 解除 G.L」。管理者が送ったときだけ受け付ける（それ以外のグループの発言は無視）。"""
+    src = event.get("source", {})
+    gid, uid = src.get("groupId") or src.get("roomId"), src.get("userId")
+    if event.get("type") != "message" or event.get("message", {}).get("type") != "text" or not gid or not uid:
+        return
+    m = re.match(r"^施工連絡先\s*(登録|解除)?\s*([A-Za-z.．]+)\s*$", event["message"]["text"].strip())
+    if not m:
+        return
+    sender = find_closer(uid)
+    if not sender or not is_admin(sender):
+        return
+    shop = CONSTRUCTION_SHOPS.get(re.sub(r"[.．]", "", m.group(2)).upper())
+    reply = event.get("replyToken")
+    if not shop:
+        line_reply(reply, [{"type": "text", "text": "施工店は G.L か AZ で送ってください。例：施工連絡先 登録 G.L"}])
+        return
+    key = urllib.parse.quote(SHOP_PREFIX + shop)
+    if m.group(1) == "解除":
+        sb("DELETE", f"closer_line_users?closer_name=eq.{key}&role=eq.construction")
+        line_reply(reply, [{"type": "text", "text": f"施工店【{shop}】の連絡先の登録を解除しました。"}])
+        return
+    rows = sb("GET", f"closer_line_users?closer_name=eq.{key}&role=eq.construction&select=id") or []
+    if rows:
+        sb("PATCH", f"closer_line_users?id=eq.{rows[0]['id']}", {"line_user_id": gid})
+    else:
+        sb("POST", "closer_line_users", {"line_user_id": gid, "closer_name": SHOP_PREFIX + shop, "role": "construction"})
+    line_reply(reply, [{"type": "text", "text": f"このグループを施工店【{shop}】の連絡先として登録しました。\n"
+                        "営業マンが契約後の確認を済ませた案件や、クーリングオフ・審査落ち・工事日の延期があった案件を、ここに自動でお知らせします。"}])
+
+
+
 def handle_postcheck_button(event: dict, closer: dict) -> bool:
     text = event["message"]["text"].strip()
     if not text.startswith(PC_PREFIX):
@@ -2445,8 +2510,12 @@ def handle_postcheck_button(event: dict, closer: dict) -> bool:
                 f"お客様：{name}\n営業担当：{closer.get('closer_name') or ''}\n"
                 f"契約日：{md(deal_signed_iso(p))}\n" + (f"工事日：{work}\n" if work else "")
                 + "クーリングオフ・審査の心配がないことを、電話で確認済みです。")
-        line_reply(reply, [{"type": "text", "text": f"✅ {name}の契約後の確認連絡を記録しました。ありがとうございます！"},
-                           {"type": "text", "text": "施工側へ、次の文面をLINEで送って連絡してください👇\n\n" + memo}])
+        shop = notify_construction(crow, memo)
+        if shop:
+            line_reply(reply, [{"type": "text", "text": f"✅ {name}の契約後の確認連絡を記録しました。ありがとうございます！\n施工側（{shop}）にも自動で連絡しました。"}])
+        else:   # 施工側のグループが未登録・施工案件に紐づいていないときは、営業マンが文面をコピーして送る
+            line_reply(reply, [{"type": "text", "text": f"✅ {name}の契約後の確認連絡を記録しました。ありがとうございます！"},
+                               {"type": "text", "text": "施工側へ、次の文面をLINEで送って連絡してください👇\n\n" + memo}])
     elif act in ("co", "ng"):
         label = "クーリングオフ" if act == "co" else "審査落ち"
         line_reply(reply, [{"type": "text", "text": f"{name}の結果を「契約」から「{label}」に変更します。よろしいですか？\n（売上の数字に影響します）",
@@ -2462,10 +2531,14 @@ def handle_postcheck_button(event: dict, closer: dict) -> bool:
             "結果": {"status": {"name": new}},
             "結果履歴": {"rich_text": [{"type": "text", "text": {"content": (history + "\n" if history else "") + note}}]}}})
         noted = pc_note_construction(p["id"], f"{today.isoformat()} 営業報告：{new}になりました。施工の中止・日程の要否を確認してください")
+        shop = notify_construction(pc_construction(p["id"]), (
+            f"【{new}の連絡】\nお客様：{name}\n営業担当：{closer.get('closer_name') or ''}\n"
+            "契約が取り消しになりました。工事の中止・日程の扱いをご確認ください。"))
         line_reply(reply, [{"type": "text", "text": f"{name}を「{new}」に変更しました。"
                             + ("\n今川さんにもクーリングオフの連絡が届きます。" if new == "クーリングオフ" else "")
                             + ("\n施工案件にも「要確認」を付けました。" if noted else "")
-                            + "\n工事が決まっている場合は、施工側にもLINEで連絡してください。"}])
+                            + (f"\n施工側（{shop}）にも自動で連絡しました。" if shop
+                               else "\n工事が決まっている場合は、施工側にもLINEで連絡してください。")}])
     elif act == "cancel":
         line_reply(reply, [{"type": "text", "text": f"{name}は変更しませんでした。"}])
     elif act == "delay":
@@ -2505,8 +2578,12 @@ def handle_postcheck_date(event: dict, closer: dict) -> bool:
         "工事予定日": {"date": {"start": d.isoformat()}}}})
     flow_update(row, status="postcheck_done")
     noted = pc_note_construction(p["id"], f"{today.isoformat()} 営業報告：工事日が {d.month}/{d.day} に延期になりました", "延期・再調整")
+    shop = notify_construction(pc_construction(p["id"]), (
+        f"【工事日延期の連絡】\nお客様：{plain(p, 'お客様名')}\n営業担当：{closer.get('closer_name') or ''}\n"
+        f"お客様の都合で、工事日が {d.month}/{d.day} に延期になりました。日程の再調整をお願いします。"))
     line_reply(reply, [{"type": "text", "text": f"📅 {plain(p, 'お客様名')}の工事日を {d.month}/{d.day} に更新しました。"
                         + ("\n施工案件も「延期・再調整」にして、施工側に伝わるようにしました。" if noted else "")
+                        + (f"\n施工側（{shop}）にも自動で連絡しました。" if shop else "")
                         + "\nその日の前の週の水曜に、もう一度確認の連絡をお願いします。"}])
     return True
 
@@ -3587,6 +3664,9 @@ def handle_team_numbers(event: dict, closer: dict) -> None:
 
 
 def handle_event(event: dict):
+    if event.get("source", {}).get("type") in ("group", "room"):
+        handle_group_event(event)   # グループは、施工連絡先の登録だけ受け付ける（通常の処理には回さない）
+        return
     if event.get("type") != "message":
         return  # フォロー/アンフォロー等は今回は無視
     line_user_id = event.get("source", {}).get("userId")
