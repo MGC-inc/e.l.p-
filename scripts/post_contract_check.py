@@ -2,7 +2,7 @@
 """契約後の確認連絡（お客様への電話）の催促。工事日の週の1つ前の水曜の午前中に、その案件の営業マンへLINEで送る。
 
   python3 scripts/post_contract_check.py --dry-run          # 送らずに、誰に何件出るかだけ見る
-  python3 scripts/post_contract_check.py                    # 送る（水曜のみ。同じ日に同じ人へは1回だけ）
+  python3 scripts/post_contract_check.py                    # 送る（毎朝実行。水曜は全部の案件、ほかの日は「調整中」だけ。同じ日に同じ人へは1回だけ）
   python3 scripts/post_contract_check.py --only 岡野 --force
 
 目的（2026-11-10 今川さん指示）: 工事日確定の案件を、クーリングオフや審査落ちの可能性がほとんどなくなってから施工側に上げるため、
@@ -18,7 +18,7 @@
 
 カードのボタン（返事は line-webhook/api/webhook.py の handle_postcheck_button が受けて Notion を更新する）:
   確認した → 契約後確認＝確認済み／既にクーリングオフ・審査落ちだった → 「工事中止案件として処理します。よろしいですか？」→ はい で確定／
-  工事日延期 → 「日程が決まった／お客様と調整中」を選ばせ、決まった日を記録（施工案件も「延期・再調整」に）。調整中の案件は、決まるまで毎週水曜に確認
+  工事日延期 → 「日程が決まった／お客様と調整中」を選ばせ、決まった日を記録（施工案件も「延期・再調整」に）。調整中の案件は、決まるまで毎日催促する
   どのボタンも、施工側へは自動で送らない。更新は夜のまとめ（scripts/construction_digest.py）にためて、今川さんの承認後に施工担当へ送る
 完工日はここでは書かない（完工報告が入ったときだけ記録する）。
 
@@ -198,15 +198,16 @@ def main() -> None:
     ap.add_argument("--force", action="store_true", help="今日すでに送った人にも送る")
     ap.add_argument("--since", default="2026-10-01", help="この日以降の契約だけ対象（古い契約への催促を防ぐ）")
     ap.add_argument("--date", help="今日の日付（テスト用 YYYY-MM-DD）")
-    ap.add_argument("--any-day", action="store_true", help="水曜以外でも送る（通常は水曜だけ。--dry-run は曜日を問わない）")
+    ap.add_argument("--any-day", action="store_true", help="水曜以外の日でも全部の案件を対象にする（通常は水曜だけ全部、ほかの日は調整中だけ）")
     args = ap.parse_args()
     load_env()
     today = dt.date.fromisoformat(args.date) if args.date else dt.datetime.now(JST).date()
 
-    if today.weekday() != 2 and not (args.dry_run or args.any_day):
-        print(f"{today} は水曜ではないので送りません（水曜の午前中に送る運用）。")
-        return
     pending, unsent = pending_deals(today, args.since)
+    # 水曜は全部の案件、水曜以外の日は「お客様と調整中」の案件だけ（調整中は日程が決まるまで毎日催促する・今川さん指示 2026-11-10）
+    if today.weekday() != 2 and not args.any_day:
+        pending = [p for p in pending if p.get("_adjusting")]
+        unsent = []
     by_closer: dict[str, list[dict]] = {}
     for p in pending:
         by_closer.setdefault(prop_text(p, "クローザー"), []).append(p)
