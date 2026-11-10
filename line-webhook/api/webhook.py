@@ -144,7 +144,7 @@ KNOWN_APPOINTERS = {
     "野間": "野間",
     "村山": "村山",
     "男沢": "男沢",
-    "山口": "山口", "山口 夕貴": "山口", "山口夕貴": "山口",
+    "山口": "山口", "山口 夕貴": "山口", "山口夕貴": "山口", "やまぐちゆうき": "山口", "やまぐち ゆうき": "山口",
     "名取": "名取", "名取 優月": "名取", "名取優月": "名取",
 }
 
@@ -1693,6 +1693,44 @@ def hw_examples_for(issue: dict | None, role: str) -> tuple[str, list]:
     return "汎用", HW_EXAMPLES["汎用_closer" if role == "closer" else "汎用_appointer"]
 
 
+HW_LOGIC = {   # 日報にトークの記載が無いときに出す、その項目の考え方（ロジック）。マニュアル/訪問営業.md の原則に沿う
+    "訪問→在宅率": "在宅に会える確率を上げる考え方：在宅が多い時間帯・地区・家に寄せて回る。数を増やす前に、当たる場所に寄せる。",
+    "在宅→対面率": "インターホンでの第一声で、用件（ハウクリ／メンテのご案内）を短く伝え、玄関先まで出てきてもらうことに集中する。",
+    "対面→対象率": "商談は即決が前提のため、主権者2名（ご夫婦など）が揃う日程にできるかを、会話の早い段階で確かめる。",
+    "対象→対話率": "最初の30秒の話す順番を決めておき、切り口（ハウクリ／メンテ）を相手に合わせて選ぶ。",
+    "対話→アポ率": "断られた直後に引き下がらず、日程を2択で聞いて、ご夫婦そろって在宅の日に商談の場を設定する。",
+    "商談→契約率": "その場での即決を目指し、迷っている相手には保証内容・サービス価値を丁寧に再説明する。保留は失注と同義と考える。",
+    "量": "1日の訪問数・回るルートを前日に決め、毎晩の日報で達成を確認する。",
+}
+
+
+def hw_top_talk(issue: dict | None) -> str:
+    """「うまくいったトーク」：この項目がいちばん高い人の日報（備考）にトークの記載があればそれを、無ければその項目の考え方（ロジック）を返す。"""
+    if not issue or not issue.get("top_name"):
+        return ""
+    top, label = issue["top_name"], issue.get("label") or ""
+    try:
+        rows = notion_query_recent_performance(top, (datetime.now(JST).date() + timedelta(days=1)).isoformat(), 10)
+        cutoff = (datetime.now(JST).date() - timedelta(days=14)).isoformat()
+        hits = []
+        for r in rows:
+            if (row_date_iso(r) or "") < cutoff:
+                continue
+            for ln in notion_richtext_plain(r, "備考").splitlines():
+                ln = ln.strip()
+                if "獲得速報" in ln or not ln:
+                    continue
+                if re.search(r"「.{4,}」|トーク|セリフ|切り返し|第一声|一言", ln):
+                    hits.append(ln[:160])
+        if hits:
+            return f"🗣 {top}さんの日報より\n" + "\n".join(f"・{h}" for h in hits[:2])
+    except Exception as e:  # noqa: BLE001
+        print(f"top talk read error: {e}")
+    key = "商談→契約率" if label.startswith("商談→契約率") else label
+    logic = HW_LOGIC.get(key)
+    return f"🧭 {top}さんの日報にトークの記載はありませんでした。この項目の考え方\n{logic}" if logic else ""
+
+
 def hw_issue_text(issue: dict | None, kind: str, examples: list) -> str:
     lines = []
     if issue and issue.get("kind") == "low":
@@ -1703,6 +1741,9 @@ def hw_issue_text(issue: dict | None, kind: str, examples: list) -> str:
         lines.append("📌 先週の数字からは課題を出せませんでした。下の例から選ぶか、自分で決めてください。")
     if issue and issue.get("top_name"):
         lines.append(f"💡 この項目がいちばん高いのは{issue['top_name']}さん（{issue['top_rate']}%）。やり方を聞く・同行するのも近道です。")
+    talk = hw_top_talk(issue)
+    if talk:
+        lines.append(talk)
     lines.append("\n今週のアクションプラン例")
     lines += [f"{chr(0x2460 + i)} {b}\n　{dtl}" for i, (b, dtl) in enumerate(examples)]
     lines.append("\n例を選ぶか、［自分で決める］で自分の言葉で宣言してください。")
