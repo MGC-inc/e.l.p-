@@ -2638,6 +2638,33 @@ def handle_postcheck_date(event: dict, closer: dict) -> bool:
     return True
 
 
+GROUP_LABEL = "group_label"   # グループの名前付け（line_user_id＝グループID、customer_name＝{"shop": "G.L"|"AZ"}）
+
+
+def handle_group_register(event: dict, closer: dict) -> bool:
+    """今川さんが、グループがG.LかAZかを教える。「グループ登録 a1b2 G.L」（a1b2＝夜のまとめに出るグループの末尾4文字）。"""
+    m = re.match(r"^グループ登録\s+(\S+)\s+(G\.?L|AZ)$", event["message"]["text"].strip(), re.I)
+    if not m:
+        return False
+    reply = event["replyToken"]
+    if not is_admin(closer):
+        return True
+    code, shop = m.group(1).lower(), ("AZ" if m.group(2).upper() == "AZ" else "G.L")
+    rows = sb("GET", f"deal_recordings?storage_path=eq.{GROUP_MESSAGE}&order=received_at.desc&limit=500&select=customer_name") or []
+    gids = {json.loads(r["customer_name"]).get("group", "") for r in rows}
+    hit = [g for g in gids if g and g.lower().endswith(code)]
+    if len(hit) != 1:
+        line_reply(reply, [{"type": "text", "text": f"末尾が「{code}」のグループが{'見つかりません' if not hit else '複数あります'}。夜のまとめに出た4文字を、そのまま送ってください。"}])
+        return True
+    gid = hit[0]
+    sb("DELETE", f"deal_recordings?storage_path=eq.{GROUP_LABEL}&line_user_id=eq.{urllib.parse.quote(gid)}")
+    sb("POST", "deal_recordings", {"line_user_id": gid, "storage_path": GROUP_LABEL, "status": "active",
+                                  "customer_name": json.dumps({"shop": shop}, ensure_ascii=False)})
+    line_reply(reply, [{"type": "text", "text": f"グループ（…{gid[-4:]}）を「{shop}の施工グループ」として登録しました。"
+                                                "\n今後のまとめでは、このグループの発言に「" + shop + "」と付けて知らせます。"}])
+    return True
+
+
 # ---------- 施工担当への1日のまとめ（今川さんの承認後だけ送る） ----------
 DIGEST_KIND = "construction_digest"
 
@@ -2894,7 +2921,7 @@ def handle_new_menu(event: dict, closer: dict) -> bool:
     return (handle_admin_answer(event, closer) or handle_share_consent(event, closer) or handle_homework_check(event, closer)
             or handle_trouble(event, closer) or handle_homework(event, closer) or handle_talk_phase(event, closer)
             or handle_build_done(event, closer) or handle_postcheck_button(event, closer) or handle_postcheck_date(event, closer)
-            or handle_construction_digest(event, closer))
+            or handle_construction_digest(event, closer) or handle_group_register(event, closer))
 
 
 def handle_audio_message(event: dict, closer: dict, extra_messages=None):
