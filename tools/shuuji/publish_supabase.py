@@ -62,6 +62,14 @@ def main(out_dir: str) -> None:
     for f in files:
         upload(os.path.join(pub_dir, f), f)
         print(f"公開: {f}")
+    issues = os.path.join(out_dir, "weekly_issues.json")
+    if os.path.exists(issues):   # 宣言登録のbotが読む、先週の課題（非公開バケット deal-recordings）
+        try:
+            _req("POST", "/storage/v1/object/deal-recordings/weekly-issues/latest.json", open(issues, "rb").read(),
+                 {"Content-Type": "application/json", "x-upsert": "true"})
+            print("課題データを公開しました（bot用）")
+        except urllib.error.HTTPError as e:
+            print(f"課題データのアップロードに失敗（配信は続行）: {e.code}")
     base_url = os.environ["ELP_SUPABASE_URL"].rstrip("/") + f"/storage/v1/object/public/{BUCKET}"
     print(f"{len(files)}件公開。 PUBLIC_BASE_URL={base_url}")
     print(f"PUBLIC_BASE_URL={base_url}")

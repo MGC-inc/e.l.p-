@@ -15,7 +15,7 @@
   8. MTの最後にBOTへ送る内容（記入例つき）
   9. 今週の動き方（水:MT／木:アポ中心／金:クロ中心）
 """
-import csv, os, sys, secrets, textwrap
+import csv, datetime, json, os, sys, secrets, textwrap
 import matplotlib; matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
@@ -174,6 +174,7 @@ def action_block(text):
     return "\n".join(lines), fs, rh
 
 
+ISSUES = {}   # 個人スライドで出した「最優先の改善項目」を集めて、botの宣言登録で本人に見せる（weekly_issues.json）
 REVIEW_HIDDEN = {"今川"}  # 先週の宣言の振り返りに出さない人（2026-10-27 今川さん指示）
 
 
@@ -500,6 +501,22 @@ def person(pdf, name, mem, res, pdca, cfg, n):
                      fontsize=11, ha="center", color=BLUE, fontweight="bold")
     # 右中: 最優先の改善項目（平均の90%未満が無い人は「伸ばすならここ」）
     levers = B.growth_levers(name, res, mem) if not (worst and worst[1] / worst[2] < 0.9) else []
+    if worst and worst[1] / worst[2] < 0.9:
+        ISSUES[name] = {"kind": "low", "label": worst[0], "mine": round(worst[1], 1), "avg": round(worst[2], 1), "role": role}
+        sp_w = next((sp for sp in B.rows_spec(role, is_mgr) if sp[1] == worst[0]), None)   # この項目がいちばん高い人（真似する相手）
+        if sp_w:
+            peers = [x for x in res if mem[x]["role"] == role and x != name]
+            if sp_w[1] in B.ACTIVITY_RATES:
+                peers = [x for x in peers if mem[x].get("is_manager") != "yes"]
+            min_den = 20 if sp_w[1] in B.ACTIVITY_RATES else 3
+            cands = [(B._val(res[x], sp_w), x) for x in peers if res[x][sp_w[4]] >= min_den and B._val(res[x], sp_w) is not None]
+            if cands:
+                tv, tn = max(cands)
+                ISSUES[name].update({"top_name": tn, "top_rate": round(tv, 1)})
+    elif levers:
+        ISSUES[name] = {"kind": "grow", "label": levers[0][0], "mine": round(levers[0][1], 1), "top": round(levers[0][2], 1), "role": role}
+    else:
+        ISSUES[name] = {"kind": "none", "role": role}
     card(fig, 0.6, Y(0.38), 0.365, 0.24 * k, "#FBE3E3" if worst and worst[1] / worst[2] < 0.9 else "#E3F2EA")
     if levers:
         lv = levers[0]
@@ -701,6 +718,9 @@ def main(inp, out, strict=False):
     fn = f"{secrets.token_urlsafe(9)}.pdf"
     build_deck(os.path.join(pub, fn), ALL, everyone, mem, res, pdca, cfg)
     rows.append([ALL, fn]); print(f"スライド {ALL}: {len(everyone)}人 → {fn}")
+    # 宣言登録のbotが本人に見せる、先週の課題（人ごと）。公開しない（publish_supabase.py が非公開バケットへ置く）
+    with open(os.path.join(out, "weekly_issues.json"), "w", encoding="utf-8") as f:
+        json.dump({"week": cfg["week"], "generated": datetime.date.today().isoformat(), "members": ISSUES}, f, ensure_ascii=False)
     with open(os.path.join(out, "slides_manifest.csv"), "w", newline="", encoding="utf-8-sig") as f:
         w = csv.writer(f); w.writerow(["agency", "file"]); w.writerows(rows)
 

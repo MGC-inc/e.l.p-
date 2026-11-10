@@ -1632,6 +1632,83 @@ HW_CHOICES = {
     "closer": ["価格提示と切り返しの練習", "ヒアリングの掘り下げ練習", "クロージングの練習",
                "録音を聞き返して改善", "他の人の商談に同行して学ぶ", "契約後フォローの徹底", HW_OTHER],
 }
+# ---------- 宣言の「今週のアクションプラン例」（本人の先週の課題に合わせる。マニュアル/宣言アクションプラン例.md） ----------
+HW_EXAMPLES = {   # 課題の種類 → [(ボタン名（20字まで）, 詳細＝宣言として登録される文)]
+    "訪問→在宅率": [("在宅の多い時間帯に集中", "先週在宅に会えた時間帯をメモし、今週の訪問の半分以上をその時間に寄せる"),
+                  ("会えた地区・家に寄せる", "在宅が多かった地区・家のタイプを3つ書き出し、今週はそこから回る"),
+                  ("得意な人の回り方に同行", "在宅率の高い人の訪問に1回同行し、時間帯と順路を聞く")],
+    "在宅→対面率": [("第一声のロープレ3回", "インターホンの第一声を、仲間と3回ロープレする"),
+                  ("第一声を録音して聞く", "自分の第一声を録音して聞き返し、直す点を1つ決める"),
+                  ("断られた一言をメモ", "インターホンで断られた一言を毎日3つメモし、言い換えを考えて試す")],
+    "対面→対象率": [("2名在宅の聞き方を練習", "「ご夫婦そろってのお時間」の聞き方をロープレ3回やる"),
+                  ("対象外の理由をメモ", "対象外になった理由を毎回メモし、週末に多いものを1つ直す"),
+                  ("早めに条件を確認する", "会話の最初の3分で、在宅・主権者の条件を自然に確かめる順番に変える")],
+    "対象→対話率": [("切り口を言い換える", "ハウクリ／メンテの切り口の言い方を2通り決め、交互に試して反応を比べる"),
+                  ("最初の30秒を決める", "最初の30秒の話す順番を紙に書いて固定し、毎回その順で話す"),
+                  ("できる人のトークを聞く", "対話率の高い人の録音（または同行）で、最初の一言を真似して1日試す")],
+    "対話→アポ率": [("切り返しロープレ3回", "断られた直後の切り返しを、仲間と3回ロープレする"),
+                  ("日程は2択で聞く", "「木曜と金曜、どちらがよいですか」の2択で日程を聞く形に統一する"),
+                  ("録音を聞き返す", "自分のアポ取得の会話を録音して聞き返し、直す点を1つ決める")],
+    "商談→契約率": [("価格提示後の沈黙練習", "金額提示のあと、自分から話さず待つ練習をロープレ3回やる"),
+                  ("ネック別の返しを作る", "先週の保留・失注のネックを書き出し、それぞれの返しを1つずつ用意する"),
+                  ("得意な人の商談に同行", "契約率の高いクローザーの商談に1回同行し、クロージングを見る")],
+    "量": [("1日の訪問数を決める", "1日あたりの訪問数の目標を決め、毎晩の日報で達成を確認する"),
+          ("稼働開始を前倒しする", "午前の訪問開始を30分早め、移動時間のムダを1か所減らす"),
+          ("回るルートを先に決める", "前日夜に、翌日回るエリアと順路を決めてから出る")],
+    "汎用_appointer": [("録音を聞き返して直す", "自分のアポ取りの会話を録音して聞き返し、直す点を1つ決めて試す"),
+                     ("他の人のアポ取りに同行", "アポ取りのうまい人の訪問に同行し、第一声と切り返しから真似する1点を決める"),
+                     ("ロープレを3回やる", "苦手な場面（断られた直後など）を仲間と3回ロープレする")],
+    "汎用_closer": [("録音を聞き返して直す", "先週の商談録音を聞き返し、直す点を1つ決めて試す"),
+                  ("他の人の商談に同行する", "契約率の高いクローザーの商談に同行し、真似する1点を決める"),
+                  ("ロープレを3回やる", "苦手な場面（価格提示後・クロージング）を仲間と3回ロープレする")],
+}
+ISSUES_PATH = "weekly-issues/latest.json"   # 週次パイプライン（tools/shuuji/build_slides.py）が置く、人ごとの先週の課題
+
+
+def weekly_issue(name: str) -> dict | None:
+    """先週の課題（資料の「最優先の改善項目」と同じ）。まだ無い・古い・その人のデータが無いときはNone。"""
+    try:
+        raw = sb_storage_get("deal-recordings", ISSUES_PATH)
+        if not raw:
+            return None
+        d = json.loads(raw)
+        if (datetime.now(JST).date() - date.fromisoformat(d["generated"])).days > 6:   # 先週分のMT資料から作ったもの（7日以上前は古い）
+            return None
+        return (d.get("members") or {}).get(name)
+    except Exception as e:  # noqa: BLE001 - 読めなくても宣言の登録は続ける
+        print(f"weekly issue read error: {e}")
+        return None
+
+
+def hw_examples_for(issue: dict | None, role: str) -> tuple[str, list]:
+    """(課題の種類, 例3つ)。データが無い・課題なしの人は汎用。"""
+    label = (issue or {}).get("label") or ""
+    if issue and issue.get("kind") in ("low", "grow"):
+        if label in HW_EXAMPLES:
+            return label, HW_EXAMPLES[label]
+        if label.startswith("商談→契約率"):
+            return "商談→契約率", HW_EXAMPLES["商談→契約率"]
+        if label in ("訪問数", "アポ数", "商談数"):
+            return "量", HW_EXAMPLES["量"]
+    return "汎用", HW_EXAMPLES["汎用_closer" if role == "closer" else "汎用_appointer"]
+
+
+def hw_issue_text(issue: dict | None, kind: str, examples: list) -> str:
+    lines = []
+    if issue and issue.get("kind") == "low":
+        lines.append(f"📌 先週のあなたの課題\n{issue['label']}　{issue['mine']}%（全体平均 {issue['avg']}%）")
+    elif issue and issue.get("kind") == "grow":
+        lines.append(f"📌 先週は大きな課題はありません。伸ばすならここ\n{issue['label']}")
+    else:
+        lines.append("📌 先週の数字からは課題を出せませんでした。下の例から選ぶか、自分で決めてください。")
+    if issue and issue.get("top_name"):
+        lines.append(f"💡 この項目がいちばん高いのは{issue['top_name']}さん（{issue['top_rate']}%）。やり方を聞く・同行するのも近道です。")
+    lines.append("\n今週のアクションプラン例")
+    lines += [f"{chr(0x2460 + i)} {b}\n　{dtl}" for i, (b, dtl) in enumerate(examples)]
+    lines.append("\n例を選ぶか、［自分で決める］で自分の言葉で宣言してください。")
+    return "\n".join(lines)
+
+
 HW_WHENS = ["木曜", "金曜", "木・金", "毎日", "土日"]
 HW_WHOS = ["ひとりで", "リーダーと", "同じ代理店の仲間と"]
 HW_METRICS = [("訪問数", "訪問数目標"), ("アポ数", "アポ数目標"), ("商談数", "商談数目標_自アポ"), ("契約数", "契約数目標_自アポ")]
@@ -1958,10 +2035,21 @@ def handle_homework(event: dict, closer: dict) -> bool:
             hw_next(reply, resumed, d, name, d.get("choices") or choices,
                     prefix="📝 途中まで登録されています。\n" + hw_progress_text(d) + "\n\n続きから進めます。\n\n")
             return True
-        plan = member_month_plan(name)   # 月次MTの改善ポイントがあれば、先に見せて宣言の選択肢にも足す
+        plan = member_month_plan(name)   # 月次MTの改善ポイントがあれば、先に見せる
+        msgs = [{"type": "text", "text": hw_plan_intro(plan)}] if plan else []
+        try:   # 先週の課題＋アクションプラン例3つ（ボタン）＋自分で決める。作れなければ、これまでの選択肢にする
+            issue = weekly_issue(name)
+            kind, examples = hw_examples_for(issue, role)
+            ex = {b: dtl for b, dtl in examples}
+            q1 = [b for b, _ in examples] + [HW_OTHER]
+            flow_start(uid, "homework", "what", {"week": hw_week_key(closer), "metrics": metric_labels, "choices": q1, "ex": ex})
+            line_reply(reply, msgs + [{"type": "text", "text": hw_issue_text(issue, kind, examples)[:4800],
+                                       "quickReply": quick_reply(q1)}])
+            return True
+        except Exception as e:  # noqa: BLE001
+            print(f"hw examples failed: {e}")
         q1 = hw_choices_for(plan, choices) if plan else choices
         flow_start(uid, "homework", "what", {"week": hw_week_key(closer), "metrics": metric_labels, "choices": q1})
-        msgs = [{"type": "text", "text": hw_plan_intro(plan)}] if plan else []
         line_reply(reply, msgs + [{"type": "text", "text": HW_QUESTION_Q1, "quickReply": quick_reply(q1)}])
         return True
     row = flow_active(uid, "homework")
@@ -1985,7 +2073,7 @@ def handle_homework(event: dict, closer: dict) -> bool:
         if text not in choices and not d.get("source_text"):   # 文面から始まった人は、宣言も文面で受け取る
             line_reply(reply, [{"type": "text", "text": "ボタンから選んでください。", "quickReply": quick_reply(choices)}])
             return True
-        d["what"] = text
+        d["what"] = (d.get("ex") or {}).get(text, text)   # 例のボタンを選んだら、詳細（具体的な行動）を宣言として登録する
     elif step == "what_free":
         d["what"] = text
     if step in ("what", "what_free"):
