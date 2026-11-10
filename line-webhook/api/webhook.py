@@ -3675,9 +3675,38 @@ def handle_team_numbers(event: dict, closer: dict) -> None:
                               "quickReply": quick_reply([f"{TEAM_TEXT} {p}" for p in TEAM_PERIODS])}])
 
 
+GROUP_MESSAGE = "group_message"   # グループの発言（読むだけ。status: group_pending → group_digested）
+
+
+def record_group_message(event: dict) -> None:
+    """施工案件グループなどの文字の発言を、夜のまとめ用に記録する。グループへは何も返さない。失敗しても無視する。
+    ELP_CONSTRUCTION_GROUP_ID が設定されていれば、そのグループの発言だけ記録する（未設定なら全グループ）。"""
+    try:
+        if event.get("type") != "message" or (event.get("message") or {}).get("type") != "text":
+            return
+        src = event.get("source") or {}
+        gid = src.get("groupId") or src.get("roomId") or ""
+        want = os.environ.get("ELP_CONSTRUCTION_GROUP_ID", "").strip()
+        if not gid or (want and gid != want):
+            return
+        uid = src.get("userId") or ""
+        name = ""
+        if uid and src.get("groupId"):
+            try:
+                name = json.loads(_line_request(f"https://api.line.me/v2/bot/group/{gid}/member/{uid}", "GET")).get("displayName", "")
+            except Exception:  # noqa: BLE001
+                name = ""
+        data = {"group": gid, "name": name, "text": event["message"]["text"][:600], "ts": event.get("timestamp")}
+        sb("POST", "deal_recordings", {"line_user_id": uid or gid, "storage_path": GROUP_MESSAGE, "status": "group_pending",
+                                      "customer_name": json.dumps(data, ensure_ascii=False)})
+    except Exception as e:  # noqa: BLE001
+        print(f"record_group_message failed: {e}")
+
+
 def handle_event(event: dict):
     if event.get("source", {}).get("type") in ("group", "room"):
-        return   # グループ・複数人トークは何もしない（勝手に送信・反応しない。傍観だけ）
+        record_group_message(event)   # グループは読むだけ（記録して夜に今川さんへ知らせる）。返信・送信は一切しない
+        return
     if event.get("type") != "message":
         return  # フォロー/アンフォロー等は今回は無視
     line_user_id = event.get("source", {}).get("userId")

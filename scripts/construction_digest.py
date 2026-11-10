@@ -85,12 +85,40 @@ def build_text(events: list[dict], today: dt.date) -> str:
     return "\n".join(lines)
 
 
+def group_summary(today: dt.date, dry: bool) -> None:
+    """施工案件グループの発言を、今川さんだけに知らせる（施工担当へは送らない。確認用）。"""
+    rows = sb("GET", "deal_recordings?storage_path=eq.group_message&status=eq.group_pending"
+                     "&order=received_at.asc&select=id,customer_name") or []
+    if not rows:
+        return
+    msgs = [json.loads(r["customer_name"]) for r in rows]
+    lines = [f"【施工案件グループの発言 {today.month}/{today.day}】", f"（botは読むだけです。{len(msgs)}件）", ""]
+    for m in msgs:
+        lines.append(f"・{m.get('name') or '（名前不明）'}：{(m.get('text') or '').replace(chr(10), ' ')[:200]}")
+    gids = sorted({m.get("group", "") for m in msgs})
+    if len(gids) > 1:
+        lines += ["", f"※ {len(gids)}つのグループの発言が混ざっています（ELP_CONSTRUCTION_GROUP_ID で施工案件グループだけに絞れます）"]
+    text = "\n".join(lines)[:4800]
+    if dry:
+        print(text)
+        print(f"\n（グループの発言{len(msgs)}件。--dry-run のため送っていません）")
+        return
+    admin = sb("GET", f"closer_line_users?closer_name=eq.{urllib.parse.quote(ADMIN_NAME)}&select=line_user_id") or []
+    if not admin:
+        return
+    res = line_push(admin[0]["line_user_id"], [{"type": "text", "text": text}])
+    print("グループの発言を今川さんへ送りました:", res)
+    if res == 200:
+        sb("PATCH", f"deal_recordings?id=in.({','.join(str(r['id']) for r in rows)})", {"status": "group_digested"})
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--dry-run", action="store_true")
     args = ap.parse_args()
     load_env()
     today = dt.datetime.now(JST).date()
+    group_summary(today, args.dry_run)
 
     rows = sb("GET", "deal_recordings?storage_path=eq.construction_event&status=eq.event_pending"
                      "&order=received_at.asc&select=id,customer_name") or []
