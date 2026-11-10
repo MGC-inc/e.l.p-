@@ -2327,7 +2327,10 @@ def handle_build_done(event: dict, closer: dict) -> bool:
             f"「{customer}」の未完了の契約が{'見つかりませんでした' if not found else '複数あります'}。"
             "『契約後の案件確認』のボタンから選んでください。")}])
         return True
-    notion_call("PATCH", f"pages/{found[0]['id']}", {"properties": {"完工確認済み": {"checkbox": True}}})
+    props = {"完工確認済み": {"checkbox": True}}
+    if not plain(found[0], "完工日"):   # 完工日は、完工の連絡があって初めて記載する（2026-11-10 今川さん指示）。すでに入っている日付は変えない
+        props["完工日"] = {"date": {"start": datetime.now(JST).date().isoformat()}}
+    notion_call("PATCH", f"pages/{found[0]['id']}", {"properties": props})
     line_reply(event["replyToken"], [{"type": "text", "text": f"{plain(found[0], 'お客様名')}を完工済みにしました。お疲れさまでした！"}])
     return True
 
@@ -2342,6 +2345,48 @@ PC_PREFIX = "契約後確認 "
 PC_ACTIONS = {"確認した": "ok", "クーリングオフ": "co", "審査落ち": "ng", "延期": "delay",
               "変更CO": "do_co", "変更審査": "do_ng", "取消": "cancel"}
 PC_RESULT_OF = {"do_co": "クーリングオフ", "do_ng": "審査落ち"}
+CONSTRUCTION_DS = "387d697b-920f-4baf-8e68-a20e5ac69d00"   # 施工案件一覧（施工案件管理ページ内。商談案件に紐づく）
+
+
+def pc_construction(deal_id: str) -> dict | None:
+    """この商談に紐づく施工案件の行（なければNone）。見つからない・読めないときも、確認連絡の記録は止めない。"""
+    try:
+        rows = notion_call("POST", f"data_sources/{CONSTRUCTION_DS}/query", {"filter": {
+            "property": "商談案件", "relation": {"contains": deal_id}}, "page_size": 3}, NOTION_VERSION_V2)["results"]
+        return rows[0] if rows else None
+    except Exception as e:  # noqa: BLE001
+        print(f"postcheck: construction lookup failed: {e}")
+        return None
+
+
+def pc_note_construction(deal_id: str, note: str, progress: str | None = None) -> bool:
+    """施工案件の「次の確認」に営業からの報告を追記し、「要確認」を立てる（施工側が気づけるように）。progressがあれば進捗も変える。"""
+    row = pc_construction(deal_id)
+    if not row:
+        return False
+    try:
+        old = plain(row, "次の確認")
+        props = {"次の確認": {"rich_text": [{"type": "text", "text": {"content": (old + "\n" if old else "") + note}}]},
+                 "要確認": {"checkbox": True}}
+        if progress:
+            props["進捗"] = {"select": {"name": progress}}
+        notion_call("PATCH", f"pages/{row['id']}", {"properties": props}, NOTION_VERSION_V2)
+        return True
+    except Exception as e:  # noqa: BLE001
+        print(f"postcheck: construction note failed: {e}")
+        return False
+
+
+def pc_fmt_dt(iso: str) -> str:
+    """2026-11-21T17:00:00+09:00 → 11/21 17:00（時刻がなければ 11/21）"""
+    if not iso:
+        return ""
+    try:
+        d = date.fromisoformat(iso[:10])
+    except ValueError:
+        return ""
+    t = iso[11:16] if len(iso) > 10 and iso[11:16] not in ("", "00:00") else ""
+    return f"{d.month}/{d.day}" + (f" {t}" if t else "")
 
 
 def parse_postcheck_date(text: str, today: date) -> date | None:
@@ -2392,7 +2437,16 @@ def handle_postcheck_button(event: dict, closer: dict) -> bool:
     if act == "ok":
         notion_call("PATCH", f"pages/{p['id']}", {"properties": {"契約後確認": {"select": {"name": "確認済み"}},
                                                                  "契約後確認日": {"date": {"start": today.isoformat()}}}})
-        line_reply(reply, [{"type": "text", "text": f"✅ {name}の契約後の確認連絡を記録しました。ありがとうございます！"}])
+        crow = pc_construction(p["id"])
+        work = pc_fmt_dt(plain(crow, "施工日時")) if crow else ""
+        if plain(p, "契約後確認") == "工事日延期" and plain(p, "工事予定日"):
+            work = pc_fmt_dt(plain(p, "工事予定日")) or work
+        memo = ("【契約後確認済み】\n"
+                f"お客様：{name}\n営業担当：{closer.get('closer_name') or ''}\n"
+                f"契約日：{md(deal_signed_iso(p))}\n" + (f"工事日：{work}\n" if work else "")
+                + "クーリングオフ・審査の心配がないことを、電話で確認済みです。")
+        line_reply(reply, [{"type": "text", "text": f"✅ {name}の契約後の確認連絡を記録しました。ありがとうございます！"},
+                           {"type": "text", "text": "施工側へ、次の文面をLINEで送って連絡してください👇\n\n" + memo}])
     elif act in ("co", "ng"):
         label = "クーリングオフ" if act == "co" else "審査落ち"
         line_reply(reply, [{"type": "text", "text": f"{name}の結果を「契約」から「{label}」に変更します。よろしいですか？\n（売上の数字に影響します）",
@@ -2407,8 +2461,11 @@ def handle_postcheck_button(event: dict, closer: dict) -> bool:
         notion_call("PATCH", f"pages/{p['id']}", {"properties": {
             "結果": {"status": {"name": new}},
             "結果履歴": {"rich_text": [{"type": "text", "text": {"content": (history + "\n" if history else "") + note}}]}}})
+        noted = pc_note_construction(p["id"], f"{today.isoformat()} 営業報告：{new}になりました。施工の中止・日程の要否を確認してください")
         line_reply(reply, [{"type": "text", "text": f"{name}を「{new}」に変更しました。"
-                            + ("\n今川さんにもクーリングオフの連絡が届きます。" if new == "クーリングオフ" else "")}])
+                            + ("\n今川さんにもクーリングオフの連絡が届きます。" if new == "クーリングオフ" else "")
+                            + ("\n施工案件にも「要確認」を付けました。" if noted else "")
+                            + "\n工事が決まっている場合は、施工側にもLINEで連絡してください。"}])
     elif act == "cancel":
         line_reply(reply, [{"type": "text", "text": f"{name}は変更しませんでした。"}])
     elif act == "delay":
@@ -2447,8 +2504,10 @@ def handle_postcheck_date(event: dict, closer: dict) -> bool:
         "契約後確認": {"select": {"name": "工事日延期"}}, "契約後確認日": {"date": {"start": today.isoformat()}},
         "工事予定日": {"date": {"start": d.isoformat()}}}})
     flow_update(row, status="postcheck_done")
+    noted = pc_note_construction(p["id"], f"{today.isoformat()} 営業報告：工事日が {d.month}/{d.day} に延期になりました", "延期・再調整")
     line_reply(reply, [{"type": "text", "text": f"📅 {plain(p, 'お客様名')}の工事日を {d.month}/{d.day} に更新しました。"
-                        "\nその日が近づいたら、もう一度確認の連絡をお願いします。"}])
+                        + ("\n施工案件も「延期・再調整」にして、施工側に伝わるようにしました。" if noted else "")
+                        + "\nその日の前の週の水曜に、もう一度確認の連絡をお願いします。"}])
     return True
 
 
