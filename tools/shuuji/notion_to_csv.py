@@ -189,7 +189,7 @@ def build_members(now: datetime.date) -> dict[str, dict]:
         name = prop_select(row, "メンバー")
         if not name:
             continue
-        agency_by_name[name] = prop_select(row, "代理店")
+        agency_by_name[name] = agency_label(name, prop_select(row, "代理店"))
         budget_by_name[name] = prop_number(row, "予算（万円）")
 
     sb_rows = sb_get("closer_line_users?select=closer_name,role,line_user_id,pdca_pending_week&closer_name=not.is.null")
@@ -367,7 +367,7 @@ def build_totals(start: datetime.date, end: datetime.date, members: dict[str, di
 
     for r in perf:
         name = prop_select(r, "メンバー")
-        agency = HIDDEN_BUCKET if name in WEEKLY_HIDDEN else (agency_of.get(name) or prop_formula_str(r, "所属"))
+        agency = HIDDEN_BUCKET if name in WEEKLY_HIDDEN else agency_label(name, agency_of.get(name) or prop_formula_str(r, "所属"))
         add(agency, 4, prop_number(r, "契約金額（万円）") - prop_number(r, "キャンセル金額（万円）"))
         if prop_select(r, "出勤状況") != "休み":
             add(agency, 0, prop_number(r, "訪問数"))
@@ -375,7 +375,7 @@ def build_totals(start: datetime.date, end: datetime.date, members: dict[str, di
     perf_agency = {prop_select(r, "メンバー"): prop_formula_str(r, "所属") for r in perf}
     for d in deals:
         closer = prop_select(d, "クローザー")
-        agency = HIDDEN_BUCKET if closer in WEEKLY_HIDDEN else (agency_of.get(closer) or perf_agency.get(closer, ""))
+        agency = HIDDEN_BUCKET if closer in WEEKLY_HIDDEN else agency_label(closer, agency_of.get(closer) or perf_agency.get(closer, ""))
         add(agency, 2, 1)
         if prop_status(d, "結果") == RESULT_CONTRACT:
             add(agency, 3, 1)
@@ -406,7 +406,7 @@ def build_weekly_sales(last_monday: datetime.date, members: dict[str, dict]) -> 
         d = datetime.date.fromisoformat(prop_date(r, "実績日")[:10])
         w = d - datetime.timedelta(days=d.weekday())
         name = prop_select(r, "メンバー")
-        agency = HIDDEN_BUCKET if name in WEEKLY_HIDDEN else (agency_of.get(name) or prop_formula_str(r, "所属"))
+        agency = HIDDEN_BUCKET if name in WEEKLY_HIDDEN else agency_label(name, agency_of.get(name) or prop_formula_str(r, "所属"))
         sales = prop_number(r, "契約金額（万円）") - prop_number(r, "キャンセル金額（万円）")
         for k in (("agency", "全社"), ("agency", agency), ("person", name)):
             if (k, w) in acc:
@@ -463,6 +463,13 @@ def build_config(members: dict[str, dict], budget_by_name: dict[str, float], now
 
 # 月の全社売上目標を途中で上方修正したとき、当初の目標（万円）を残して、資料で「当初○○万→○○万に上方修正」と見せる（士気のため。今川さん指示 2026-11-10）
 ORIGINAL_TARGET_SALES = {"2026-11": 2200.0}
+
+# 個人事業主（業務委託）の人が複数になるため、資料では「個人（○○）」と名前を付けて分ける（今川さん指示 2026-11-11）
+AGENCY_LABELS = {"個人（業務委託）": {"鈴木虎春": "個人（鈴木虎春）", "名取": "個人（名取）"}}
+
+
+def agency_label(name: str, agency: str) -> str:
+    return AGENCY_LABELS.get(agency, {}).get(name, agency)
 
 
 PDCA_TARGET_PROPS = [

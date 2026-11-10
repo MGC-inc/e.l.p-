@@ -492,8 +492,12 @@ def person(pdf, name, mem, res, pdca, cfg, n):
         x = 0.6 + i * (0.365 / len(keys))
         card(fig, x, Y(0.66), 0.365 / len(keys) - 0.008, 0.16 * k, BG)
         fig.text(x + 0.365 / len(keys) / 2 - 0.004, Y(0.78), lab, fontsize=12, ha="center", color=SUB)
-        fig.text(x + 0.365 / len(keys) / 2 - 0.004, Y(0.69), f"{r[key]:,.0f}" if key != "sales" else f"{r[key]:,.1f}",
+        split = key == "meet" and mem[name]["role"] == "closer"   # クローザーの商談数は、自アポ・他アポの内訳まで出す（今川さん指示 2026-11-11）
+        fig.text(x + 0.365 / len(keys) / 2 - 0.004, Y(0.705 if split else 0.69), f"{r[key]:,.0f}" if key != "sales" else f"{r[key]:,.1f}",
                  fontsize=22, ha="center", fontweight="bold", color=NAVY)
+        if split:
+            fig.text(x + 0.365 / len(keys) / 2 - 0.004, Y(0.672), f"自{r['meet_own']:.0f}＋他{r['meet_other']:.0f}",
+                     fontsize=11, ha="center", color=BLUE, fontweight="bold")
     # 右中: 最優先の改善項目（平均の90%未満が無い人は「伸ばすならここ」）
     levers = B.growth_levers(name, res, mem) if not (worst and worst[1] / worst[2] < 0.9) else []
     card(fig, 0.6, Y(0.38), 0.365, 0.24 * k, "#FBE3E3" if worst and worst[1] / worst[2] < 0.9 else "#E3F2EA")
