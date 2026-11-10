@@ -36,7 +36,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."
 from monthly_budget_floor import BUDGET_DB, load_env, prop_text, query_all  # noqa: E402
 
 PDCA_DB = "17f23c69-8a24-429a-8957-6b5490a87680"  # 📝 週次PDCA記録DB（data_source_id）
-NO_REMINDER = {"今川", "藤江"}  # 今川＝管理者本人／藤江＝週次の対象外（tools/shuuji/notion_to_csv.py の WEEKLY_HIDDEN と同じ）
+NO_REMINDER = {"今川", "藤江", "野間"}  # 今川＝管理者本人／藤江＝週次の対象外（tools/shuuji/notion_to_csv.py の WEEKLY_HIDDEN と同じ）
 
 dry = "--dry-run" in sys.argv
 stage = sys.argv[sys.argv.index("--stage") + 1] if "--stage" in sys.argv else "2"
@@ -167,7 +167,7 @@ def main() -> None:
     load_env()
     rows = sb("GET", "closer_line_users?select=closer_name,role,line_user_id,pdca_pending_week"
                      "&pdca_pending_week=not.is.null&closer_name=not.is.null&order=closer_name") or []
-    rows = [r for r in rows if r["closer_name"] not in {"藤江"}]
+    rows = [r for r in rows if r["closer_name"] not in {"藤江", "野間"}]
     if not rows:
         print("配信済みで未返信の人は0人です。")
         return

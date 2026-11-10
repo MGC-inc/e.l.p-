@@ -167,6 +167,8 @@ def main():
         status = prop_rollup_status(page, "在籍状況(名簿参照)")
         if status == "退社":
             continue
+        if member == "野間":   # NoMax代表。最初の2週間だけ稼働のため配信なし（2026-11-10）
+            continue
 
         text = prop_formula_text(
             page, "_週末メッセージ_クローザー" if role == "クローザー" else "_週末メッセージ_アポインター"

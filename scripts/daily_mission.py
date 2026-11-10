@@ -67,10 +67,10 @@ plt.rcParams["font.family"] = "IPAGothic"
 
 BUCKET = "weekly-pdca"
 FOLDER = "daily-mission"
-NO_CARD = {"藤江"}
+NO_CARD = {"藤江", "野間"}   # 野間＝NoMax代表。最初の2週間だけ稼働のため配信なし（2026-11-10）
 PDCA_DB = "17f23c69-8a24-429a-8957-6b5490a87680"   # 📝 週次PDCA記録DB（data_source_id）
 HW_BUTTON = "宣言を登録する"                        # line-webhook/api/webhook.py の HW_TRIGGER と同じ文言
-NO_HOMEWORK = {"今川", "藤江"}                      # 宣言の対象外（tools/shuuji/pdca_reminder.py の NO_REMINDER と同じ）  # 週次の対象外（tools/shuuji/notion_to_csv.py の WEEKLY_HIDDEN と同じ）
+NO_HOMEWORK = {"今川", "藤江", "野間"}                      # 宣言の対象外（tools/shuuji/pdca_reminder.py の NO_REMINDER と同じ）  # 週次の対象外（tools/shuuji/notion_to_csv.py の WEEKLY_HIDDEN と同じ）
 MEETING_FACTOR = {0: 1.0, 1: 0.5}  # クローザーの今日の商談数 → アポ目標にかける割合。2件以上は MEETING_FACTOR_MANY
 MEETING_FACTOR_MANY = 0.25
 

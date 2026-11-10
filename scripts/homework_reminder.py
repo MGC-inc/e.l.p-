@@ -37,7 +37,7 @@ except ImportError:
     jpholiday = None
 
 PDCA_DB = "17f23c69-8a24-429a-8957-6b5490a87680"   # 📝 週次PDCA記録DB（data_source_id）
-NO_HOMEWORK = {"今川", "藤江"}                       # 宣言の対象外（scripts/daily_mission.py と同じ）
+NO_HOMEWORK = {"今川", "藤江", "野間"}                       # 宣言の対象外（scripts/daily_mission.py と同じ）
 DONE, NOT_DONE = "宣言やった！", "宣言できなかった"  # line-webhook/api/webhook.py の HW_DONE / HW_NOT_DONE と同じ文言
 JST = ZoneInfo("Asia/Tokyo")
 WEEKDAYS = "月火水木金土日"
