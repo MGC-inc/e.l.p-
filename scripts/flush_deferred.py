@@ -5,8 +5,9 @@
   python3 scripts/flush_deferred.py             # 6:00以降なら、保留中の返信を今川さんのLINEへ送る
 
 botは今川さんが深夜に送ったメッセージへの返信を送らず、deal_recordings（storage_path=deferred_reply,
-status=deferred_pending）に溜める。この処理が6:00以降に、古い順に1件ずつ送る。
-送るのは今川さんだけ。営業マン・施工担当・グループへは送らない。
+status=deferred_pending）に溜める。困ったメモへの回答は、メモを書いた本人への送信（storage_path=deferred_push）も同じ
+ように溜める。この処理が6:00以降に、古い順に1件ずつ送る。送り先は「今川さん自身への返信」と「今川さんが答えた困ったメモの
+本人」だけ。施工担当・グループへは送らない。
 
 環境変数: ELP_SUPABASE_URL, ELP_SUPABASE_SERVICE_ROLE_KEY, DEAL_LINE_CHANNEL_ACCESS_TOKEN
 """
@@ -54,7 +55,7 @@ def main() -> None:
     args = ap.parse_args()
     load_env()
     # select=* で取得（このテーブルの列は line_user_id / customer_name / received_at / status など）
-    rows = sb("GET", "deal_recordings?storage_path=eq.deferred_reply&status=eq.deferred_pending&order=received_at.asc&select=*") or []
+    rows = sb("GET", "deal_recordings?storage_path=in.(deferred_reply,deferred_push)&status=eq.deferred_pending&order=received_at.asc&select=*") or []
     if not rows:
         print("保留中の返信はありません。")
         return
@@ -71,7 +72,7 @@ def main() -> None:
         if not messages:
             sb("PATCH", f"deal_recordings?id=eq.{r['id']}", {"status": "deferred_sent"})
             continue
-        if first:
+        if first and r["storage_path"] == "deferred_reply":   # 今川さん本人への最初の1通にだけ添える（本人宛ては添えない）
             messages = [{"type": "text", "text": "（深夜にいただいた分の返信を、朝にお届けします）"}] + messages
             first = False
         st = push(r["line_user_id"], messages)

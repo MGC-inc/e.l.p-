@@ -192,7 +192,11 @@ def _line_request(url: str, method: str, data=None, extra_headers=None) -> bytes
         return r.read()
 
 
-_DEFER_TO = None   # 今川さんが深夜（23:30〜6:00 JST）に送ってきたときだけ、返信先のLINE user IDが入る（handle_eventで設定）
+# 今川さんが深夜（23:30〜6:00 JST）に「回答待ちの質問」へ答えたときだけ、その返信を朝6:00以降に回す（2026-11-11 今川さん指示）。
+# 対象は handle_admin_answer（困ったメモへの回答）・handle_construction_digest・handle_group_register の3つだけ。
+# それ以外の今川さんへの返信（数字を聞く・通常の操作など）は今までどおり即時。_DEFER_TO＝今川さんへの返信、_DEFER_PUSH＝本人への回答の送信。
+_DEFER_TO = None
+_DEFER_PUSH = False
 
 
 def in_quiet_hours() -> bool:
@@ -2770,6 +2774,10 @@ def handle_construction_digest(event: dict, closer: dict) -> bool:
 
 
 def line_push(to: str, messages: list) -> None:
+    if _DEFER_PUSH:   # 深夜に今川さんが答えた回答は、メモを書いた本人へも朝6:00以降に送る
+        sb("POST", "deal_recordings", {"line_user_id": to, "storage_path": "deferred_push", "status": "deferred_pending",
+                                      "customer_name": json.dumps(messages, ensure_ascii=False)})
+        return
     _line_request("https://api.line.me/v2/bot/message/push", "POST", json.dumps({"to": to, "messages": messages}).encode(),
                   {"Content-Type": "application/json"})
 
@@ -2778,6 +2786,20 @@ ADMIN_NAME = "今川"
 SILENT_DONE_WORDS = {"終礼で解決", "解決済み", "解決済"}   # 終礼でその場で解決したもの：記録だけして本人には送らない
 SHARE_OK_TEXT, SHARE_NG_TEXT = "全員に共有OK", "共有しない"
 ANSWER_PREFIX = re.compile(r"^回答\s*([^\s:：]+)\s*[:：\s]\s*(.+)$", re.S)
+
+
+def deferrable(fn):
+    """今川さんが深夜に質問へ答えたときだけ、返信と本人への送信を朝6:00以降に回す（上の _DEFER_TO / _DEFER_PUSH）。"""
+    def wrapper(event: dict, closer: dict) -> bool:
+        global _DEFER_TO, _DEFER_PUSH
+        quiet = closer.get("closer_name") == ADMIN_NAME and in_quiet_hours()
+        if quiet:
+            _DEFER_TO, _DEFER_PUSH = event["source"]["userId"], True
+        try:
+            return fn(event, closer)
+        finally:
+            _DEFER_TO, _DEFER_PUSH = None, False
+    return wrapper
 
 
 def handle_admin_answer(event: dict, closer: dict) -> bool:
@@ -2972,10 +2994,10 @@ def handle_new_menu(event: dict, closer: dict) -> bool:
             print(f"menu handler error ({text}): {e}")
             line_reply(event["replyToken"], [{"type": "text", "text": "一時的に取得できませんでした。少し待ってからもう一度お試しください。"}])
         return True
-    return (handle_admin_answer(event, closer) or handle_share_consent(event, closer) or handle_homework_check(event, closer)
+    return (deferrable(handle_admin_answer)(event, closer) or handle_share_consent(event, closer) or handle_homework_check(event, closer)
             or handle_trouble(event, closer) or handle_homework(event, closer) or handle_talk_phase(event, closer)
             or handle_build_done(event, closer) or handle_postcheck_button(event, closer) or handle_postcheck_date(event, closer)
-            or handle_construction_digest(event, closer) or handle_group_register(event, closer))
+            or deferrable(handle_construction_digest)(event, closer) or deferrable(handle_group_register)(event, closer))
 
 
 def handle_audio_message(event: dict, closer: dict, extra_messages=None):
@@ -3885,8 +3907,6 @@ def handle_event(event: dict):
         return  # グループ・複数人トークは対象外（1:1のみの運用）
 
     closer = find_closer(line_user_id)
-    if closer and closer.get("closer_name") == ADMIN_NAME and in_quiet_hours():
-        _DEFER_TO = line_user_id   # 深夜に今川さんが答えたぶんの返信は、朝6:00以降に返す
     is_first_contact = closer is None
     if closer is None:
         closer = register_unknown_sender(line_user_id)
