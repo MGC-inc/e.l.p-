@@ -93,6 +93,10 @@ def split(text: str) -> list[str]:
 
 def main() -> None:
     dry = "--dry-run" in sys.argv
+    from quiet_hours import in_quiet_hours
+    if not dry and in_quiet_hours():   # 質問・確認は23:30まで。深夜は送らない（今川さん指示 2026-11-11）
+        print("23:30〜6:00は送らない設定のため、今回は送信を見送ります。")
+        return
     now = dt.datetime.now(dt.timezone(dt.timedelta(hours=9)))
     # 解決案を聞かれたまま止まっているメモは、誰も答えないまま残らないよう回答待ちに移す
     for p in query({"property": "状態", "select": {"equals": "自己解決中"}}):

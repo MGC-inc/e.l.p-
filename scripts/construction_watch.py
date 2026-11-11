@@ -103,6 +103,11 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--dry-run", action="store_true")
     args = ap.parse_args()
+    if not args.dry_run:
+        from quiet_hours import in_quiet_hours
+        if in_quiet_hours():   # 質問・確認は23:30まで。深夜は送らない（今川さん指示 2026-11-11）
+            print("23:30〜6:00は送らない設定のため、今回は送信を見送ります（次の定時に送ります）。")
+            return
     load_env()
     today = dt.datetime.now(JST).date()
     pages = query_all(f"/data_sources/{CONSTRUCTION_DS}/query",

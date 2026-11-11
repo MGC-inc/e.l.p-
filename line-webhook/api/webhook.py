@@ -192,7 +192,20 @@ def _line_request(url: str, method: str, data=None, extra_headers=None) -> bytes
         return r.read()
 
 
+_DEFER_TO = None   # 今川さんが深夜（23:30〜6:00 JST）に送ってきたときだけ、返信先のLINE user IDが入る（handle_eventで設定）
+
+
+def in_quiet_hours() -> bool:
+    t = datetime.now(timezone(timedelta(hours=9))).time()
+    return (t.hour, t.minute) >= (23, 30) or t.hour < 6
+
+
 def line_reply(reply_token: str, messages: list):
+    if _DEFER_TO:
+        # 深夜の返信は今すぐ返さず、朝6:00以降に scripts/flush_deferred.py が送る（今川さん指示 2026-11-11）
+        sb("POST", "deal_recordings", {"line_user_id": _DEFER_TO, "storage_path": "deferred_reply", "status": "deferred_pending",
+                                      "customer_name": json.dumps(messages, ensure_ascii=False)})
+        return
     body = json.dumps({"replyToken": reply_token, "messages": messages}).encode()
     _line_request("https://api.line.me/v2/bot/message/reply", "POST", body,
                   {"Content-Type": "application/json"})
@@ -3860,6 +3873,8 @@ def record_group_message(event: dict) -> None:
 
 
 def handle_event(event: dict):
+    global _DEFER_TO
+    _DEFER_TO = None
     if event.get("source", {}).get("type") in ("group", "room"):
         record_group_message(event)   # グループは読むだけ（記録して夜に今川さんへ知らせる）。返信・送信は一切しない
         return
@@ -3870,6 +3885,8 @@ def handle_event(event: dict):
         return  # グループ・複数人トークは対象外（1:1のみの運用）
 
     closer = find_closer(line_user_id)
+    if closer and closer.get("closer_name") == ADMIN_NAME and in_quiet_hours():
+        _DEFER_TO = line_user_id   # 深夜に今川さんが答えたぶんの返信は、朝6:00以降に返す
     is_first_contact = closer is None
     if closer is None:
         closer = register_unknown_sender(line_user_id)
