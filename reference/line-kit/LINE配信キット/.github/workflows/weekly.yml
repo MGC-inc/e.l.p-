@@ -1,0 +1,29 @@
+name: weekly-pdca
+on:
+  schedule:
+    - cron: "0 0 * * 3"        # 水曜 00:00 UTC = 水曜 09:00 JST
+  workflow_dispatch:            # 手動実行(テスト用)
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install reportlab matplotlib
+      - run: sudo apt-get update && sudo apt-get install -y fonts-ipafont-gothic
+      - name: PDF生成(データが先週分でなければ中止)
+        env:
+          MEMBERS_URL: ${{ secrets.MEMBERS_URL }}
+          RESULTS_URL: ${{ secrets.RESULTS_URL }}
+          CONFIG_URL: ${{ secrets.CONFIG_URL }}
+        run: python build_all.py sample out --strict
+      - name: 公開(Vercel)
+        env:
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: npx vercel deploy out/public --prod --yes --token ${{ secrets.VERCEL_TOKEN }}
+      - name: LINE送信
+        env:
+          LINE_CHANNEL_ACCESS_TOKEN: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}
+        run: python deliver.py out ${{ secrets.PUBLIC_BASE_URL }}
