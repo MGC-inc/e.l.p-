@@ -2,7 +2,8 @@
 """毎日の終礼（19:30 JST）に、Notion「🆘 困ったメモ」を今川さんのLINEへまとめて送る。
 終礼で今川さんが解決策を示す。今川さんが終礼に入れない日は、このLINEへの返信でBotが本人に回答を送る。
 
-  python3 scripts/trouble_digest.py [--dry-run]
+  python3 scripts/trouble_digest.py [--dry-run]          # 終礼（19:15 JST）：新しいメモと未回答のメモをまとめて送る
+  python3 scripts/trouble_digest.py --late [--dry-run]   # 0:00 JST：終礼のあとに届いたメモだけを、0:00で締め切って送る
 
 ・メモは要約せず、本人が書いた原文のまま送る（投稿者・日時・場面・本人の解決案を添える）
 ・「回答待ち」（本人が自分で考えても解決に向かわなかったもの）を先に、そのほか（自己解決・考え中）を後に
@@ -11,6 +12,8 @@
 ・先頭に回答状況（未回答の件数・一番古いものが何日待っているか）を出す
 ・終礼でその場で解決したものは、そのメッセージに「終礼で解決」と返信すると、本人には送らず記録だけ残る
 ・送ったメモは「今川共有済み」を立てる。0件の日は何も送らない（配信数を使わない）
+・--late（今川さん指示 2026-11-13）：終礼のあとに投稿されたメモを、0:00で締め切って（0:00より後の投稿は次の日の分）、
+  0:00にまとめて今川さんへ送る。終礼で送ったメモ・前日からの持ち越しの再送はしない（新しいメモだけ）
 ・「回答待ち」は1件ずつ別のメッセージで送る。今川さんがそのメッセージにLINEで返信（引用）して答えると、
   Botが本人へ回答を送り、Notionの「回答」と状態（解決）を更新する（line-webhook/api/webhook.py の handle_admin_answer）。
   返信の対応づけ用に、送ったメッセージIDとNotionページIDをSupabase deal_recordings（storage_path='trouble_q'）に残す
@@ -93,6 +96,7 @@ def split(text: str) -> list[str]:
 
 def main() -> None:
     dry = "--dry-run" in sys.argv
+    late = "--late" in sys.argv   # 終礼のあとのメモを0:00で締め切って送る
     from quiet_hours import in_quiet_hours
     if not dry and in_quiet_hours():   # 質問・確認は0:00にまとめて送る（0:30〜6:00は送らない。今川さん指示 2026-11-13）
         print("0:30〜6:00は送らない設定のため、今回は送信を見送ります（次の0:00に送ります）。")
@@ -109,22 +113,27 @@ def main() -> None:
                 notion("PATCH", f"pages/{p['id']}", {"properties": {"状態": {"select": {"name": "回答待ち"}}}})
                 p["properties"]["状態"] = {"type": "select", "select": {"name": "回答待ち"}}
     new = query({"property": "今川共有済み", "checkbox": {"equals": False}})
+    if late:   # 0:00を締め切りにする：いま終わった日の0:00（＝翌日0:00）より前に投稿されたものだけ
+        cutoff = dt.datetime.combine(bdate + dt.timedelta(days=1), dt.time(0, 0), tzinfo=now.tzinfo)
+        new = [p for p in new if plain(p, "投稿日時") and dt.datetime.fromisoformat(plain(p, "投稿日時")) < cutoff]
     new_ids = {p["id"] for p in new}
     waiting_all = query({"property": "状態", "select": {"equals": "回答待ち"}})
     if dry:   # 試し実行では上の書き換えをしていないので、移す予定のものも回答待ちとして数える
         moved = [p for p in new if plain(p, "状態") == "自己解決中"
                  and now - dt.datetime.fromisoformat(plain(p, "投稿日時")) > dt.timedelta(hours=1)]
         waiting_all += [p for p in moved if p["id"] not in {w["id"] for w in waiting_all}]
+    if late:   # 持ち越し（終礼で送ったもの）は送り直さない
+        waiting_all = [p for p in waiting_all if p["id"] in new_ids]
     waiting_new = [p for p in waiting_all if p["id"] in new_ids]
     carry = [p for p in waiting_all if p["id"] not in new_ids]
     others = [p for p in new if p["id"] not in {w["id"] for w in waiting_all}]
     if not new and not carry:
-        print("新しい困ったメモも、未回答のメモもありません。送信しません。")
+        print("終礼のあとの新しい困ったメモはありません。送信しません。" if late else "新しい困ったメモも、未回答のメモもありません。送信しません。")
         return
 
     def days_waiting(p: dict) -> int:
         return (bdate - dt.date.fromisoformat(plain(p, "投稿日時")[:10])).days
-    summary = [f"🆘 終礼の困ったメモ（{bdate.month}/{bdate.day}）"]
+    summary = [f"🆘 終礼のあとの困ったメモ（{bdate.month}/{bdate.day}・0時締め）" if late else f"🆘 終礼の困ったメモ（{bdate.month}/{bdate.day}）"]
     if waiting_all:
         oldest = max(waiting_all, key=days_waiting)
         summary.append(f"📊 回答状況：未回答 {len(waiting_all)}件（今日の新規{len(waiting_new)}件・持ち越し{len(carry)}件）"
@@ -134,9 +143,12 @@ def main() -> None:
     if others:
         summary += [f"【自己解決・考え中 {len(others)}件】（回答は不要。様子だけ共有）"] + [entry(p) for p in others]
     if waiting_all:
-        summary.append("回答待ちは、次のメッセージに1件ずつ送ります。終礼で解決策を示してください。\n"
-                       "終礼に入れないときは、各メッセージに返信（引用）で答えると本人へそのまま届きます。"
-                       "終礼で解決したものは「終礼で解決」と返信すると、記録だけ残ります。")
+        summary.append(("回答待ちは、次のメッセージに1件ずつ送ります。終礼のあとに届いた分なので、次の終礼で示すか、\n"
+                        "各メッセージに返信（引用）で答えると本人へそのまま届きます（朝6:00より前の返信は、朝に届きます）。"
+                        if late else
+                        "回答待ちは、次のメッセージに1件ずつ送ります。終礼で解決策を示してください。\n"
+                        "終礼に入れないときは、各メッセージに返信（引用）で答えると本人へそのまま届きます。"
+                        "終礼で解決したものは「終礼で解決」と返信すると、記録だけ残ります。"))
     messages: list[tuple[str, str | None]] = [(t, None) for t in split("\n\n".join(summary))]
     for p in waiting_new + sorted(carry, key=days_waiting, reverse=True):
         tag = "❓回答待ち（今日）" if p["id"] in new_ids else f"❓回答待ち（持ち越し・{days_waiting(p)}日目）"
