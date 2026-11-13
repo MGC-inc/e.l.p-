@@ -94,10 +94,12 @@ def split(text: str) -> list[str]:
 def main() -> None:
     dry = "--dry-run" in sys.argv
     from quiet_hours import in_quiet_hours
-    if not dry and in_quiet_hours():   # 質問・確認は23:30まで。深夜は送らない（今川さん指示 2026-11-11）
-        print("23:30〜6:00は送らない設定のため、今回は送信を見送ります。")
+    if not dry and in_quiet_hours():   # 質問・確認は0:00にまとめて送る（0:30〜6:00は送らない。今川さん指示 2026-11-13）
+        print("0:30〜6:00は送らない設定のため、今回は送信を見送ります（次の0:00に送ります）。")
         return
+    from quiet_hours import business_date
     now = dt.datetime.now(dt.timezone(dt.timedelta(hours=9)))
+    bdate = business_date(now)   # 0:00に動くときは、いま終わった日を「その日」にする
     # 解決案を聞かれたまま止まっているメモは、誰も答えないまま残らないよう回答待ちに移す
     for p in query({"property": "状態", "select": {"equals": "自己解決中"}}):
         posted = plain(p, "投稿日時")
@@ -121,8 +123,8 @@ def main() -> None:
         return
 
     def days_waiting(p: dict) -> int:
-        return (now.date() - dt.date.fromisoformat(plain(p, "投稿日時")[:10])).days
-    summary = [f"🆘 終礼の困ったメモ（{now.month}/{now.day}）"]
+        return (bdate - dt.date.fromisoformat(plain(p, "投稿日時")[:10])).days
+    summary = [f"🆘 終礼の困ったメモ（{bdate.month}/{bdate.day}）"]
     if waiting_all:
         oldest = max(waiting_all, key=days_waiting)
         summary.append(f"📊 回答状況：未回答 {len(waiting_all)}件（今日の新規{len(waiting_new)}件・持ち越し{len(carry)}件）"

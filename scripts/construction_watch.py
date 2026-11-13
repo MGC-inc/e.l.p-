@@ -105,11 +105,12 @@ def main() -> None:
     args = ap.parse_args()
     if not args.dry_run:
         from quiet_hours import in_quiet_hours
-        if in_quiet_hours():   # 質問・確認は23:30まで。深夜は送らない（今川さん指示 2026-11-11）
-            print("23:30〜6:00は送らない設定のため、今回は送信を見送ります（次の定時に送ります）。")
+        if in_quiet_hours():   # 質問・確認は0:00にまとめて送る（0:30〜6:00は送らない。今川さん指示 2026-11-13）
+            print("0:30〜6:00は送らない設定のため、今回は送信を見送ります（次の0:00に送ります）。")
             return
     load_env()
-    today = dt.datetime.now(JST).date()
+    from quiet_hours import business_date
+    today = business_date()   # 0:00に動くときは、いま終わった日を「その日」にする
     pages = query_all(f"/data_sources/{CONSTRUCTION_DS}/query",
                       {"and": [{"property": "進捗", "select": {"does_not_equal": "完工"}},
                                {"property": "進捗", "select": {"does_not_equal": "中止"}}]}, "2025-09-03")

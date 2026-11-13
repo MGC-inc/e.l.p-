@@ -33,7 +33,7 @@
 | 契約後の確認連絡（お客様への電話）の催促・ボタン更新を変えたい | [scripts/post_contract_check.py](./scripts/post_contract_check.py)（毎週水曜の催促カード）。ボタンの返事は line-webhook/api/webhook.py の handle_postcheck_button / handle_postcheck_date が受けて、商談案件一覧の「契約後確認」「契約後確認日」「工事予定日」「結果」を更新。仕様は [商談分析運用.md](./商談分析運用.md) の「契約後の確認連絡」 |
 | 施工案件の更新まとめ（夜に今川さん確認→施工担当へ）を変えたい | [scripts/construction_digest.py](./scripts/construction_digest.py)（承認の受付は line-webhook/api/webhook.py の handle_construction_digest。施工担当の登録は `scripts/add_closer.py --role construction`）。仕様は [商談分析運用.md](./商談分析運用.md) の「契約後の確認連絡」 |
 | 施工案件の「浮き・足りない」（AZ未共有・浄水器/バブル未発送など）を確認したい | [scripts/construction_watch.py](./scripts/construction_watch.py)（毎晩19:47 JSTに今川さんだけへ。0件なら何も送らない） |
-| 今川さん宛ての質問・確認を23:30までにしたい／深夜に答えた返信を朝6:00以降に返したい | [scripts/quiet_hours.py](./scripts/quiet_hours.py)（送信してよい時間帯の判定）＋ [scripts/flush_deferred.py](./scripts/flush_deferred.py)（保留した返信を朝に送る。毎朝6:07 JSTのRoutine） |
+| 今川さん宛ての質問・確認を0:00にまとめて送りたい／深夜に答えた返信を朝6:00以降に返したい | [scripts/quiet_hours.py](./scripts/quiet_hours.py)（送信してよい時間帯の判定）＋ [scripts/flush_deferred.py](./scripts/flush_deferred.py)（保留した返信を朝に送る。毎朝6:07 JSTのRoutine） |
 | 施工担当にbot登録してもらう説明文を見たい | [マニュアル/施工担当_bot登録のご案内.md](./マニュアル/施工担当_bot登録のご案内.md)（下書き。今川さんが確認して送る） |
 | 録音が商談報告のお客様と合っているかの確認を変えたい | [scripts/report_match_check.py](./scripts/report_match_check.py)（手順はスキル 商談録音分析の3.5）。仕様は [商談分析運用.md](./商談分析運用.md) の「録音と商談報告の照合」 |
 | 宣言の実行日のLINE（前日夕方のリマインド・実行日の夜の「できましたか？」）を変えたい | [scripts/homework_reminder.py](./scripts/homework_reminder.py)（宣言＝改善のためのアクションプラン。返事は line-webhook/api/webhook.py の handle_homework_check が📝週次PDCAの「実行チェック」に記録） |

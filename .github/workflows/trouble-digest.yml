@@ -1,6 +1,6 @@
 name: trouble-digest
 
-# 毎日の終礼（19:30 JST）に、Notion「🆘 困ったメモ」を今川さんのLINEへまとめて送る（scripts/trouble_digest.py）。
+# 毎日 0:00 JST に、Notion「🆘 困ったメモ」を今川さんのLINEへまとめて送る（scripts/trouble_digest.py。手動実行用に残している）。
 # 新しいメモも未回答のメモも0件の日は何も送らない。Claude／LLMを経由しない決定的コード。
 #   毎日 10:15 UTC = 19:15 JST（GitHub Actionsの定刻起動は数分〜十数分遅れるため、19:30の終礼に間に合うよう早めに起動する）
 on:
@@ -10,8 +10,8 @@ on:
         description: "true=送信せず内容だけ表示する"
         type: boolean
         default: true
-  schedule:
-    - cron: "15 10 * * *"
+  # 定時実行は外した（2026-11-13 今川さん指示：毎日0:00 JSTにまとめて送る。GitHubの定時実行は遅れるため、
+  # 0:00のRoutine「困ったメモのまとめ（0:00）」が scripts/trouble_digest.py を直接実行する）
 
 jobs:
   run:
