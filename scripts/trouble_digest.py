@@ -25,6 +25,7 @@ import datetime as dt
 import json
 import os
 import sys
+import urllib.parse
 import urllib.request
 
 TROUBLE_DB = "406da094-9999-81ca-ab25-ff9f1b7933f5"   # 🆘 困ったメモ
@@ -156,7 +157,12 @@ def main() -> None:
     print("\n---\n".join(t for t, _ in messages))
     if dry:
         return
-    to = os.environ["IMAGAWA_LINE_USER_ID"]
+    to = os.environ.get("IMAGAWA_LINE_USER_ID")   # GitHub Actionsでは環境変数、Routineでは無いので今川さんの行をSupabaseから引く
+    if not to:
+        rows = supabase("GET", "closer_line_users?closer_name=eq." + urllib.parse.quote("今川") + "&select=line_user_id") or []
+        if not rows:
+            sys.exit("今川さんのLINE user IDが見つかりません。")
+        to = rows[0]["line_user_id"]
     for i in range(0, len(messages), 5):   # LINEは1回のpushで5通まで
         chunk = messages[i:i + 5]
         req = urllib.request.Request(
