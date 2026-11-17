@@ -476,6 +476,8 @@ def build_config(members: dict[str, dict], budget_by_name: dict[str, float], now
         "target_sales": str(round(target_sales, 1)),
         **({"original_target_sales": str(ORIGINAL_TARGET_SALES[month])}
            if ORIGINAL_TARGET_SALES.get(month) and target_sales > ORIGINAL_TARGET_SALES[month] else {}),
+        **({"mid_target_sales": str(MID_TARGET_SALES[month])}
+           if MID_TARGET_SALES.get(month) and target_sales > MID_TARGET_SALES[month] else {}),
         "actual_contracts": str(actual_contracts),
         "actual_sales": str(round(actual_sales, 1)),
         # 週の目安＝月目標を日数で割り、先週のうち当月に入る日数分
@@ -486,6 +488,8 @@ def build_config(members: dict[str, dict], budget_by_name: dict[str, float], now
 
 # 月の全社売上目標を途中で上方修正したとき、当初の目標（万円）を残して、資料で「当初○○万→○○万に上方修正」と見せる（士気のため。今川さん指示 2026-11-10）
 ORIGINAL_TARGET_SALES = {"2026-11": 2200.0}
+# 2回目の上方修正（2026-11-18 今川さん指示: 2486万円を達成したので3200万円に）。途中の目標を残して、当初→前の目標→新目標の3段で見せる
+MID_TARGET_SALES = {"2026-11": 2486.2}
 
 # 個人事業主（業務委託）の人が複数になるため、資料では「個人（○○）」と名前を付けて分ける（今川さん指示 2026-11-11）
 AGENCY_LABELS = {"個人（業務委託）": {"鈴木虎春": "個人（鈴木虎春）", "名取": "個人（名取）"}}

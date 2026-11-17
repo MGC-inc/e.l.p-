@@ -400,6 +400,7 @@ def build_cfg(inp, strict):
             "month_label": kv.get("month_label") or f"{now.month}月",
             "data_as_of": kv.get("data_as_of", ""), "data_week_start": kv.get("data_week_start", ""), "check_status": kv.get("check_status", ""),
             "original_target_sales": float(kv.get("original_target_sales") or 0),
+            "mid_target_sales": float(kv.get("mid_target_sales") or 0),
             "week_target": {"契約数": wt("week_target_contracts", "target_contracts"), "売上(万円)": wt("week_target_sales", "target_sales")},
             "month_target": {"契約数": float(kv["target_contracts"]), "売上(万円)": float(kv["target_sales"])},
             "month_actual": {"契約数": float(kv["actual_contracts"]), "売上(万円)": float(kv["actual_sales"])}}

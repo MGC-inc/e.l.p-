@@ -21,6 +21,7 @@
   python3 scripts/monthly_budget_floor.py                 # 当月（JST）を対象に実行
   python3 scripts/monthly_budget_floor.py --month 2026-10 # 対象月を指定
   python3 scripts/monthly_budget_floor.py --dry-run       # 変更内容の表示のみ
+  python3 scripts/monthly_budget_floor.py --no-floor      # 予算の引き上げはせず、KPI DBの今月予算・月目標だけ予算DBに合わせる（月の途中で全社予算を上げたとき）
   python3 scripts/monthly_budget_floor.py --notify        # 結果を今川さんにLINEで通知
   python3 scripts/monthly_budget_floor.py --check-only --notify  # 予算未設定者がいればアラートのみ
                                                           # （前月に予算があり当月に無いメンバーを未設定とみなす）
@@ -199,6 +200,7 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--month", default=dt.datetime.now(JST).strftime("%Y-%m"))
     ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--no-floor", action="store_true", help="前月実質売上までの引き上げをしない（予算を人が決めた月に、KPI DBの今月予算・月目標だけ予算DBに合わせて更新する）")
     ap.add_argument("--notify", action="store_true")
     ap.add_argument("--check-only", action="store_true", help="予算の未設定者の確認・通知だけ行う（更新はしない）")
     args = ap.parse_args()
@@ -232,7 +234,7 @@ def main() -> None:
         if not name or b is None:
             continue
         floor = round(net.get(name, 0), 1)
-        if b < floor:
+        if b < floor and not args.no_floor:
             raised.append(f"{name}: {b:g} → {floor:g}万円（{prev}実質売上）")
             if not args.dry_run:
                 notion("PATCH", f"/pages/{r['id']}", {"properties": {"予算（万円）": {"number": floor}}})

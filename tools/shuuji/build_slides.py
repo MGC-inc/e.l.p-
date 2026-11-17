@@ -137,22 +137,28 @@ def goal_up(pdf, cfg, n):
     fig.text(0.40, 0.575, "万円", color="white", fontsize=26, fontweight="bold")
     fig.text(0.06, 0.505, f"{cfg['month_label'].split('（')[1].rstrip('）')}　月の{elapsed*100:.0f}%が過ぎた時点", color="#C9D6E8", fontsize=14)
 
-    def ladder(y, title, target, color, tag):
-        card(fig, 0.06, y, 0.88, 0.17, "#2A4A73")
+    def ladder(y, title, target, color, tag, h=0.17):
+        card(fig, 0.06, y, 0.88, h, "#2A4A73")
         pct = act / target * 100
-        fig.text(0.08, y + 0.125, title, color="white", fontsize=19, fontweight="bold")
-        fig.text(0.92, y + 0.125, tag, color=color, fontsize=19, fontweight="bold", ha="right")
-        ax = fig.add_axes([0.08, y + 0.035, 0.44, 0.05]); ax.set_facecolor("#1B3250")
+        fig.text(0.08, y + h * 0.735, title, color="white", fontsize=19 if h > 0.15 else 17, fontweight="bold")
+        fig.text(0.92, y + h * 0.735, tag, color=color, fontsize=19 if h > 0.15 else 17, fontweight="bold", ha="right")
+        ax = fig.add_axes([0.08, y + h * 0.2, 0.44, h * 0.29]); ax.set_facecolor("#1B3250")
         ax.barh([0], [100], color="#1B3250", height=1); ax.barh([0], [min(pct, 100)], color=color, height=1)
         ax.axvline(elapsed * 100, color="white", ls="--", lw=1.5)
         ax.set_xlim(0, 100); ax.set_ylim(-0.5, 0.5); ax.axis("off")
-        fig.text(0.55, y + 0.06, f"達成率 {pct:.0f}%", color="white", fontsize=22, fontweight="bold", va="center")
+        fig.text(0.55, y + h * 0.35, f"達成率 {pct:.0f}%", color="white", fontsize=22 if h > 0.15 else 20, fontweight="bold", va="center")
         remain = target - act
-        fig.text(0.92, y + 0.06, f"あと {remain:,.0f}万円" if remain > 0 else "達成！", color=color if remain > 0 else GOLD,
-                 fontsize=22, fontweight="bold", ha="right", va="center")
+        fig.text(0.92, y + h * 0.35, f"あと {remain:,.0f}万円" if remain > 0 else "達成！", color=color if remain > 0 else GOLD,
+                 fontsize=22 if h > 0.15 else 20, fontweight="bold", ha="right", va="center")
 
-    ladder(0.27, f"当初目標　{o:,.0f}万円", o, "#37C27C", "もう目の前" if act < o else "達成！")
-    ladder(0.07, f"新目標　{new_t:,.0f}万円　（＋{new_t - o:,.0f}万円の挑戦）", new_t, GOLD, "ここまで行く")
+    mid = cfg.get("mid_target_sales") or 0
+    if mid and o < mid < new_t:   # 2回目の上方修正: 当初→前の目標→新目標の3段
+        ladder(0.34, f"当初目標　{o:,.0f}万円", o, "#37C27C", "達成！", 0.14)
+        ladder(0.19, f"前の目標　{mid:,.0f}万円", mid, "#37C27C", "達成！" if act >= mid else "もう目の前", 0.14)
+        ladder(0.04, f"新目標　{new_t:,.0f}万円　（＋{new_t - mid:,.0f}万円の挑戦）", new_t, GOLD, "ここまで行く", 0.14)
+    else:
+        ladder(0.27, f"当初目標　{o:,.0f}万円", o, "#37C27C", "もう目の前" if act < o else "達成！")
+        ladder(0.07, f"新目標　{new_t:,.0f}万円　（＋{new_t - o:,.0f}万円の挑戦）", new_t, GOLD, "ここまで行く")
     fig.text(0.62, 0.62, "白い点線 ＝ 月の経過（いまの目安）", color="#C9D6E8", fontsize=13, ha="center")
     fig.text(0.62, 0.575, "線より先に出ているのが、いまのチーム", color=GOLD, fontsize=15, fontweight="bold", ha="center")
     fig.text(0.965, 0.03, str(n), color="#C9D6E8", fontsize=10, ha="right")
