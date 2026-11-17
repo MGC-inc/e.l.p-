@@ -205,6 +205,75 @@ def notice_page(pdf, n):
     return n + 1
 
 
+# ---------- 1d. アポ速報の時間帯（誰がどの時間帯に強いか） ----------
+def appo_hours_page(pdf, n):
+    """tools/shuuji/appo_hours/<配信する水曜の日付>.json があるときだけ1ページ入れる。
+    今川さん指示 2026-11-18: LINE速報の送信時刻を、時間帯・担当者別に集計して、誰がどの時間帯に強いかを見えるように。
+    形式: {"period","note","hours":{"11":{"安達":4,...},...}}（時間帯→メンバー→件数）。時刻は速報の送信時刻で、実際のアポ取得時刻ではない。"""
+    today = datetime.datetime.now(ZoneInfo("Asia/Tokyo")).date()
+    wed = today + datetime.timedelta(days=(2 - today.weekday()) % 7)
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "appo_hours", f"{wed.isoformat()}.json")
+    if not os.path.exists(path):
+        return n
+    d = json.load(open(path, encoding="utf-8"))
+    hrs = sorted(int(h) for h in d["hours"])
+    names = {}
+    for h, m in d["hours"].items():
+        for k, v in m.items():
+            names[k] = names.get(k, 0) + v
+    order = sorted(names, key=lambda k: -names[k])
+    grid = [[d["hours"].get(str(h), {}).get(k, 0) for h in hrs] for k in order]
+    total = sum(names.values())
+    fig = slide(pdf, "アポ速報の時間帯　誰がどの時間帯に強いか", d["period"].replace("2026-", "").replace("-", "/"), n)
+    # 左: ヒートマップ（行=メンバー、列=時間帯。色が濃いほど件数が多い）
+    ax = fig.add_axes([0.075, 0.125, 0.50, 0.70])
+    import numpy as np
+    arr = np.array(grid, dtype=float)
+    ax.imshow(arr, aspect="auto", cmap="Blues", vmin=0, vmax=max(arr.max(), 1) * 1.1)
+    ax.set_xticks(range(len(hrs))); ax.set_xticklabels([f"{h}時" for h in hrs], fontsize=10)
+    ax.set_yticks(range(len(order))); ax.set_yticklabels([f"{k}（{names[k]}）" for k in order], fontsize=10)
+    ax.xaxis.tick_top(); ax.tick_params(length=0)
+    for i, row in enumerate(grid):
+        for j, v in enumerate(row):
+            if v:
+                ax.text(j, i, str(v), ha="center", va="center", fontsize=9, color="white" if v >= arr.max() * 0.5 else INK, fontweight="bold" if v >= 5 else "normal")
+    for sp in ax.spines.values():
+        sp.set_visible(False)
+    fig.text(0.075, 0.1, "メンバー別の件数（色が濃いほど多い／名前の（　）は合計）", fontsize=10.5, color=SUB)
+    # 右上: 時間帯ごとの全体の件数
+    ax2 = fig.add_axes([0.66, 0.60, 0.31, 0.22])
+    byh = [sum(d["hours"].get(str(h), {}).values()) for h in hrs]
+    peak = max(byh)
+    ax2.bar(range(len(hrs)), byh, color=[NAVY if v == peak else "#9DB7D5" for v in byh], width=0.7)
+    for i, v in enumerate(byh):
+        ax2.text(i, v + peak * 0.03, str(v), ha="center", fontsize=9, fontweight="bold" if v == peak else "normal")
+    ax2.set_xticks(range(len(hrs))); ax2.set_xticklabels([f"{h}" for h in hrs], fontsize=9)
+    ax2.set_yticks([]); ax2.set_ylim(0, peak * 1.2)
+    for sp in ("top", "right", "left"):
+        ax2.spines[sp].set_visible(False)
+    fig.text(0.66, 0.855, "時間帯ごとの全体の件数（時）", fontsize=11, color=SUB)
+    # 右下: 得意な時間帯（合計8件以上の人の、いちばん多い時間帯とその割合）
+    card(fig, 0.66, 0.10, 0.31, 0.41, BG)
+    fig.text(0.675, 0.485, "得意な時間帯（8件以上の人）", fontsize=12, fontweight="bold", color=INK, va="top")
+    y = 0.44
+    rows = []
+    for k in order:
+        if names[k] < 8:
+            continue
+        vals = grid[order.index(k)]
+        top = sorted(range(len(hrs)), key=lambda j: -vals[j])[:2]
+        rows.append((k, names[k], [(hrs[j], vals[j]) for j in top if vals[j]]))
+    step = min(0.034, 0.36 / max(len(rows), 1))
+    for k, t, tops in rows:
+        txt = "・".join(f"{h}時台{v}件" for h, v in tops)
+        fig.text(0.675, y, f"{k}", fontsize=11, fontweight="bold", color=NAVY, va="top")
+        fig.text(0.73, y, txt, fontsize=10.5, color=INK, va="top")
+        y -= step
+    fig.text(0.03, 0.055, d["note"] + f"　確認できた件数は合計{total}件。", fontsize=9, color=RED)
+    save(pdf, fig)
+    return n + 1
+
+
 # ---------- 2. 宣言の振り返り ----------
 ROW_H, REVIEW_SPACE = 0.148, 0.74  # 答え合わせの1人分の最小の高さ／1ページに使える高さ（図の高さに対する割合）
 
@@ -738,6 +807,7 @@ def build_deck(path, agency, members, mem, res, pdca, cfg):
         n = team(pdf, agency, members, mem, res, cfg, all_tot, n)
         n = sales_history(pdf, agency, members, mem, cfg, n)
         n = ranking(pdf, mem, res, agency, cfg, n)
+        n = appo_hours_page(pdf, n)
         n = achievers(pdf, mem, res, pdca, cfg, n)
         n = BP.pages(pdf, sys.modules[__name__], cfg.get("budget_rows") or [], agency, mem, n)
         n = CR.pages(pdf, sys.modules[__name__], cfg.get("closer_rows") or [], agency, mem, cfg["last_monday"], n)
