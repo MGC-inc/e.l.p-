@@ -23,6 +23,7 @@ from matplotlib.patches import FancyBboxPatch, Circle
 import matplotlib.patheffects as pe
 from matplotlib.text import Text
 import build_all as B
+from zoneinfo import ZoneInfo
 import closer_results as CR
 import budget_pages as BP
 
@@ -159,6 +160,47 @@ def goal_up(pdf, cfg, n):
     fig.text(0.62, 0.62, "白い点線 ＝ 月の経過（いまの目安）", color="#C9D6E8", fontsize=13, ha="center")
     fig.text(0.62, 0.575, "線より先に出ているのが、いまのチーム", color=GOLD, fontsize=15, fontweight="bold", ha="center")
     fig.text(0.965, 0.03, str(n), color="#C9D6E8", fontsize=10, ha="right")
+    save(pdf, fig)
+    return n + 1
+
+
+# ---------- 1c. 今週の周知（クローザー向け・アポインター向け・全員向けに分けて1ページ） ----------
+def notice_page(pdf, n):
+    """tools/shuuji/notice/<配信する水曜の日付>.json があるときだけ1ページ入れる（無ければ何も足さない）。
+    今川さん指示 2026-11-18: 周知事項を1ページにまとめ、クローザー向けとアポインター向けを見やすく分ける。"""
+    today = datetime.datetime.now(ZoneInfo("Asia/Tokyo")).date()
+    wed = today + datetime.timedelta(days=(2 - today.weekday()) % 7)
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "notice", f"{wed.isoformat()}.json")
+    if not os.path.exists(path):
+        return n
+    d = json.load(open(path, encoding="utf-8"))
+    fig = slide(pdf, d.get("title", "今週の周知"), d.get("sub", ""), n)
+
+    def column(x, w, label, color, groups, fs):
+        card(fig, x, 0.22, w, 0.64, BG)
+        fig.patches.append(plt.Rectangle((x, 0.80), w, 0.06, transform=fig.transFigure, color=color, zorder=-5))
+        fig.text(x + 0.015, 0.83, label, color="white", fontsize=20, fontweight="bold", va="center")
+        y = 0.775
+        k = 1
+        for g in groups:
+            fig.text(x + 0.015, y, "■ " + g["head"], color=color, fontsize=fs + 1, fontweight="bold", va="top")
+            y -= (fs + 5) * 1.35 / 72 / H
+            for it in g["items"]:
+                lines = textwrap.wrap(it, int((w - 0.05) * W * 72 / fs) - 2)
+                fig.text(x + 0.015, y, f"{k}", color=color, fontsize=fs, fontweight="bold", va="top")
+                fig.text(x + 0.035, y, "\n".join(lines), color=INK, fontsize=fs, va="top", linespacing=1.35)
+                y -= (len(lines) * fs * 1.35 + 5) / 72 / H
+                k += 1
+            y -= 4 / 72 / H
+    fs = 15
+    column(0.03, 0.575, "クローザー向け", BLUE, d.get("closer", []), fs)
+    column(0.625, 0.345, "アポインター向け", GREEN, d.get("appointer", []), fs)
+    a = d.get("all")
+    if a:
+        card(fig, 0.03, 0.05, 0.94, 0.14, "#FFF4CC")
+        fig.text(0.045, 0.165, a["head"], color="#8A6100", fontsize=16, fontweight="bold", va="top")
+        t = a["text"] if isinstance(a["text"], list) else textwrap.wrap(a["text"], int(0.9 * W * 72 / 15))
+        fig.text(0.045, 0.125, "\n".join(t), color=INK, fontsize=15, va="top", linespacing=1.4)
     save(pdf, fig)
     return n + 1
 
@@ -692,6 +734,7 @@ def build_deck(path, agency, members, mem, res, pdca, cfg):
         n = 1
         cover(pdf, agency, cfg, n); n += 1
         n = goal_up(pdf, cfg, n)
+        n = notice_page(pdf, n)
         n = team(pdf, agency, members, mem, res, cfg, all_tot, n)
         n = sales_history(pdf, agency, members, mem, cfg, n)
         n = ranking(pdf, mem, res, agency, cfg, n)
