@@ -439,6 +439,43 @@ def build_closer_deals(last_monday: datetime.date, members: dict[str, dict]) -> 
     return sorted(out, key=lambda r: (r["week_start"], r["closer"], r["date"]))
 
 
+BUDGET_STATUS_COLS = ["name", "role", "budget", "sales", "price", "deal_rate", "weeks_left", "month_end"]
+
+
+def build_budget_status(now: datetime.date, week_end: datetime.date, members: dict[str, dict],
+                        budget_by_name: dict[str, float]) -> list[dict]:
+    """各自の月予算に対する実質売上（月初〜対象週の日曜）と、月末までに必要な数のもと（資料の「予算の達成状況」ページ用。
+    今川さん指示 2026-11-18:「各自に任された予算を達成できているかを明記。あと何件やるべきか、ラスト1週でどれだけやるべきか」）。
+    price＝クローザーの平均契約単価（前3か月・本人の契約が無ければ全体）、deal_rate＝契約率%（📊KPI DBの契約率%_30日。商談から契約になる割合）。
+    weeks_left＝配信日から月末までの残り週数（朝のカード・KPI DBの今週配分と同じ数え方: ceil(残り日数÷7)）。"""
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "scripts"))
+    from monthly_budget_floor import KPI_DB, NOTION_VERSION_V1, avg_contract_price, prop_num, prop_text, query_all
+    month_start = week_end.replace(day=1)
+    month = month_start.strftime("%Y-%m")
+    month_end = (month_start.replace(day=28) + datetime.timedelta(days=4)).replace(day=1) - datetime.timedelta(days=1)
+    rows = notion_query_all(PERFORMANCE_DB, {"and": [
+        {"property": "実績日", "date": {"on_or_after": month_start.isoformat()}},
+        {"property": "実績日", "date": {"on_or_before": week_end.isoformat()}},
+    ]})
+    sales: dict[str, float] = {}
+    for r in rows:
+        n = prop_select(r, "メンバー")
+        sales[n] = sales.get(n, 0.0) + prop_number(r, "契約金額（万円）") - prop_number(r, "キャンセル金額（万円）")
+    per_price, all_price = avg_contract_price(month)
+    rate = {prop_text(p, "メンバー"): prop_num(p, "契約率%_30日") for p in query_all(f"/databases/{KPI_DB}/query", None, NOTION_VERSION_V1)}
+    start = max(now, week_end + datetime.timedelta(days=1))
+    weeks_left = max(1, -(-((month_end - start).days + 1) // 7))
+    out = []
+    for n, m in members.items():
+        b = budget_by_name.get(n) or 0
+        if b <= 0 or m["role"] not in ("closer", "appointer"):
+            continue
+        out.append({"name": n, "role": m["role"], "budget": round(b, 1), "sales": round(sales.get(n, 0.0), 1),
+                    "price": round(per_price.get(n) or all_price or YEN_PER_CONTRACT_MAN, 1),
+                    "deal_rate": rate.get(n) or "", "weeks_left": weeks_left, "month_end": month_end.isoformat()})
+    return out
+
+
 def build_config(members: dict[str, dict], budget_by_name: dict[str, float], now: datetime.date,
                   week_start: datetime.date) -> dict[str, str]:
     """月の数字は「対象週の日曜が属する月の1日〜その日曜」で数える（週の数字と同じ締め日にそろえる）。"""
@@ -623,6 +660,7 @@ def main(out_dir: str) -> None:
     pdca = build_pdca(members, last_monday)
     weekly_sales = build_weekly_sales(last_monday, members)
     closer_deals = build_closer_deals(last_monday, members)
+    budget_status = build_budget_status(now, week_end, members, budget_by_name)
 
     write_csv(os.path.join(out_dir, "members.csv"),
               [{k: v for k, v in m.items() if k != "pdca_pending_week"} for m in members.values()],
@@ -638,6 +676,7 @@ def main(out_dir: str) -> None:
     write_csv(os.path.join(out_dir, "weekly_sales.csv"), weekly_sales, ["kind", "key", "week_start", "sales", "days"])
     write_csv(os.path.join(out_dir, "closer_deals.csv"), closer_deals,
               ["week_start", "date", "closer", "own", "result", "customer"])
+    write_csv(os.path.join(out_dir, "budget_status.csv"), budget_status, BUDGET_STATUS_COLS)
     write_csv(os.path.join(out_dir, "pdca.csv"),
               [{"name": name, **data} for name, data in pdca.items()],
               ["name", "action", "cause", "last_eval", "missing_reason", *PDCA_TARGET_PROPS])

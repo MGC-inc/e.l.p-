@@ -24,6 +24,7 @@ import matplotlib.patheffects as pe
 from matplotlib.text import Text
 import build_all as B
 import closer_results as CR
+import budget_pages as BP
 
 plt.rcParams["pdf.fonttype"] = 42
 NAVY, BLUE, TEAL, GOLD, SILVER, BRONZE = "#1F3A5F", "#2E6DA4", "#3B8EA5", "#E0A100", "#9AA5B1", "#B87333"
@@ -699,6 +700,7 @@ def build_deck(path, agency, members, mem, res, pdca, cfg):
         n = sales_history(pdf, agency, members, mem, cfg, n)
         n = ranking(pdf, mem, res, agency, cfg, n)
         n = achievers(pdf, mem, res, pdca, cfg, n)
+        n = BP.pages(pdf, sys.modules[__name__], cfg.get("budget_rows") or [], agency, mem, n)
         n = CR.pages(pdf, sys.modules[__name__], cfg.get("closer_rows") or [], agency, mem, cfg["last_monday"], n)
         nodata = [m for m in members if res[m].get("perf_days", 7) == 0]
         for m in members:
@@ -713,6 +715,7 @@ def build_deck(path, agency, members, mem, res, pdca, cfg):
 
 def main(inp, out, strict=False):
     mem, res, cfg, pdca = B.load_all(inp, strict)
+    cfg["budget_rows"] = BP.load(inp)   # 各自の予算の達成状況ページ用（budget_pages.py）
     cfg["closer_rows"] = CR.load(inp)   # クローザーの自アポ・他アポ別の結果ページ用（closer_results.py）
     cfg["last_monday"] = datetime.date.fromisoformat(cfg["data_week_start"]) if cfg.get("data_week_start") else \
         datetime.date.today() - datetime.timedelta(days=datetime.date.today().weekday() + 7)
