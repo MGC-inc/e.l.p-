@@ -686,7 +686,76 @@ def no_data_page(pdf, names, mem, pdca, cfg, n):
 
 
 # ---------- 7. みんなの学び ----------
+def learnings_picked(pdf, mem, n, agency):
+    """先週のみんなの学び（厳選版）。tools/shuuji/learnings_pick/<配信する水曜の日付>.json があるときだけ使う。
+    今川さん指示 2026-11-18:「当たり前のことより、今後の参考になる共有・コアな共有・当たり前だけど大切な共有に絞る」。
+    学び・共有ログDBの先週分から選んで書いた、3つの区分（コア／今後の参考／当たり前だけど大切）。
+    代理店別の資料には、その代理店のメンバーが出した学びだけを出す。使えたら新しいページ番号を、使わなければNoneを返す。"""
+    today = datetime.datetime.now(ZoneInfo("Asia/Tokyo")).date()
+    wed = today + datetime.timedelta(days=(2 - today.weekday()) % 7)
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "learnings_pick", f"{wed.isoformat()}.json")
+    if not os.path.exists(path):
+        return None
+    d = json.load(open(path, encoding="utf-8"))
+    colors = {"navy": NAVY, "teal": TEAL, "orange": "#D9822B"}
+    secs = []
+    for sec in d["sections"]:
+        items = [it for it in sec["items"] if agency == ALL or any(mem.get(w, {}).get("agency") == agency for w in it["who"])]
+        if items:
+            secs.append((sec, items))
+    if not secs:
+        return n   # この代理店のメンバーの学びは今週の厳選に入っていない（ページなし）
+    fig = slide(pdf, "⑤ " + d.get("title", "先週のみんなの学び"), d.get("sub", ""), n)
+    k = len(secs)
+    GAP = 0.012
+    widths = [0.44 if i == 0 else 0.27 for i in range(k)] if k == 3 else [(0.94 - GAP * (k - 1)) / k] * k
+    scale = 0.94 / (sum(widths) + GAP * (k - 1))
+    widths = [w * scale for w in widths]
+    # 3列とも同じ文字サイズにそろえる（全部が収まる最大のサイズを、列ごとに調べて、いちばん小さい値を使う）
+    def fit(items, w, sc):
+        hs, cards = 0, []
+        for it in items:
+            hfs, bfs = 13 * sc, 11 * sc
+            hl = textwrap.wrap(it["head"], int((w - 0.025) * W * 72 / hfs))
+            bl = textwrap.wrap(it["body"], int((w - 0.025) * W * 72 / bfs))
+            h = 0.045 + (len(hl) * hfs * 1.35 + len(bl) * bfs * 1.4) / 72 / H + 0.02
+            cards.append((it, hl, bl, hfs, bfs, h)); hs += h
+        return hs, cards
+    best = 9.9
+    for (sec, items), w in zip(secs, widths):
+        avail = 0.74 - GAP * (len(items) - 1)
+        for sc in (1.1, 1.05, 1.0, 0.95, 0.9, 0.85, 0.8, 0.75, 0.7):
+            if fit(items, w, sc)[0] <= avail:
+                break
+        best = min(best, sc)
+    x = 0.03
+    for (sec, items), w in zip(secs, widths):
+        col = colors.get(sec.get("color"), NAVY)
+        fig.patches.append(plt.Rectangle((x, 0.80), w, 0.075, transform=fig.transFigure, color=col, zorder=-5))
+        fig.text(x + 0.012, 0.8375, sec["label"], color="white", fontsize=15.5, fontweight="bold", va="center")
+        avail = 0.74 - GAP * (len(items) - 1)
+        hs, cards = fit(items, w, best)
+        extra = max(0.0, avail - hs) / len(items)   # 余った高さは各カードに均等に配る
+        y = 0.79
+        for it, hl, bl, hfs, bfs, h in cards:
+            h += extra
+            card(fig, x, y - h, w, h, BG)
+            fig.patches.append(plt.Rectangle((x, y - h), 0.004, h, transform=fig.transFigure, color=col, zorder=-5))
+            fig.text(x + 0.012, y - 0.008, "・".join(it["who"]), color=col, fontsize=10.5, fontweight="bold", va="top")
+            yy = y - 0.034
+            fig.text(x + 0.012, yy, "\n".join(hl), color=INK, fontsize=hfs, fontweight="bold", va="top", linespacing=1.3)
+            yy -= (len(hl) * hfs * 1.35 + 3) / 72 / H
+            fig.text(x + 0.012, yy, "\n".join(bl), color=INK, fontsize=bfs, va="top", linespacing=1.4)
+            y -= h + GAP
+        x += w + GAP
+    save(pdf, fig)
+    return n + 1
+
+
 def learnings(pdf, mem, pdca, cfg, n, agency=ALL):
+    picked = learnings_picked(pdf, mem, n, agency)   # 厳選版があれば、それだけを出す（今川さん指示 2026-11-18）
+    if picked is not None:
+        return picked
     # 代理店別の資料には、自社メンバーの学びだけを出す（全社版は全員分）。2026-10-27 今川さん指示:「全体の数字と自社分の詳細だけ」
     items = [(nm, d.get("cause", "")) for nm, d in pdca.items()
              if d.get("cause") and (agency == ALL or mem.get(nm, {}).get("agency") == agency)]

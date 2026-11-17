@@ -31,6 +31,7 @@
 | 週次MTスライドの「クローザー結果（自アポ・他アポ別）」ページ（契約・保留・失注の件数と契約率、前週・直近4週平均との比較、全体の傾向）を直したい | [tools/shuuji/closer_results.py](./tools/shuuji/closer_results.py)（`notion_to_csv.py`が作る`closer_deals.csv`から作る。`build_slides.py`が個人スライドの前に差し込む） |
 | 週次MTのスライドに「今週の周知」を1ページ入れたい | `tools/shuuji/notice/<配信する水曜の日付>.json` を作る（クローザー向け・アポインター向け・全員向けに分けて1ページ。ファイルが無い週は何も出ない。例: [2026-11-18](./tools/shuuji/notice/2026-11-18.json)） |
 | 週次MTのスライドに「アポ速報の時間帯（誰がどの時間帯に強いか）」を入れたい | `tools/shuuji/appo_hours/<配信する水曜の日付>.json` を作る（時間帯→メンバー→件数。ファイルが無い週は何も出ない。例: [2026-11-18](./tools/shuuji/appo_hours/2026-11-18.json)。時刻はLINE速報の送信時刻で、実際のアポ取得時刻ではない） |
+| 週次MTの「先週のみんなの学び」を厳選して出したい | `tools/shuuji/learnings_pick/<配信する水曜の日付>.json` を作る（学び・共有ログDBの先週分から、コアな共有／今後の参考になる共有／当たり前だけど大切な共有に絞って書く。ファイルがある週はこれだけを出し、無い週は従来の一覧。例: [2026-11-18](./tools/shuuji/learnings_pick/2026-11-18.json)） |
 | 月次MTのスライドを作りたい | [tools/shuuji/build_monthly_slides.py](./tools/shuuji/build_monthly_slides.py)（`scripts/monthly_plan.py --out` の計画JSONから作る。MT前日は `--lock` で確定済みの予算・目標を固定して実績だけ最新にする） |
 | 月次MT用の個人計画（翌月の個人予算の配分・先月×110%の目標・どこをどれだけ改善すれば何万円増えるか）を出したい | [scripts/monthly_plan.py](./scripts/monthly_plan.py)（冒頭の説明を参照。予算表への書き込みは `--write-budget` で今川さんの確認後だけ） |
 | 契約後の確認連絡（お客様への電話）の催促・ボタン更新を変えたい | [scripts/post_contract_check.py](./scripts/post_contract_check.py)（毎週水曜の催促カード）。ボタンの返事は line-webhook/api/webhook.py の handle_postcheck_button / handle_postcheck_date が受けて、商談案件一覧の「契約後確認」「契約後確認日」「工事予定日」「結果」を更新。仕様は [商談分析運用.md](./商談分析運用.md) の「契約後の確認連絡」 |
