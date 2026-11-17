@@ -416,6 +416,29 @@ def build_weekly_sales(last_monday: datetime.date, members: dict[str, dict]) -> 
             for (k, w), v in acc.items()]
 
 
+def build_closer_deals(last_monday: datetime.date, members: dict[str, dict]) -> list[dict]:
+    """クローザーごとの商談を1件1行で（先週と、その前のHISTORY_WEEKS週）。自アポ（アポインター＝本人）か他アポか、
+    結果（契約・保留・失注…）、お客様名を持つ。資料の「クローザー結果（自アポ・他アポ別）」ページが、先週と直近の週を比べるために使う
+    （今川さん指示 2026-11-17）。"""
+    start = last_monday - datetime.timedelta(weeks=HISTORY_WEEKS)
+    end = last_monday + datetime.timedelta(days=6)
+    deals = notion_query_all(DEAL_DB, {"and": [
+        {"property": "商談日時", "date": {"on_or_after": start.isoformat()}},
+        {"property": "商談日時", "date": {"on_or_before": end.isoformat()}},
+    ]})
+    out = []
+    for d in deals:
+        closer = prop_select(d, "クローザー")
+        if closer not in members or members[closer]["role"] != "closer":
+            continue
+        day = datetime.date.fromisoformat(prop_date(d, "商談日時")[:10])
+        title = "".join(t.get("plain_text", "") for t in d["properties"].get("お客様名", {}).get("title", []))
+        out.append({"week_start": (day - datetime.timedelta(days=day.weekday())).isoformat(), "date": day.isoformat(),
+                    "closer": closer, "own": "1" if prop_select(d, "アポインター") == closer else "0",
+                    "result": prop_status(d, "結果"), "customer": title})
+    return sorted(out, key=lambda r: (r["week_start"], r["closer"], r["date"]))
+
+
 def build_config(members: dict[str, dict], budget_by_name: dict[str, float], now: datetime.date,
                   week_start: datetime.date) -> dict[str, str]:
     """月の数字は「対象週の日曜が属する月の1日〜その日曜」で数える（週の数字と同じ締め日にそろえる）。"""
@@ -595,6 +618,7 @@ def main(out_dir: str) -> None:
     config["check_status"] = "一致" if problems == 0 else f"不一致{problems}件"
     pdca = build_pdca(members, last_monday)
     weekly_sales = build_weekly_sales(last_monday, members)
+    closer_deals = build_closer_deals(last_monday, members)
 
     write_csv(os.path.join(out_dir, "members.csv"),
               [{k: v for k, v in m.items() if k != "pdca_pending_week"} for m in members.values()],
@@ -608,6 +632,8 @@ def main(out_dir: str) -> None:
               [{"agency": a, "visits": v[0], "appo": v[1], "meet": v[2], "win": v[3], "sales": v[4]} for a, v in totals.items()],
               ["agency", "visits", "appo", "meet", "win", "sales"])
     write_csv(os.path.join(out_dir, "weekly_sales.csv"), weekly_sales, ["kind", "key", "week_start", "sales", "days"])
+    write_csv(os.path.join(out_dir, "closer_deals.csv"), closer_deals,
+              ["week_start", "date", "closer", "own", "result", "customer"])
     write_csv(os.path.join(out_dir, "pdca.csv"),
               [{"name": name, **data} for name, data in pdca.items()],
               ["name", "action", "cause", "last_eval", "missing_reason", *PDCA_TARGET_PROPS])

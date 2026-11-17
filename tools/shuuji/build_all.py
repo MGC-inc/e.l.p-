@@ -398,7 +398,7 @@ def build_cfg(inp, strict):
     # notion_to_csv.pyは月の数字を「先週の日曜までの今月」で締め、その経過率・ラベルも渡す（無ければ旧来どおり今日基準）
     return {"week": week, "month_elapsed": float(kv.get("month_elapsed") or now.day / ndays),
             "month_label": kv.get("month_label") or f"{now.month}月",
-            "data_as_of": kv.get("data_as_of", ""), "check_status": kv.get("check_status", ""),
+            "data_as_of": kv.get("data_as_of", ""), "data_week_start": kv.get("data_week_start", ""), "check_status": kv.get("check_status", ""),
             "original_target_sales": float(kv.get("original_target_sales") or 0),
             "week_target": {"契約数": wt("week_target_contracts", "target_contracts"), "売上(万円)": wt("week_target_sales", "target_sales")},
             "month_target": {"契約数": float(kv["target_contracts"]), "売上(万円)": float(kv["target_sales"])},

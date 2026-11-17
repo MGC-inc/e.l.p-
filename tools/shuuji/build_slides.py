@@ -23,6 +23,7 @@ from matplotlib.patches import FancyBboxPatch, Circle
 import matplotlib.patheffects as pe
 from matplotlib.text import Text
 import build_all as B
+import closer_results as CR
 
 plt.rcParams["pdf.fonttype"] = 42
 NAVY, BLUE, TEAL, GOLD, SILVER, BRONZE = "#1F3A5F", "#2E6DA4", "#3B8EA5", "#E0A100", "#9AA5B1", "#B87333"
@@ -692,6 +693,7 @@ def build_deck(path, agency, members, mem, res, pdca, cfg):
         n = sales_history(pdf, agency, members, mem, cfg, n)
         n = ranking(pdf, mem, res, agency, cfg, n)
         n = achievers(pdf, mem, res, pdca, cfg, n)
+        n = CR.pages(pdf, sys.modules[__name__], cfg.get("closer_rows") or [], agency, mem, cfg["last_monday"], n)
         nodata = [m for m in members if res[m].get("perf_days", 7) == 0]
         for m in members:
             if m not in nodata:
@@ -705,6 +707,9 @@ def build_deck(path, agency, members, mem, res, pdca, cfg):
 
 def main(inp, out, strict=False):
     mem, res, cfg, pdca = B.load_all(inp, strict)
+    cfg["closer_rows"] = CR.load(inp)   # クローザーの自アポ・他アポ別の結果ページ用（closer_results.py）
+    cfg["last_monday"] = datetime.date.fromisoformat(cfg["data_week_start"]) if cfg.get("data_week_start") else \
+        datetime.date.today() - datetime.timedelta(days=datetime.date.today().weekday() + 7)
     pub = os.path.join(out, "public"); os.makedirs(pub, exist_ok=True)
     rows = []
     for agency in dict.fromkeys(m["agency"] for m in mem.values()):
