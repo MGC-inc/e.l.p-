@@ -102,11 +102,9 @@ def cover(pdf, agency, cfg, n):
     fig.text(0.06, 0.64, f"{agency}　｜　対象：{cfg['week']}", color="#C9D6E8", fontsize=20)
     fig.text(0.06, 0.55, "今日のゴール：全員が「今週の宣言1つ」と「数字の目標」を決めて、BOTに送って帰る",
              color=GOLD, fontsize=17, fontweight="bold")
-    o = cfg.get("original_target_sales") or 0
-    if o and o < cfg["month_target"]["売上(万円)"]:
-        fig.text(0.06, 0.47, f"{cfg['month_label'].split('（')[0]}の全社目標　{o:,.0f}万円 → {cfg['month_target']['売上(万円)']:,.0f}万円に上方修正！　みんなで超えにいこう",
-                 color="#FFFFFF", fontsize=15, fontweight="bold",
-                 bbox=dict(boxstyle="round,pad=0.45", fc="#C0392B", ec="none"))
+    t = week_goal(cfg)
+    fig.text(0.06, 0.47, f"{cfg['month_label'].split('（')[0]}の全社目標　{t['month']:,.0f}万円　／　今週の目標　{t['week']:,.0f}万円　みんなで超えにいこう",
+             color="#FFFFFF", fontsize=15, fontweight="bold", bbox=dict(boxstyle="round,pad=0.45", fc="#C0392B", ec="none"))
     steps = [("5分", "チームの数字"), ("5分", "ランキング\n宣言達成者"), ("25分", "1人ずつ\n宣言の振り返り\n＋数字の振り返り"),
              ("10分", "今週の宣言決め\n数字の目標"), ("5分", "BOTに送信\n宣言")]
     x0, w = 0.06, 0.168
@@ -120,46 +118,44 @@ def cover(pdf, agency, cfg, n):
     save(pdf, fig)
 
 
-# ---------- 1b. 月の目標が上がった（士気を上げるページ） ----------
+# ---------- 1b. 今月の目標と、今週の目標（士気を上げるページ） ----------
+def week_goal(cfg):
+    """今月の目標（予算DBの当月合計）と、月末までに必要な「今週の目標」（残り売上÷残り週数）。
+    今川さん指示 2026-11-18:「前の目標など誤解が生まれる表記はやめて、今週の目標として」。"""
+    month = cfg["month_target"]["売上(万円)"]; act = cfg["month_actual"]["売上(万円)"]
+    rows = cfg.get("budget_rows") or []
+    weeks = max(1, int(rows[0]["weeks_left"])) if rows else 2
+    remain = max(0.0, month - act)
+    return {"month": month, "actual": act, "remain": remain, "weeks": weeks, "week": remain / weeks}
+
+
 def goal_up(pdf, cfg, n):
-    o = cfg.get("original_target_sales") or 0
-    new_t = cfg["month_target"]["売上(万円)"]
-    if not o or o >= new_t:
-        return n
-    act = cfg["month_actual"]["売上(万円)"]
+    g = week_goal(cfg)
+    month, act, remain, weeks, wk = g["month"], g["actual"], g["remain"], g["weeks"], g["week"]
     elapsed = cfg.get("month_elapsed") or 0
     fig = plt.figure(figsize=(W, H)); fig.patch.set_facecolor(NAVY)
     label = cfg["month_label"].split("（")[0]
-    fig.text(0.06, 0.88, f"{label}の全社目標が上がりました", color="white", fontsize=36, fontweight="bold")
-    fig.text(0.06, 0.80, "それでも、もう手が届くところまで来ている。", color=GOLD, fontsize=20, fontweight="bold")
-    # 現在の売上
+    fig.text(0.06, 0.88, f"{label}の全社目標　{month:,.0f}万円", color="white", fontsize=36, fontweight="bold")
+    fig.text(0.06, 0.80, "今週の目標を、全員で取りにいく。", color=GOLD, fontsize=20, fontweight="bold")
     fig.text(0.06, 0.66, "いまの売上（実質）", color="#C9D6E8", fontsize=15)
     fig.text(0.06, 0.55, f"{act:,.0f}", color="white", fontsize=72, fontweight="bold")
     fig.text(0.40, 0.575, "万円", color="white", fontsize=26, fontweight="bold")
     fig.text(0.06, 0.505, f"{cfg['month_label'].split('（')[1].rstrip('）')}　月の{elapsed*100:.0f}%が過ぎた時点", color="#C9D6E8", fontsize=14)
-
-    def ladder(y, title, target, color, tag, h=0.17):
-        card(fig, 0.06, y, 0.88, h, "#2A4A73")
-        pct = act / target * 100
-        fig.text(0.08, y + h * 0.735, title, color="white", fontsize=19 if h > 0.15 else 17, fontweight="bold")
-        fig.text(0.92, y + h * 0.735, tag, color=color, fontsize=19 if h > 0.15 else 17, fontweight="bold", ha="right")
-        ax = fig.add_axes([0.08, y + h * 0.2, 0.44, h * 0.29]); ax.set_facecolor("#1B3250")
-        ax.barh([0], [100], color="#1B3250", height=1); ax.barh([0], [min(pct, 100)], color=color, height=1)
-        ax.axvline(elapsed * 100, color="white", ls="--", lw=1.5)
-        ax.set_xlim(0, 100); ax.set_ylim(-0.5, 0.5); ax.axis("off")
-        fig.text(0.55, y + h * 0.35, f"達成率 {pct:.0f}%", color="white", fontsize=22 if h > 0.15 else 20, fontweight="bold", va="center")
-        remain = target - act
-        fig.text(0.92, y + h * 0.35, f"あと {remain:,.0f}万円" if remain > 0 else "達成！", color=color if remain > 0 else GOLD,
-                 fontsize=22 if h > 0.15 else 20, fontweight="bold", ha="right", va="center")
-
-    mid = cfg.get("mid_target_sales") or 0
-    if mid and o < mid < new_t:   # 2回目の上方修正: 当初→前の目標→新目標の3段
-        ladder(0.34, f"当初目標　{o:,.0f}万円", o, "#37C27C", "達成！", 0.14)
-        ladder(0.19, f"前の目標　{mid:,.0f}万円", mid, "#37C27C", "達成！" if act >= mid else "もう目の前", 0.14)
-        ladder(0.04, f"新目標　{new_t:,.0f}万円　（＋{new_t - mid:,.0f}万円の挑戦）", new_t, GOLD, "ここまで行く", 0.14)
-    else:
-        ladder(0.27, f"当初目標　{o:,.0f}万円", o, "#37C27C", "もう目の前" if act < o else "達成！")
-        ladder(0.07, f"新目標　{new_t:,.0f}万円　（＋{new_t - o:,.0f}万円の挑戦）", new_t, GOLD, "ここまで行く")
+    # 今月の目標の進み具合
+    card(fig, 0.06, 0.27, 0.88, 0.2, "#2A4A73")
+    pct = act / month * 100 if month else 0
+    fig.text(0.08, 0.425, f"今月の目標　{month:,.0f}万円", color="white", fontsize=20, fontweight="bold")
+    ax = fig.add_axes([0.08, 0.31, 0.5, 0.06]); ax.set_facecolor("#1B3250")
+    ax.barh([0], [100], color="#1B3250", height=1); ax.barh([0], [min(pct, 100)], color="#37C27C" if remain <= 0 else GOLD, height=1)
+    ax.axvline(elapsed * 100, color="white", ls="--", lw=1.5); ax.set_xlim(0, 100); ax.set_ylim(-0.5, 0.5); ax.axis("off")
+    fig.text(0.61, 0.34, f"達成率 {pct:.0f}%", color="white", fontsize=22, fontweight="bold", va="center")
+    fig.text(0.92, 0.34, f"あと {remain:,.0f}万円" if remain > 0 else "達成！", color=GOLD, fontsize=22, fontweight="bold", ha="right", va="center")
+    # 今週の目標
+    card(fig, 0.06, 0.05, 0.88, 0.19, GOLD)
+    fig.text(0.08, 0.185, "今週の目標", color=NAVY, fontsize=20, fontweight="bold")
+    fig.text(0.08, 0.095, f"{wk:,.0f}万円", color=NAVY, fontsize=44, fontweight="bold", va="center")
+    fig.text(0.92, 0.185, f"月末まであと{weeks}週", color=NAVY, fontsize=16, fontweight="bold", ha="right")
+    fig.text(0.92, 0.10, f"残り {remain:,.0f}万円 ÷ {weeks}週" + ("　（ラスト1週も同じだけ）" if weeks > 1 else "　（ラスト1週）"), color=NAVY, fontsize=16, ha="right", va="center")
     fig.text(0.62, 0.62, "白い点線 ＝ 月の経過（いまの目安）", color="#C9D6E8", fontsize=13, ha="center")
     fig.text(0.62, 0.575, "線より先に出ているのが、いまのチーム", color=GOLD, fontsize=15, fontweight="bold", ha="center")
     fig.text(0.965, 0.03, str(n), color="#C9D6E8", fontsize=10, ha="right")
