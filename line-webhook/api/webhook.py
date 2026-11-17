@@ -116,6 +116,9 @@ SENTENCE_HINT = re.compile(r"(です|ます|ください|ですか|でした|ま
 # 代理店別の現在の稼働メンバー（2026-09時点。今川さん確認済み）:
 #   E.L.P（自社）=今川 / ピタサチ=門田・三浦 / wanny=岡野・宮腰 / TRYGROUP=柚木 / ネクアス=福本
 # 要: 入退社・表記変更があったら随時更新する（従業員.md と揃える）
+# 同じ苗字の人が複数いて、苗字だけでは誰か決められない名前（苗字→フルネームの名前部分の候補）。初回のあいさつでフルネームを求める
+AMBIGUOUS_SURNAMES = {"福本": ["凌", "豊樹"]}
+
 KNOWN_CLOSERS = {
     "今川": "今川", "今川吉輝": "今川", "今川 吉輝": "今川",
     "門田": "門田", "門田義斗": "門田", "門田 義斗": "門田",
@@ -123,7 +126,7 @@ KNOWN_CLOSERS = {
     "岡野": "岡野", "岡野翔": "岡野", "岡野 翔": "岡野",
     "宮腰": "宮腰", "宮腰幹士": "宮腰", "宮腰 幹士": "宮腰",
     "柚木": "柚木",
-    "福本": "福本",
+    "福本": "福本", "福本凌": "福本", "福本 凌": "福本",
 }
 
 # アポインターも同様にLINE表示名が一致すれば即座に本登録される（role="appointer"）。
@@ -301,7 +304,7 @@ def register_unknown_sender(line_user_id: str) -> dict:
     display_name = profile.get("displayName", "")
     key = display_name.strip()
 
-    closer_name = KNOWN_CLOSERS.get(key)
+    closer_name = None if key in AMBIGUOUS_SURNAMES else KNOWN_CLOSERS.get(key)   # 苗字だけでは別人の可能性がある名前は、自動で確定しない
     role = "closer" if closer_name else None
     if not closer_name:
         closer_name = KNOWN_APPOINTERS.get(key)
@@ -3399,7 +3402,11 @@ def handle_registration(event: dict, closer: dict, is_first_contact: bool) -> bo
 
     if closer.get("closer_name") is None:
         hit = match_known_member(message.get("text", "")) if message.get("type") == "text" else None
-        if hit:   # あいさつ＋名前から、苗字で照合できた。役割まで確定して、続けてフルネームを聞く
+        if hit and hit[0] in AMBIGUOUS_SURNAMES and not re.search("|".join(AMBIGUOUS_SURNAMES[hit[0]]), _nfkc(message.get("text", ""))):
+            # 同じ苗字の人が2人いる（例: 福本凌・福本豊樹）。苗字だけでは別人として登録してしまうので、フルネームを求める
+            line_reply(reply_token, [{"type": "text", "text": f"ご連絡ありがとうございます。{hit[0]}さんは2名いらっしゃるため、"
+                                      f"フルネームで送ってください（例：{hit[0]}{AMBIGUOUS_SURNAMES[hit[0]][-1]}です。よろしくお願いします）。"}])
+        elif hit:   # あいさつ＋名前から、苗字で照合できた。役割まで確定して、続けてフルネームを聞く
             canon, role = hit
             sb("PATCH", f"closer_line_users?id=eq.{closer['id']}", {"closer_name": canon, "role": role})
             if role == "closer":
