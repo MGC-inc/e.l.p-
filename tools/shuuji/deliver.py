@@ -8,6 +8,10 @@ manifest.csv を読み、各代理店のリンクと週次PDCAの記入テンプ
 テストモード（--test-to）では、本人がまだ何も受け取っていないため、Supabaseの
 pdca_pending_weekは更新しない（本番配信時のみ、実際の送り先に対して更新する）。
 
+--phase pdf|declare|both（既定: both）: pdf＝資料のリンクだけ送る（pdca_pending_weekもここでセット）／declare＝「宣言を登録する」ボタンだけ送る／both＝両方を1回で送る。
+  週次の自動配信では、ほかの配信メッセージにボタンが埋もれて宣言が登録されない傾向があるため、ワークフローの最後（全社MT用の配信のあと）に
+  --phase declare を別ステップで実行して、ボタンを最後のメッセージにする（2026-11-18 今川さん指示）。
+--only-names 名前,名前: 指定した人だけに送る（途中から登録した人への再配信用）。
 環境変数 DEAL_LINE_CHANNEL_ACCESS_TOKEN が必要(Messaging APIのチャネルアクセストークン。
 line-webhook/README.mdと同じ変数名に統一している。元のキットでは LINE_CHANNEL_ACCESS_TOKEN)。
 --test-toを使わない場合、環境変数 ELP_SUPABASE_URL / ELP_SUPABASE_SERVICE_ROLE_KEY も必要
@@ -29,6 +33,8 @@ import urllib.request
 out, base = sys.argv[1], sys.argv[2].rstrip("/")
 dry = "--dry-run" in sys.argv
 mgr = "--managers-only" in sys.argv
+phase = sys.argv[sys.argv.index("--phase") + 1] if "--phase" in sys.argv else "both"
+only_names = {x.strip() for x in sys.argv[sys.argv.index("--only-names") + 1].split(",") if x.strip()} if "--only-names" in sys.argv else None
 test_to = None
 if "--test-to" in sys.argv:
     test_to = sys.argv[sys.argv.index("--test-to") + 1]
@@ -105,15 +111,23 @@ REGISTER_BUTTON = "宣言を登録する"   # line-webhook/api/webhook.py の HW
 for r in csv.DictReader(open(f"{out}/manifest.csv", encoding="utf-8-sig")):
     if mgr and r["is_manager"] != "yes":
         continue
+    if only_names is not None and r["name"] not in only_names:
+        continue
     pdf_text = f"{r['name']}さん\n今週の{r['agency']}の週次MT資料です。\n"
     if r["agency"] in slides:
         pdf_text += f"▼MTスライド\n{base}/{slides[r['agency']]}\n"
     pdf_text += f"▼個人PDCAシート\n{base}/{r['file']}\n\n{HOW_TO}"
-    template_text = (f"📝週次PDCA｜{r['name']}さん（今週：{week_label}）\n\n"
-                     "週次MTで決めた「宣言」と「数字の目標」を、下のボタンから登録してください。")
+    template_text = (f"📝宣言の登録｜{r['name']}さん（今週：{week_label}）\n\n"
+                     "週次MTで決めた「宣言」と「数字の目標」を、下のボタンから登録してください。\n"
+                     "（ボタンが消えたときは、「宣言を登録する」と送っても始められます）")
     to = test_to or r["line_user_id"]
     if test_to:
         pdf_text = f"【テスト送信・本来の宛先: {r['name']}さん（{r['agency']}）】\n{pdf_text}"
+        template_text = f"【テスト送信・本来の宛先: {r['name']}さん（{r['agency']}）】\n{template_text}"
+    declare_msg = {"type": "text", "text": template_text, "quickReply": {"items": [
+        {"type": "action", "action": {"type": "message", "label": REGISTER_BUTTON, "text": REGISTER_BUTTON}}]}}
+    messages = {"pdf": [{"type": "text", "text": pdf_text}], "declare": [declare_msg],
+                "both": [{"type": "text", "text": pdf_text}, declare_msg]}[phase]
 
     if dry:
         print("[DRY]", r["name"], "->", to, f"{base}/{r['file']}", f"({r['agency']}・{r['sheets']}人分)")
@@ -121,11 +135,7 @@ for r in csv.DictReader(open(f"{out}/manifest.csv", encoding="utf-8-sig")):
 
     req = urllib.request.Request(
         "https://api.line.me/v2/bot/message/push", method="POST",
-        data=json.dumps({"to": to, "messages": [
-            {"type": "text", "text": pdf_text},
-            {"type": "text", "text": template_text, "quickReply": {"items": [
-                {"type": "action", "action": {"type": "message", "label": REGISTER_BUTTON, "text": REGISTER_BUTTON}}]}},
-        ]}).encode(),
+        data=json.dumps({"to": to, "messages": messages}).encode(),
         headers={"Content-Type": "application/json", "Authorization": f"Bearer {tok}"},
     )
     for attempt in range(5):   # 429（短時間の送りすぎ）は少し待って送り直す。2026-10-21に途中で止まったため
@@ -137,7 +147,7 @@ for r in csv.DictReader(open(f"{out}/manifest.csv", encoding="utf-8-sig")):
                 raise
             time.sleep(2 ** (attempt + 1))
 
-    if not test_to:
+    if not test_to and phase in ("pdf", "both"):
         try:
             sb_patch(f"closer_line_users?line_user_id=eq.{r['line_user_id']}",
                      {"pdca_pending_week": week_start_iso})

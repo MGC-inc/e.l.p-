@@ -122,14 +122,14 @@ jobs:
           # scheduleトリガー（毎週水曜の自動実行）にはinputsが存在しないため、
           # github.event_name==scheduleの場合は常に本番配信として扱う
           if [ "${{ github.event_name }}" = "schedule" ] || [ "${{ inputs.send_mode }}" = "production" ]; then
-            python3 tools/shuuji/deliver.py out "${{ steps.publish.outputs.base_url }}"
+            python3 tools/shuuji/deliver.py out "${{ steps.publish.outputs.base_url }}" --phase pdf
             # 本番配信した日を記録（上のguardが、遅れて起動した定時実行の二重配信を止めるのに使う）
             TZ=Asia/Tokyo date +%F | curl -sf -X POST --data-binary @- \
               -H "apikey: $ELP_SUPABASE_SERVICE_ROLE_KEY" -H "Authorization: Bearer $ELP_SUPABASE_SERVICE_ROLE_KEY" \
               -H "Content-Type: text/plain" -H "x-upsert: true" \
               "$ELP_SUPABASE_URL/storage/v1/object/weekly-pdca/delivered.txt"
           else
-            python3 tools/shuuji/deliver.py out "${{ steps.publish.outputs.base_url }}" --test-to "$IMAGAWA_LINE_USER_ID"
+            python3 tools/shuuji/deliver.py out "${{ steps.publish.outputs.base_url }}" --phase pdf --test-to "$IMAGAWA_LINE_USER_ID"
           fi
 
       - name: LINE配信（全社MT用・今川さんのみ）
@@ -144,4 +144,18 @@ jobs:
             python3 tools/shuuji/deliver_meeting.py "${{ steps.publish.outputs.meeting_url }}" "$IMAGAWA_LINE_USER_ID" --slides "${{ steps.publish.outputs.all_slides_url }}" --also-names 野間
           else
             python3 tools/shuuji/deliver_meeting.py "${{ steps.publish.outputs.meeting_url }}" "$IMAGAWA_LINE_USER_ID" --slides "${{ steps.publish.outputs.all_slides_url }}"
+          fi
+
+      # 宣言を登録するボタンは、自動配信の最後に送る（ほかの配信メッセージに埋もれて登録されない傾向があるため。2026-11-18 今川さん指示）
+      - name: LINE配信（宣言を登録するボタン。自動配信の最後）
+        env:
+          DEAL_LINE_CHANNEL_ACCESS_TOKEN: ${{ secrets.DEAL_LINE_CHANNEL_ACCESS_TOKEN }}
+          IMAGAWA_LINE_USER_ID: ${{ secrets.IMAGAWA_LINE_USER_ID }}
+          ELP_SUPABASE_URL: ${{ secrets.ELP_SUPABASE_URL }}
+          ELP_SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.ELP_SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          if [ "${{ github.event_name }}" = "schedule" ] || [ "${{ inputs.send_mode }}" = "production" ]; then
+            python3 tools/shuuji/deliver.py out "${{ steps.publish.outputs.base_url }}" --phase declare
+          else
+            python3 tools/shuuji/deliver.py out "${{ steps.publish.outputs.base_url }}" --phase declare --test-to "$IMAGAWA_LINE_USER_ID"
           fi
