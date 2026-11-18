@@ -3029,7 +3029,7 @@ TICKET_GUIDE = (
     "④ 聞きたい録音の「🎧聞く」を押す → チケット1枚で、解説つきで聞ける\n"
     "\n"
     "・自分の録音は、何度でも無料で聞ける\n"
-    "・同じ録音は、聞いてから24時間は聞き直しても無料\n"
+    "・同じ録音は、聞いてから1週間（7日）は、何度でも聞き直せて無料\n"
     "・持っているチケットは「チケット」と送ると見られる\n"
     "・お客様のお名前は表示されません。録音は社内だけで使って、外には出さないでください"
 )
@@ -3150,7 +3150,10 @@ def ticket_add(line_user_id: str, delta: int, ref) -> None:
                                     "result": f"{delta:+d}", "customer_name": str(ref)}])
 
 
-def sb_storage_sign(bucket: str, path: str, expires: int = 86400) -> str:
+LISTEN_DAYS = 7   # 1回聞くと、この日数のあいだは同じ録音を何度でも無料で聞ける。再生リンクの有効期間も同じ（2026-11-18 今川さん指示: 24時間→1週間）
+
+
+def sb_storage_sign(bucket: str, path: str, expires: int = LISTEN_DAYS * 86400) -> str:
     url = f"{SUPABASE_URL}/storage/v1/object/sign/{bucket}/{path}"
     req = urllib.request.Request(url, data=json.dumps({"expiresIn": expires}).encode(), method="POST", headers={
         "Authorization": f"Bearer {SUPABASE_SERVICE_ROLE_KEY}", "apikey": SUPABASE_SERVICE_ROLE_KEY, "Content-Type": "application/json"})
@@ -3407,14 +3410,14 @@ def library_play(reply_token: str, uid: str, closer: dict, rec_id: int):
     r = rows[0]
     free = r["line_user_id"] == uid or closer.get("closer_name") == ADMIN_NAME
     if not free:
-        since = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
+        since = (datetime.now(timezone.utc) - timedelta(days=LISTEN_DAYS)).isoformat()
         spent = sb("GET", f"deal_recordings?line_user_id=eq.{uid}&storage_path=eq.{TICKET_PATH}&customer_name=eq.{rec_id}&result=eq.-1&received_at=gte.{urllib.parse.quote(since)}&select=id&limit=1")
         if not spent:
             if ticket_balance(uid) < 1:
                 line_reply(reply_token, [{"type": "text", "text": "チケットがありません。\nアポの録音を1本送って登録すると、チケットが1枚もらえます。\n\n" + TICKET_GUIDE}])
                 return
             ticket_add(uid, -1, rec_id)
-    url = sb_storage_sign("deal-recordings", r["storage_path"], 86400)
+    url = sb_storage_sign("deal-recordings", r["storage_path"], LISTEN_DAYS * 86400)
     an = _meta(r).get("analysis") or {}
     lines = [f"🎧 No.{r['id']}　{r.get('appointer') or '—'}さんのアポ録音", f"結果：{r.get('result') or '—'}"]
     if an.get("scene"):
@@ -3427,7 +3430,7 @@ def library_play(reply_token: str, uid: str, closer: dict, rec_id: int):
         lines += ["", "【聞きどころ】"] + [f"・{x.get('t', '')} {x.get('note', '')}".strip() for x in an["listen"][:3]]
     if not an:
         lines += ["", "（解説は分析が終わると追記されます。先に録音だけ聞けます）"]
-    lines += ["", "▶ 録音（24時間有効）", url]
+    lines += ["", f"▶ 録音（{LISTEN_DAYS}日間有効）", url]
     bal = "無制限" if closer.get("closer_name") == ADMIN_NAME else f"{ticket_balance(uid)}枚"
     lines += ["", f"いまのチケット：{bal}"]
     line_reply(reply_token, [{"type": "text", "text": "\n".join(lines)[:4900], "quickReply": quick_reply(["ベスト録音", "チケット"])}])
