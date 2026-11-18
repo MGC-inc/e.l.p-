@@ -3004,7 +3004,436 @@ def handle_new_menu(event: dict, closer: dict) -> bool:
             or deferrable(handle_construction_digest)(event, closer) or deferrable(handle_group_register)(event, closer))
 
 
-def handle_audio_message(event: dict, closer: dict, extra_messages=None):
+# ---- アポ録音（30分以内の短い録音）の受付・ベスト録音ライブラリ・チケット（2026-11-18 今川さん指示） ----
+# ・録音をそのまま送るだけで登録できる。30分以内の録音は「アポの録音」とみなして、
+#   誰の録音か→お客様→場所→アポが取れたか→（取れたら）その後（キャンセル／商談につながった／まだ）→（商談なら）契約・保留・失注・まだ、を聞く。
+# ・登録するとチケット1枚。「ベスト録音」で他の人の録音の一覧が出て、チケット1枚で解説つきで聞ける（自分の録音は無料）。
+# ・データは deal_recordings に入れる（新しいテーブルは作らない）:
+#     アポ録音の行: storage_path="apo/…"、status=apo_*、appointer=話した人、customer_name=〇〇邸、result=結果、
+#                   notion_url=メタ情報のJSON（area・dur・analysis）
+#     チケットの行: storage_path="ticket"、result="+1"または"-1"、customer_name=録音のid
+APO_MAX_SECONDS = 30 * 60
+APO_ASK_STATUSES = ["apo_ask_speaker", "apo_ask_speaker_other", "apo_ask_customer", "apo_ask_area", "apo_ask_get", "apo_ask_after", "apo_ask_deal"]
+APO_ASK_IN = ",".join(APO_ASK_STATUSES)
+APO_Q = "🎙"   # アポ録音の質問ボタンの先頭に付ける（ほかの質問のボタンと取り違えないため）
+APO_ROLES = ("closer", "appointer", "admin")
+TICKET_PATH = "ticket"
+LIB_COMMANDS = ("ベスト録音", "ベスト録音を聞く", "録音ライブラリ")
+TICKET_COMMANDS = ("チケット", "チケットの使い方", "🎫チケット")
+APO_UPDATE_COMMAND = "アポ結果を更新"
+TICKET_GUIDE = (
+    "🎫 ベスト録音チケットの使い方\n"
+    "① アポの録音（30分以内）を、このトークにそのまま送る\n"
+    "② 質問にボタンで答えて登録する → チケットが1枚もらえる\n"
+    "③「ベスト録音」と送ると、みんなの録音の一覧が出る\n"
+    "④ 聞きたい録音の「🎧聞く」を押す → チケット1枚で、解説つきで聞ける\n"
+    "\n"
+    "・自分の録音は、何度でも無料で聞ける\n"
+    "・同じ録音は、聞いてから24時間は聞き直しても無料\n"
+    "・持っているチケットは「チケット」と送ると見られる\n"
+    "・お客様のお名前は表示されません。録音は社内だけで使って、外には出さないでください"
+)
+
+
+def _mp3_seconds(b: bytes):
+    """MP3（Layer III）の長さを、先頭のフレームのビットレートから見積もる（Xingヘッダがあればそのフレーム数）。分からなければNone。"""
+    n, i = len(b), 0
+    if b[:3] == b"ID3" and n >= 10:
+        i = 10 + ((b[6] & 0x7F) << 21 | (b[7] & 0x7F) << 14 | (b[8] & 0x7F) << 7 | (b[9] & 0x7F))
+    while i + 4 < n:
+        if b[i] == 0xFF and (b[i + 1] & 0xE0) == 0xE0:
+            ver, layer, br_idx, sr_idx = (b[i + 1] >> 3) & 3, (b[i + 1] >> 1) & 3, (b[i + 2] >> 4) & 15, (b[i + 2] >> 2) & 3
+            if ver != 1 and layer == 1 and br_idx not in (0, 15) and sr_idx != 3:
+                break
+        i += 1
+    else:
+        return None
+    mpeg1 = ver == 3
+    brs = ([0, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320] if mpeg1
+           else [0, 8, 16, 24, 32, 40, 48, 56, 64, 80, 96, 112, 128, 144, 160])
+    srs = {3: [44100, 48000, 32000], 2: [22050, 24000, 16000], 0: [11025, 12000, 8000]}[ver]
+    sr = srs[sr_idx]
+    spf = 1152 if mpeg1 else 576
+    mono = ((b[i + 3] >> 6) & 3) == 3
+    side = (17 if mono else 32) if mpeg1 else (9 if mono else 17)
+    tag = b[i + 4 + side:i + 4 + side + 8]
+    if tag[:4] in (b"Xing", b"Info") and (tag[7] & 1):
+        frames = int.from_bytes(b[i + 4 + side + 8:i + 4 + side + 12], "big")
+        if frames:
+            return frames * spf / sr
+    # Xingヘッダが無い（可変ビットレートかもしれない）ので、フレームを順にたどって長さを数える
+    total, j, guard = 0.0, i, 0
+    while j + 4 < n and guard < 2_000_000:
+        guard += 1
+        if b[j] != 0xFF or (b[j + 1] & 0xE0) != 0xE0:
+            j += 1
+            continue
+        v, l, bi, si = (b[j + 1] >> 3) & 3, (b[j + 1] >> 1) & 3, (b[j + 2] >> 4) & 15, (b[j + 2] >> 2) & 3
+        if v != ver or l != 1 or bi in (0, 15) or si == 3:
+            j += 1
+            continue
+        pad = (b[j + 2] >> 1) & 1
+        flen = (144 if mpeg1 else 72) * brs[bi] * 1000 // srs[si] + pad
+        if flen < 4:
+            j += 1
+            continue
+        total += spf / srs[si]
+        j += flen
+    return total or None
+
+
+def _mp4_seconds(b: bytes):
+    k = b.find(b"mvhd")
+    if k < 0 or k + 32 > len(b):
+        return None
+    p = k + 4
+    if b[p] == 1:
+        scale, dur = int.from_bytes(b[p + 20:p + 24], "big"), int.from_bytes(b[p + 24:p + 32], "big")
+    else:
+        scale, dur = int.from_bytes(b[p + 12:p + 16], "big"), int.from_bytes(b[p + 16:p + 20], "big")
+    return dur / scale if scale else None
+
+
+def _wav_seconds(b: bytes):
+    import io
+    import wave
+    try:
+        with wave.open(io.BytesIO(b)) as w:
+            return w.getnframes() / w.getframerate()
+    except Exception:
+        return None
+
+
+def estimate_audio_seconds(content: bytes, ext: str):
+    """録音の長さ（秒）。形式から読めないときはNone。"""
+    try:
+        e = (ext or "").lower()
+        if e == "mp3":
+            return _mp3_seconds(content)
+        if e in ("m4a", "mp4", "aac", "caf", "3gp"):
+            return _mp4_seconds(content)
+        if e == "wav":
+            return _wav_seconds(content)
+        return _mp3_seconds(content) or _mp4_seconds(content)
+    except Exception as e:
+        print(f"estimate_audio_seconds error: {e}")
+        return None
+
+
+def _meta(row: dict) -> dict:
+    t = row.get("notion_url") or ""
+    if t.startswith("{"):
+        try:
+            return json.loads(t)
+        except Exception:
+            return {}
+    return {}
+
+
+def _save_meta(row_id, meta: dict, **cols):
+    sb("PATCH", f"deal_recordings?id=eq.{row_id}", {"notion_url": json.dumps(meta, ensure_ascii=False), **cols})
+
+
+def ticket_balance(line_user_id: str) -> int:
+    rows = sb("GET", f"deal_recordings?line_user_id=eq.{line_user_id}&storage_path=eq.{TICKET_PATH}&select=result&limit=1000") or []
+    total = 0
+    for r in rows:
+        try:
+            total += int(r.get("result") or 0)
+        except ValueError:
+            pass
+    return total
+
+
+def ticket_add(line_user_id: str, delta: int, ref) -> None:
+    sb("POST", "deal_recordings", [{"line_user_id": line_user_id, "storage_path": TICKET_PATH, "status": "ticket",
+                                    "result": f"{delta:+d}", "customer_name": str(ref)}])
+
+
+def sb_storage_sign(bucket: str, path: str, expires: int = 86400) -> str:
+    url = f"{SUPABASE_URL}/storage/v1/object/sign/{bucket}/{path}"
+    req = urllib.request.Request(url, data=json.dumps({"expiresIn": expires}).encode(), method="POST", headers={
+        "Authorization": f"Bearer {SUPABASE_SERVICE_ROLE_KEY}", "apikey": SUPABASE_SERVICE_ROLE_KEY, "Content-Type": "application/json"})
+    with urllib.request.urlopen(req, timeout=20) as r:
+        signed = json.loads(r.read())["signedURL"]
+    return f"{SUPABASE_URL}/storage/v1{signed}"
+
+
+def _apo_label(row: dict) -> str:
+    try:
+        t = datetime.fromisoformat((row.get("received_at") or "").replace("Z", "+00:00")).astimezone(timezone(timedelta(hours=9)))
+        return f"【アポ録音 {t.month}/{t.day} {t:%H:%M}】"
+    except Exception:
+        return "【アポ録音】"
+
+
+def _apo_msg(row: dict, text: str, labels: list) -> list:
+    labels = [*labels[:12], APO_Q + "やめる"]   # どの質問からでも、登録をやめられる
+    return [{"type": "text", "text": f"{_apo_label(row)}\n{text}", "quickReply": quick_reply(labels)}]
+
+
+def apo_question(row: dict, status: str | None = None, prefix: str = "") -> list:
+    st = status or row["status"]
+    me = None
+    try:
+        u = find_closer(row["line_user_id"])
+        me = (u or {}).get("closer_name")
+    except Exception:
+        pass
+    if st == "apo_ask_speaker":
+        names = [b for b in appointer_buttons(me) if b not in (OTHER_APPOINTER_LABEL,)]
+        labels = [APO_Q + b for b in names[:10]] + [APO_Q + OTHER_APPOINTER_LABEL]
+        if (u or {}).get("role") == "closer":
+            labels.append(APO_Q + "商談の録音です")
+        return _apo_msg(row, prefix + "短い録音なので、アポの録音として登録します。\nQ1. 誰の録音ですか？（アポを取った人）", labels[:13])
+    if st == "apo_ask_speaker_other":
+        return _apo_msg(row, "名前（苗字）を送ってください。", [])
+    if st == "apo_ask_customer":
+        return _apo_msg(row, "Q2. お客様はどなたですか？苗字を送ってください（例：山田 → 山田邸）。分からなければ「不明」を押してください。", [APO_Q + "不明"])
+    if st == "apo_ask_area":
+        return _apo_msg(row, "Q3. どのあたりのお客様ですか？市区町村を送ってください（例：刈谷市）。分からなければスキップ。", [APO_Q + "スキップ"])
+    if st == "apo_ask_get":
+        return _apo_msg(row, "Q4. アポは取れましたか？", [APO_Q + "取れた", APO_Q + "取れなかった"])
+    if st == "apo_ask_after":
+        return _apo_msg(row, "Q5. その後どうなりましたか？（まだ分からないときは「まだ」。あとで結果を更新できます）",
+                        [APO_Q + "商談につながった", APO_Q + "キャンセルになった", APO_Q + "まだ"])
+    if st == "apo_ask_deal":
+        return _apo_msg(row, "Q6. 商談の結果は？", [APO_Q + "契約", APO_Q + "保留", APO_Q + "失注", APO_Q + "商談結果はまだ"])
+    return []
+
+
+def start_apo_flow(event: dict, closer: dict, content: bytes, ext: str, seconds, extra_messages=None):
+    message = event["message"]
+    uid = event["source"]["userId"]
+    now = datetime.now(timezone.utc)
+    path = f"apo/{now:%Y}/{now:%Y-%m-%d}_{uid}_{message['id']}.{ext}"
+    sb_storage_upload("deal-recordings", path, content, mimetypes.guess_type(f"x.{ext}")[0] or "application/octet-stream")
+    busy = bool(sb("GET", f"deal_recordings?line_user_id=eq.{uid}&status=in.({APO_ASK_IN})&select=id&limit=1")) or latest_pending_recording(uid) is not None
+    meta = {"dur": int(seconds) if seconds else None}
+    row = {"line_user_id": uid, "storage_path": path, "status": "apo_queued" if busy else "apo_ask_speaker",
+           "received_at": now.isoformat(), "notion_url": json.dumps(meta)}
+    created = sb("POST", "deal_recordings", [row])
+    row = created[0] if created else row
+    mins = f"（約{max(1, round(seconds / 60))}分）" if seconds else ""
+    if busy:
+        line_reply(event["replyToken"], [*(extra_messages or []), {"type": "text", "text": f"アポ録音{mins}を受け取りました。いま確認中の録音の登録が終わったら、続けてお聞きします。"}])
+        return
+    line_reply(event["replyToken"], [*(extra_messages or []), *apo_question(row, prefix=f"録音{mins}を受け取りました。\n")])
+
+
+def handle_audio_dispatch(event: dict, closer: dict, extra_messages=None):
+    """録音が届いたとき: 30分以内ならアポ録音として登録、それより長ければ従来の商談録音の登録に回す。"""
+    message = event["message"]
+    content = line_get_content(message["id"])
+    if message["type"] == "file":
+        name = message.get("fileName", "recording.mp3")
+        ext = name.rsplit(".", 1)[-1].lower() if "." in name else "mp3"
+    else:
+        ext = "m4a"
+    seconds = (message.get("duration") or 0) / 1000 if message["type"] == "audio" and message.get("duration") else estimate_audio_seconds(content, ext)
+    if closer.get("role") in APO_ROLES and seconds is not None and seconds <= APO_MAX_SECONDS:
+        return start_apo_flow(event, closer, content, ext, seconds, extra_messages)
+    return handle_audio_message(event, closer, extra_messages=extra_messages, audio_bytes=content)
+
+
+def _apo_finish(row: dict, closer: dict, reply_token: str, result: str):
+    meta = _meta(row)
+    sb("PATCH", f"deal_recordings?id=eq.{row['id']}", {"status": "apo_done", "result": result})
+    first = not sb("GET", f"deal_recordings?storage_path=eq.{TICKET_PATH}&customer_name=eq.{row['id']}&result=eq.%2B1&select=id&limit=1")
+    if first:   # 結果の更新で何度も通っても、チケットは最初の登録の1回だけ
+        ticket_add(row["line_user_id"], 1, row["id"])
+    bal = ticket_balance(row["line_user_id"])
+    area = f"（{meta['area']}）" if meta.get("area") else ""
+    text = (f"登録しました。\n・話した人：{row.get('appointer') or '—'}\n・お客様：{row.get('customer_name') or '—'}{area}\n・結果：{result}\n\n"
+            + (f"🎫 チケットを1枚受け取りました（いま{bal}枚）。\n" if first else f"🎫 いまのチケットは{bal}枚です。\n")
+            + "「ベスト録音」と送ると、みんなの録音を聞けます（チケット1枚で1本）。使い方は「チケット」で確認できます。\n"
+              "分析が終わったら、あなたにだけフィードバックを送ります。")
+    msgs = [{"type": "text", "text": text, "quickReply": quick_reply(["ベスト録音", "チケット"])}]
+    nxt = sb("GET", f"deal_recordings?line_user_id=eq.{row['line_user_id']}&status=eq.apo_queued&order=received_at.asc&limit=1&select=*")
+    if nxt:
+        sb("PATCH", f"deal_recordings?id=eq.{nxt[0]['id']}", {"status": "apo_ask_speaker"})
+        msgs += apo_question(nxt[0], "apo_ask_speaker", prefix="続いてこの録音について確認します。\n")
+    line_reply(reply_token, msgs[:5])
+
+
+def handle_apo_text(event: dict, closer: dict) -> bool:
+    """アポ録音の質問への返事、ベスト録音・チケットのコマンドを処理する。処理したらTrue。"""
+    uid = event["source"]["userId"]
+    reply = event["replyToken"]
+    raw = (event["message"].get("text") or "").strip()
+    t = raw[len(APO_Q):].strip() if raw.startswith(APO_Q) else raw
+    if closer.get("role") not in APO_ROLES:
+        return False
+    # ---- コマンド ----
+    if raw in TICKET_COMMANDS:
+        bal = "無制限（管理者）" if closer.get("closer_name") == ADMIN_NAME else f"{ticket_balance(uid)}枚"
+        line_reply(reply, [{"type": "text", "text": f"いまのチケット：{bal}\n\n{TICKET_GUIDE}".replace("\n", "\n"), "quickReply": quick_reply(["ベスト録音"])}])
+        return True
+    if raw in LIB_COMMANDS:
+        library_list(reply, uid, closer)
+        return True
+    m = re.match(r"^[🎙🎧]?聞く\s*No\.?\s*(\d+)$", raw)
+    if m:
+        library_play(reply, uid, closer, int(m.group(1)))
+        return True
+    if raw == APO_UPDATE_COMMAND:
+        rows = sb("GET", f"deal_recordings?line_user_id=eq.{uid}&status=eq.apo_done&result=like.*%E7%B5%90%E6%9E%9C%E5%BE%85%E3%81%A1*&order=received_at.desc&limit=10&select=*") or []
+        if not rows:
+            line_reply(reply, [{"type": "text", "text": "結果待ちのアポ録音はありません。"}])
+            return True
+        lines = [f"No.{r['id']}　{r.get('customer_name') or '—'}　{r.get('result')}" for r in rows]
+        line_reply(reply, [{"type": "text", "text": "結果を更新する録音を選んでください。\n" + "\n".join(lines),
+                            "quickReply": quick_reply([f"{APO_Q}更新 No.{r['id']}" for r in rows[:13]])}])
+        return True
+    m = re.match(rf"^{APO_Q}更新\s*No\.?\s*(\d+)$", raw)
+    if m:
+        rows = sb("GET", f"deal_recordings?id=eq.{int(m.group(1))}&line_user_id=eq.{uid}&status=eq.apo_done&select=*") or []
+        if not rows:
+            line_reply(reply, [{"type": "text", "text": "その録音は見つかりませんでした。"}])
+            return True
+        st = "apo_ask_deal" if "商談" in (rows[0].get("result") or "") else "apo_ask_after"
+        sb("PATCH", f"deal_recordings?id=eq.{rows[0]['id']}", {"status": st})
+        line_reply(reply, apo_question(rows[0], st))
+        return True
+    # ---- 質問への返事 ----
+    rows = sb("GET", f"deal_recordings?line_user_id=eq.{uid}&status=in.({APO_ASK_IN})&order=received_at.asc&limit=1&select=*") or []
+    if not rows or raw in MENU_TEXTS:
+        return False
+    row = rows[0]
+    st = row["status"]
+    meta = _meta(row)
+    if raw == APO_Q + "やめる":
+        sb("PATCH", f"deal_recordings?id=eq.{row['id']}", {"status": "apo_cancelled"})
+        line_reply(reply, [{"type": "text", "text": "アポ録音の登録をやめました（チケットは増えません）。もう一度登録するときは、録音をそのまま送ってください。"}])
+        return True
+    if latest_pending_recording(uid) is not None and not raw.startswith(APO_Q):
+        return False   # 商談録音の質問に答えている途中の文章は、そちらに任せる
+    if st in ("apo_ask_speaker", "apo_ask_speaker_other"):
+        if t == "商談の録音です" and closer.get("role") == "closer":
+            sb("PATCH", f"deal_recordings?id=eq.{row['id']}", {"status": "awaiting_appointer"})
+            line_reply(reply, [appointer_question_message({**row, "_sender": closer.get("closer_name")}, prefix="商談の録音として登録します。\n")])
+            return True
+        name, why = resolve_appointer(t, closer.get("closer_name"))
+        if why == "other":
+            sb("PATCH", f"deal_recordings?id=eq.{row['id']}", {"status": "apo_ask_speaker_other"})
+            line_reply(reply, apo_question(row, "apo_ask_speaker_other"))
+            return True
+        if not name:
+            line_reply(reply, apo_question(row, "apo_ask_speaker", prefix="名前として受け取れませんでした。ボタンから選んでください。\n"))
+            return True
+        sb("PATCH", f"deal_recordings?id=eq.{row['id']}", {"appointer": name, "status": "apo_ask_customer"})
+        line_reply(reply, apo_question(row, "apo_ask_customer"))
+        return True
+    if st == "apo_ask_customer":
+        if t == "不明":
+            cust = "不明"
+        elif check_customer_answer(t):
+            line_reply(reply, apo_question(row, "apo_ask_customer", prefix="お客様の苗字として受け取れませんでした。\n"))
+            return True
+        else:
+            cust = to_customer_label(strip_polite(t))
+        sb("PATCH", f"deal_recordings?id=eq.{row['id']}", {"customer_name": cust, "status": "apo_ask_area"})
+        line_reply(reply, apo_question(row, "apo_ask_area"))
+        return True
+    if st == "apo_ask_area":
+        if t != "スキップ" and 0 < len(t) <= 20:
+            meta["area"] = t
+        _save_meta(row["id"], meta, status="apo_ask_get")
+        line_reply(reply, apo_question(row, "apo_ask_get"))
+        return True
+    if st == "apo_ask_get":
+        if t.startswith("取れなかった"):
+            _apo_finish(row, closer, reply, "アポ取得なし")
+        elif t.startswith("取れた"):
+            sb("PATCH", f"deal_recordings?id=eq.{row['id']}", {"status": "apo_ask_after"})
+            line_reply(reply, apo_question(row, "apo_ask_after"))
+        else:
+            line_reply(reply, apo_question(row, "apo_ask_get", prefix="ボタンから選んでください。\n"))
+        return True
+    if st == "apo_ask_after":
+        if t.startswith("キャンセル"):
+            _apo_finish(row, closer, reply, "アポ取得→キャンセル")
+        elif t.startswith("商談につながった"):
+            sb("PATCH", f"deal_recordings?id=eq.{row['id']}", {"status": "apo_ask_deal"})
+            line_reply(reply, apo_question(row, "apo_ask_deal"))
+        elif t.startswith("まだ"):
+            _apo_finish(row, closer, reply, "アポ取得（結果待ち）")
+        else:
+            line_reply(reply, apo_question(row, "apo_ask_after", prefix="ボタンから選んでください。\n"))
+        return True
+    if st == "apo_ask_deal":
+        if t in ("契約", "保留", "失注"):
+            _apo_finish(row, closer, reply, f"アポ取得→商談→{t}")
+        elif t.startswith("商談結果はまだ"):
+            _apo_finish(row, closer, reply, "アポ取得→商談（結果待ち）")
+        else:
+            line_reply(reply, apo_question(row, "apo_ask_deal", prefix="ボタンから選んでください。\n"))
+        return True
+    return False
+
+
+def _lib_line(r: dict) -> str:
+    meta = _meta(r)
+    an = meta.get("analysis") or {}
+    d = ""
+    try:
+        d = datetime.fromisoformat((r.get("received_at") or "").replace("Z", "+00:00")).astimezone(timezone(timedelta(hours=9))).strftime("%-m/%-d")
+    except Exception:
+        pass
+    scene = an.get("scene") or ""
+    return f"No.{r['id']}　{r.get('appointer') or '—'}　{d}　{r.get('result') or ''}" + (f"　［{scene}］" if scene else "") + (f"\n　{an['summary'][:40]}" if an.get("summary") else "")
+
+
+def library_list(reply_token: str, uid: str, closer: dict, limit: int = 6):
+    rows = sb("GET", f"deal_recordings?status=eq.apo_done&line_user_id=neq.{uid}&order=received_at.desc&limit=40&select=*") or []
+    rows = [r for r in rows if (r.get("appointer") or "") != "不明"][:limit]
+    bal = "無制限" if closer.get("closer_name") == ADMIN_NAME else f"{ticket_balance(uid)}枚"
+    own = sb("GET", f"deal_recordings?status=eq.apo_done&line_user_id=eq.{uid}&order=received_at.desc&limit=3&select=*") or []
+    if not rows and not own:
+        line_reply(reply_token, [{"type": "text", "text": "まだ録音がありません。アポの録音を送って、最初の1本になりましょう。", "quickReply": quick_reply(["チケット"])}])
+        return
+    body = f"🎧 ベスト録音（いまのチケット：{bal}）\n聞きたい録音を選ぶと、チケット1枚で聞けます。\n\n" + "\n".join(_lib_line(r) for r in rows)
+    if own:
+        body += "\n\n【自分の録音（無料）】\n" + "\n".join(_lib_line(r) for r in own)
+    labels = [f"🎧聞く No.{r['id']}" for r in (rows + own)][:12] + ["チケット"]
+    line_reply(reply_token, [{"type": "text", "text": body[:4900], "quickReply": quick_reply(labels[:13])}])
+
+
+def library_play(reply_token: str, uid: str, closer: dict, rec_id: int):
+    rows = sb("GET", f"deal_recordings?id=eq.{rec_id}&status=eq.apo_done&select=*") or []
+    if not rows:
+        line_reply(reply_token, [{"type": "text", "text": "その録音は見つかりませんでした。"}])
+        return
+    r = rows[0]
+    free = r["line_user_id"] == uid or closer.get("closer_name") == ADMIN_NAME
+    if not free:
+        since = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
+        spent = sb("GET", f"deal_recordings?line_user_id=eq.{uid}&storage_path=eq.{TICKET_PATH}&customer_name=eq.{rec_id}&result=eq.-1&received_at=gte.{urllib.parse.quote(since)}&select=id&limit=1")
+        if not spent:
+            if ticket_balance(uid) < 1:
+                line_reply(reply_token, [{"type": "text", "text": "チケットがありません。\nアポの録音を1本送って登録すると、チケットが1枚もらえます。\n\n" + TICKET_GUIDE}])
+                return
+            ticket_add(uid, -1, rec_id)
+    url = sb_storage_sign("deal-recordings", r["storage_path"], 86400)
+    an = _meta(r).get("analysis") or {}
+    lines = [f"🎧 No.{r['id']}　{r.get('appointer') or '—'}さんのアポ録音", f"結果：{r.get('result') or '—'}"]
+    if an.get("scene"):
+        lines.append(f"場面：{an['scene']}")
+    if an.get("summary"):
+        lines += ["", "【解説】" + an["summary"]]
+    if an.get("good"):
+        lines += ["", "【真似したいところ】"] + [f"・{g}" for g in an["good"][:3]]
+    if an.get("listen"):
+        lines += ["", "【聞きどころ】"] + [f"・{x.get('t', '')} {x.get('note', '')}".strip() for x in an["listen"][:3]]
+    if not an:
+        lines += ["", "（解説は分析が終わると追記されます。先に録音だけ聞けます）"]
+    lines += ["", "▶ 録音（24時間有効）", url]
+    bal = "無制限" if closer.get("closer_name") == ADMIN_NAME else f"{ticket_balance(uid)}枚"
+    lines += ["", f"いまのチケット：{bal}"]
+    line_reply(reply_token, [{"type": "text", "text": "\n".join(lines)[:4900], "quickReply": quick_reply(["ベスト録音", "チケット"])}])
+
+
+def handle_audio_message(event: dict, closer: dict, extra_messages=None, audio_bytes=None):
     message = event["message"]
     message_id = message["id"]
     line_user_id = event["source"]["userId"]
@@ -3017,7 +3446,7 @@ def handle_audio_message(event: dict, closer: dict, extra_messages=None):
         ext = "m4a"
     content_type = mimetypes.guess_type(f"x.{ext}")[0] or "application/octet-stream"
 
-    audio_bytes = line_get_content(message_id)
+    audio_bytes = audio_bytes if audio_bytes is not None else line_get_content(message_id)
     now = datetime.now(timezone.utc)
     storage_path = f"{now:%Y}/{now:%Y-%m-%d}_{line_user_id}_{message_id}.{ext}"
     sb_storage_upload("deal-recordings", storage_path, audio_bytes, content_type)
@@ -3951,9 +4380,11 @@ def handle_event(event: dict):
     if message_type == "text" and event["message"]["text"].strip() in MENU_TEXTS:
         cancel_flows(line_user_id, keep=("homework",))   # メニューが押されたら、途中だった質問は閉じる（宣言は残す）
     if message_type in ("audio", "file"):
-        handle_audio_message(event, closer, extra_messages=welcome_messages)
+        handle_audio_dispatch(event, closer, extra_messages=welcome_messages)
     elif welcome_messages:
         line_reply(event["replyToken"], welcome_messages)
+    elif message_type == "text" and handle_apo_text(event, closer):
+        pass  # アポ録音の質問への返事・ベスト録音・チケット（2026-11-18）
     elif message_type == "text" and event["message"]["text"] == GOAL_BUTTON_TEXT:
         # 録音登録フローの途中（awaiting_customer等）でタップされた場合も、
         # 目標確認を優先する（handle_text_messageの状態遷移より先に判定する）
