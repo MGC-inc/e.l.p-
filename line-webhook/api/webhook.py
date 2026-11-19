@@ -1412,11 +1412,14 @@ TROUBLE_REVIEW_TEXT = "困ったメモを見返す"
 TALK_TEXT = "全員の商談のうまくいったトーク"
 SHARE_TEXT = "最近の有力な共有"
 POST_CONTRACT_TEXT = "契約後の案件確認"
+CLOSER_MT_TEXT = "クローザーMT"         # クローザーのメニュー。自分の振り返り・課題を、直近2週間ぶん見返す（2026-11-19 今川さん指示）
+SELF_REVIEW_TEXT = "自分の振り返り"     # アポインターのメニュー。同上
+REVIEW_RAW_PREFIX = "振り返り原文 "      # 「原文を見る」ボタン（振り返り原文 2026-11-18）
 HW_TRIGGER = "宣言を登録する"
 HW_TRIGGER_OLD = "宿題を登録する"   # 旧ボタン（送信済みのメッセージに残っている）も受け付ける
 MENU_TEXTS = {GOAL_BUTTON_TEXT, KPI_BUTTON_TEXT, ANALYSIS_BUTTON_TEXT, STATUS_DEFINITION_TEXT, DECLARE_TEXT,
               KPI_MONTH_TEXT, TARGET_TRIGGER, TROUBLE_TRIGGER, TROUBLE_REVIEW_TEXT, TALK_TEXT, SHARE_TEXT,
-              POST_CONTRACT_TEXT, HW_TRIGGER}
+              POST_CONTRACT_TEXT, CLOSER_MT_TEXT, SELF_REVIEW_TEXT, HW_TRIGGER}
 FLOW_EXPIRE_MINUTES = 60
 # 宣言の登録は、途中で手が止まっても続きから再開できるよう長めにする（2026-11-05 今川さん指示）
 FLOW_EXPIRE_MINUTES_BY_KIND = {"homework": 12 * 60, "postcheck": 3 * 60}
@@ -2986,11 +2989,194 @@ def handle_homework_check(event: dict, closer: dict) -> bool:
     return True
 
 
+# ---- 自分の振り返り（アポインター）／クローザーMT（クローザー）（2026-11-19 今川さん指示） ----
+# 📚学び・共有ログDBの、本人の日報（【LINE原文】）を、日ごとにまとめて見返せるようにする。本人の分だけ。
+# ・新しい解析はしない。DBにある共有タイプ・一文要約・タグをそのまま使い、本人の原文は「原文を見る」でそのまま返す。
+# ・クローザーMT: 直近2週間でタグが繰り返し出ている課題を「最優先」にし、その日の商談（お客様名・エリア・アポインター・結果）を添える。
+REVIEW_DAYS = 14
+REVIEW_SECTIONS = [   # (見出し, 共有タイプの頭の記号)
+    ("✅ うまくいったこと", "①③⑧"),
+    ("⚠️ 課題・反省", "②"),
+    ("💡 気づき", "⑩⑯"),
+    ("➡️ 次にやること", "⑨"),
+    ("🗣 共有・質問", "④⑤⑥⑦"),
+]
+JA_WEEKDAYS = "月火水木金土日"
+
+
+def _review_orig(detail: str) -> str:
+    t = detail
+    if t.startswith("【LINE原文】"):
+        t = t[len("【LINE原文】"):].lstrip("\n")
+    i = t.find("\n\n【要約】")
+    return (t[:i] if i >= 0 else t).strip()
+
+
+def _review_section(type_name: str) -> str | None:
+    if "先輩の同行" in type_name:
+        return "💡 気づき"
+    head = type_name.strip()[:1]
+    for title, marks in REVIEW_SECTIONS:
+        if head in marks:
+            return title
+    return None
+
+
+def _review_reports(name: str, days: int = REVIEW_DAYS) -> list:
+    """本人の報告を、日報1通ごとにまとめて新しい順に返す。[{date, orig, sections{見出し:[一文要約]}, tags}]"""
+    since = (datetime.now(JST).date() - timedelta(days=days)).isoformat()
+    rows, cursor = [], None
+    for _ in range(3):
+        body = {"filter": {"and": [{"property": "報告者", "select": {"equals": name}},
+                                   {"property": "報告日", "date": {"on_or_after": since}}]},
+                "sorts": [{"property": "報告日", "direction": "descending"}], "page_size": 100}
+        if cursor:
+            body["start_cursor"] = cursor
+        res = notion_call("POST", f"databases/{LEARN_DB}/query", body)
+        rows += res.get("results", [])
+        if not res.get("has_more"):
+            break
+        cursor = res.get("next_cursor")
+    groups: dict = {}
+    for p in rows:
+        orig = _review_orig(plain(p, "詳細"))
+        day = plain(p, "報告日")[:10]
+        if not day or not orig:
+            continue
+        g = groups.setdefault((day, orig[:80]), {"date": day, "orig": orig, "sections": {}, "tags": set()})
+        summary = plain(p, "学び（一文要約）").lstrip("🚨 ").strip()
+        types = [x.get("name", "") for x in (((p.get("properties") or {}).get("共有タイプ") or {}).get("multi_select") or [])]
+        tags = [x.get("name", "") for x in (((p.get("properties") or {}).get("タグ") or {}).get("multi_select") or [])]
+        for tp in types:
+            sec = _review_section(tp)
+            if sec and summary and summary not in g["sections"].setdefault(sec, []):
+                g["sections"][sec].append(summary)
+            if sec in ("⚠️ 課題・反省", "➡️ 次にやること", "💡 気づき"):
+                g["tags"].update(tags)
+    return sorted(groups.values(), key=lambda g: g["date"], reverse=True)
+
+
+def _review_deals(name: str, days: int = REVIEW_DAYS) -> dict:
+    """そのクローザーの商談を、日付（日本時間）ごとに。{date: ['阪本邸（鴻巣市・岡野アポ）保留 ／ネック…']}"""
+    since = (datetime.now(JST).date() - timedelta(days=days + 1)).isoformat()
+    res = notion_call("POST", f"databases/{DEAL_DATABASE_ID}/query", {"filter": {"and": [
+        {"property": "クローザー", "select": {"equals": name}},
+        {"property": "商談日時", "date": {"on_or_after": since}}]},
+        "sorts": [{"property": "商談日時", "direction": "descending"}], "page_size": 100}).get("results", [])
+    out: dict = {}
+    for p in res:
+        start = plain(p, "商談日時")
+        try:
+            d = (datetime.fromisoformat(start.replace("Z", "+00:00")).astimezone(JST).date() if "T" in start
+                 else date.fromisoformat(start[:10])).isoformat()
+        except ValueError:
+            continue
+        result = plain(p, "結果")
+        if result == "商談予定":
+            continue
+        who = plain(p, "アポインター")
+        line = f"{plain(p, 'お客様名')}（{'・'.join(x for x in (plain(p, 'エリア'), (who + 'アポ') if who else '') if x)}）{result}"
+        neck = plain(p, "ネック・保留理由")
+        if neck and neck != "-" and result != "契約":
+            line += f" ／{_clip(neck, 40)}"
+        out.setdefault(d, []).append(line)
+    return out
+
+
+def _review_bubble(report: dict, deals: list, color: str) -> dict:
+    d = date.fromisoformat(report["date"])
+    body = []
+    for title, _ in REVIEW_SECTIONS:
+        items = report["sections"].get(title) or []
+        if items:
+            body.append(_t(title, "sm", "#333333", "bold", "md"))
+            body += [_t("・" + _clip(s, 80), "sm", None, None, "sm") for s in items[:3]]
+    if deals:
+        body.append(_t("📋 この日の商談", "sm", "#333333", "bold", "lg"))
+        body += [_t("・" + _clip(x, 90), "xs", "#555555", None, "sm") for x in deals[:6]]
+    if not body:
+        body = [_t("（要約はありません。原文を見てください）", "sm", "#666666")]
+    return {"type": "bubble", "size": "mega",
+            "header": {"type": "box", "layout": "vertical", "paddingAll": "12px", "backgroundColor": color,
+                       "contents": [_t(f"{d.month}/{d.day}（{JA_WEEKDAYS[d.weekday()]}）の報告", "md", "#FFFFFF", "bold")]},
+            "body": {"type": "box", "layout": "vertical", "spacing": "xs", "contents": body},
+            "footer": {"type": "box", "layout": "vertical", "contents": [
+                {"type": "button", "style": "link", "height": "sm",
+                 "action": {"type": "message", "label": "原文を見る", "text": REVIEW_RAW_PREFIX + report["date"]}}]}}
+
+
+def handle_review(event: dict, closer: dict) -> None:
+    """「クローザーMT」「自分の振り返り」。本人の直近2週間の報告を、日ごとに見返す。本人の分だけ。"""
+    name = closer.get("closer_name") or ""
+    text = event["message"]["text"].strip()
+    is_mt = text == CLOSER_MT_TEXT and closer.get("role") in ("closer", "admin")
+    if not name:
+        line_reply(event["replyToken"], [{"type": "text", "text": "お名前の登録がまだのため表示できません。登録が済むと見られます。"}])
+        return
+    reports = _review_reports(name)
+    if not reports:
+        line_reply(event["replyToken"], [{"type": "text", "text": (
+            f"直近{REVIEW_DAYS}日の、{name}さんの報告はまだありません。\n日報（終礼の報告）が入ると、ここに出ます。")}])
+        return
+    deals = {}
+    if is_mt:
+        try:
+            deals = _review_deals(name)
+        except Exception as e:
+            print(f"review deals failed: {e}")
+    head = [f"📒 {name}さんの{'クローザーMT' if is_mt else '振り返り'}（直近{REVIEW_DAYS}日・{name}さんだけに表示）"]
+    if is_mt:   # 課題のタグが、別の日にも繰り返し出ているものを「最優先」にする（出た日数が多い順）
+        count: dict = {}
+        for r in reports:
+            for tg in r["tags"]:
+                count[tg] = count.get(tg, 0) + 1
+        top = sorted(((n, tg) for tg, n in count.items() if n >= 2), reverse=True)[:3]
+        if top:
+            head.append("\n🔥 最優先で解決したいこと\n" + "\n".join(f"・{tg}（{n}日で出ています）" for n, tg in top))
+            tg0 = top[0][1]
+            shown = []
+            for r in reports:
+                if tg0 in r["tags"]:
+                    for sec in ("⚠️ 課題・反省", "➡️ 次にやること"):
+                        for s in r["sections"].get(sec, [])[:1]:
+                            shown.append(f"{md(r['date'])} {_clip(s, 70)}")
+            if shown:
+                head.append(f"\n「{tg0}」の、これまでの自分の言葉\n" + "\n".join("・" + s for s in shown[:4]))
+        else:
+            head.append("\n同じ課題が繰り返し出ているものは、まだありません。日ごとの課題と、次にやることを見てください。")
+    head.append("\n下に、日ごとの報告をまとめています（左右にスワイプ）。")
+    colors = ["#C0392B", "#D35400", "#B9770E", "#7D3C98"]
+    bubbles = [_review_bubble(r, deals.get(r["date"], []), colors[i % len(colors)]) for i, r in enumerate(reports[:8])]
+    line_reply(event["replyToken"], [{"type": "text", "text": "\n".join(head)[:4900]},
+                                     flex_message(f"{name}さんの振り返り（直近{REVIEW_DAYS}日）", bubbles)])
+
+
+def handle_review_raw(event: dict, closer: dict) -> None:
+    """「原文を見る」。その日の本人の報告を、送ったままの文面で返す（本人の分だけ）。"""
+    name = closer.get("closer_name") or ""
+    day = event["message"]["text"].strip()[len(REVIEW_RAW_PREFIX):].strip()[:10]
+    date.fromisoformat(day)   # 形が違えば例外→メニューのエラー表示
+    origs = [r["orig"] for r in _review_reports(name) if r["date"] == day]
+    if not origs:
+        line_reply(event["replyToken"], [{"type": "text", "text": "その日の報告は見つかりませんでした。"}])
+        return
+    d = date.fromisoformat(day)
+    msgs = [{"type": "text", "text": f"📄 {d.month}/{d.day}の報告（送った文面のまま）\n\n{o}"[:4900]} for o in origs[:5]]
+    line_reply(event["replyToken"], msgs)
+
+
 def handle_new_menu(event: dict, closer: dict) -> bool:
     """新メニューのボタンと、困ったメモ・宣言登録の質問への返信を処理する。処理したらTrue。"""
     text = event["message"]["text"].strip()
     views = {TALK_TEXT: handle_talk_share, SHARE_TEXT: handle_share, POST_CONTRACT_TEXT: handle_post_contract,
-             TROUBLE_REVIEW_TEXT: handle_trouble_review}
+             TROUBLE_REVIEW_TEXT: handle_trouble_review, CLOSER_MT_TEXT: handle_review, SELF_REVIEW_TEXT: handle_review}
+    if text.startswith(REVIEW_RAW_PREFIX):
+        try:
+            handle_review_raw(event, closer)
+        except Exception as e:
+            print(f"review raw error: {e}")
+            line_reply(event["replyToken"], [{"type": "text", "text": "一時的に取得できませんでした。少し待ってからもう一度お試しください。"}])
+        return True
     if text in views:
         try:
             views[text](event, closer)

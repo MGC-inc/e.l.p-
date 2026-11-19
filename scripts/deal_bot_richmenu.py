@@ -2,11 +2,11 @@
 """「ユメイク営業分析bot」（DEAL_LINE_CHANNEL_ACCESS_TOKEN）に、役割別の
 リッチメニューを2種類登録する。
 
-- 全員向け（デフォルト・アポインター）: 2×2の4ボタン
-    今月の進み具合／困ったメモ／困ったメモを見返す／最近の有力な共有
+- 全員向け（デフォルト・アポインター）: 3×2の6ボタン（2026-11-19〜）
+    今月の進み具合／困ったメモ／困ったメモを見返す／最近の有力な共有／自分の振り返り／ベスト録音
 - クローザー用: 3×2の6ボタン
     今月の進み具合／困ったメモ／困ったメモを見返す／
-    全員の商談のうまくいったトーク／契約後の案件確認／自分の商談分析結果
+    全員の商談のうまくいったトーク／契約後の案件確認／クローザーMT
 
 タップされたテキストはline-webhook/api/webhook.py側が処理する（文言はwebhook.pyの
 KPI_MONTH_TEXT・TROUBLE_*・TALK_TEXT・SHARE_TEXT・POST_CONTRACT_TEXT・ANALYSIS_BUTTON_TEXTと完全一致させること）。役割ごとの出し分けは、Supabase
@@ -63,9 +63,12 @@ TROUBLE_REVIEW = ("困ったメモ\nを見返す", "困ったメモを見返す"
 TALK = ("全員の商談の\nうまくいった\nトーク", "全員の商談のうまくいったトーク")
 SHARE = ("最近の\n有力な共有", "最近の有力な共有")
 POST_CONTRACT = ("契約後の\n案件確認", "契約後の案件確認")
-ANALYSIS = ("自分の\n商談分析結果", "直近の商談分析結果を見る")
-DEFAULT_CELLS = [MONTH, TROUBLE, TROUBLE_REVIEW, SHARE]                           # 2列×2行
-CLOSER_CELLS = [MONTH, TROUBLE, TROUBLE_REVIEW, TALK, POST_CONTRACT, ANALYSIS]    # 3列×2行
+ANALYSIS = ("自分の\n商談分析結果", "直近の商談分析結果を見る")   # 2026-11-19 クローザーMTに入れ替え（文言はwebhook側に残してあり、送られても動く）
+CLOSER_MT = ("クローザー\nMT", "クローザーMT")
+SELF_REVIEW = ("自分の\n振り返り", "自分の振り返り")
+BEST_REC = ("ベスト\n録音", "ベスト録音")
+DEFAULT_CELLS = [MONTH, TROUBLE, TROUBLE_REVIEW, SHARE, SELF_REVIEW, BEST_REC]     # 3列×2行（2026-11-19 から）
+CLOSER_CELLS = [MONTH, TROUBLE, TROUBLE_REVIEW, TALK, POST_CONTRACT, CLOSER_MT]   # 3列×2行
 
 DEFAULT_MENU_NAME = "営業分析BOT アポインター用"
 CLOSER_MENU_NAME = "営業分析BOT クローザー用"
@@ -259,7 +262,7 @@ def make_grid_image(cols: int, cells: list, path: str) -> None:
 
 
 def make_default_image() -> None:
-    make_grid_image(2, DEFAULT_CELLS, DEFAULT_IMG_PATH)
+    make_grid_image(3, DEFAULT_CELLS, DEFAULT_IMG_PATH)
 
 
 def make_closer_image() -> None:
@@ -328,7 +331,7 @@ def main():
         api(token, "DELETE", f"richmenu/{rm['richMenuId']}")
         print(f"deleted old richmenu {rm['richMenuId']}")
 
-    default_id = register_menu(token, DEFAULT_MENU_NAME, "メニュー", grid_areas(2, DEFAULT_CELLS), DEFAULT_IMG_PATH)
+    default_id = register_menu(token, DEFAULT_MENU_NAME, "メニュー", grid_areas(3, DEFAULT_CELLS), DEFAULT_IMG_PATH)
     closer_id = register_menu(token, CLOSER_MENU_NAME, "メニュー", grid_areas(3, CLOSER_CELLS), CLOSER_IMG_PATH)
 
     api(token, "POST", f"user/all/richmenu/{default_id}")
