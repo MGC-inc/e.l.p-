@@ -174,7 +174,7 @@ def group_summary(today: dt.date, dry: bool) -> None:
             if pt:
                 lines.append(f"　反映案：{pt}（No.{i}）")
         if newmine:
-            lines.append("▼施工案件一覧にない案件の連絡")
+            lines.append("▼新規の施工依頼")
             lines += [f"・{n['name']}：{n['summary']}" for n in newmine]
         rest = counts[lab] - len(mine) - len(newmine)
         if rest > 0:
