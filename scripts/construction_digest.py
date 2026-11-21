@@ -128,6 +128,17 @@ def group_summary(today: dt.date, dry: bool) -> None:
     labels = {r["line_user_id"]: json.loads(r["customer_name"]).get("shop", "")
               for r in (sb("GET", "deal_recordings?storage_path=eq.group_label&select=line_user_id,customer_name") or [])}
     msgs = [json.loads(r["customer_name"]) for r in rows]
+    # 返信（引用）の元の発言を探す（保存期間内の過去の発言も含む）。画像・動画は記録していないので「記録なし」になる
+    if any(m.get("qid") for m in msgs):
+        past = {}
+        for r in sb("GET", "deal_recordings?storage_path=eq.group_message&select=customer_name&limit=5000") or []:
+            d = json.loads(r["customer_name"])
+            if d.get("mid"):
+                past[str(d["mid"])] = d
+        for m in msgs:
+            o = past.get(str(m.get("qid") or ""))
+            if o:
+                m["reply_to"] = f"{o.get('name') or '不明'}「{(o.get('text') or '').replace(chr(10), ' ')[:120]}」"
     by_group: dict[str, int] = {}
     for m in msgs:
         by_group[m.get("group", "")] = by_group.get(m.get("group", ""), 0) + 1

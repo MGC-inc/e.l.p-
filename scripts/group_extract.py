@@ -52,6 +52,9 @@ PROMPT = """あなたは、訪問営業会社の施工案件管理の補助で�
 }}
 
 守ること:
+- 発言に「返信先」が付いているものは、その返信先の発言が、どの案件についての連絡かを示す。返信先の案件を、その発言の案件として扱う。「返信先：記録なし」は、画像・動画への返信かBot参加前の発言なので、案件名が発言にないときは出さない。
+- 同じ案件名が複数あるときは、市区町村と担当で見分ける。市区町村も担当も同じときは、日時・内容・希望の違いなど、見分けられる相違点を案件名のあとに括弧で書く。一覧に同じ名前が複数あるときは、一覧に書かれた「名前（市区町村）」の形のまま customer に書く。
+- 「完工」とできるのは、施工側（大谷・小原・ゆら）の完工連絡だけ。今川の「工事完了報告」は、AZに振った案件を全体に周知するもので、G.Lの完工ではない（施工店がAZの案件についてだけ、完工として扱ってよい）。
 - 一覧にない案件、雑談、挨拶、案件と関係ない連絡は出さない。
 - 発言にないことを足さない。推測で日付や進捗を決めない。「明日」「来週」は、その発言の日付から計算する。
 - 同じ案件の発言が複数あるときは、いちばん新しい内容を優先し、1つにまとめる。
@@ -175,13 +178,20 @@ def group_label(gid: str, labels: dict[str, str]) -> str:
 def build_proposals(msgs: list[dict], today: dt.date, labels: dict[str, str]) -> tuple[list[dict], int, list[dict]]:
     """発言（{group,name,text,ts}の配列）→ (提案の配列, 案件に関係しない発言の数の目安, 一覧にない案件の連絡の配列)"""
     consts_list = open_constructions()
+    from collections import Counter
+    dup = {n for n, k in Counter(c["name"] for c in consts_list).items() if k > 1}
+    for c in consts_list:   # 同じ名前が複数あるときは「名前（市区町村）」で見分ける
+        if c["name"] in dup:
+            c["name"] = f"{c['name']}（{c['city'] or '市区町村未入力'}）"
     consts = {c["name"]: c for c in consts_list}
     jst = dt.timezone(dt.timedelta(hours=9))
     lines = []
     for m in msgs:
         ts = m.get("ts")
         when = dt.datetime.fromtimestamp(ts / 1000, jst).strftime("%m/%d %H:%M") if ts else ""
-        lines.append(f"{when}｜{group_label(m.get('group', ''), labels)}｜{m.get('name') or '不明'}｜{scrub((m.get('text') or '').replace(chr(10), ' '))[:300]}")
+        rp = m.get("reply_to")
+        tail = f"｜返信先：{rp}" if rp else ("｜返信先：記録なし" if m.get("qid") else "")
+        lines.append(f"{when}｜{group_label(m.get('group', ''), labels)}｜{m.get('name') or '不明'}｜{scrub((m.get('text') or '').replace(chr(10), ' '))[:300]}{tail}")
     clist = "\n".join(f"・{c['name']}（施工店:{c['shop'] or '未定'}／進捗:{c['progress']}／施工日時:{c['when'] or '未定'}／機器発送:{c['ship'] or '未入力'}）"
                       for c in consts_list)
     raw = gemini_json(PROMPT.format(progress="、".join(PROGRESS), ship="、".join(SHIP), today=today.isoformat(), constructions=clist or "（なし）",

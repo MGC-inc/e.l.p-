@@ -4579,7 +4579,8 @@ def record_group_message(event: dict) -> None:
                 name = json.loads(_line_request(f"https://api.line.me/v2/bot/group/{gid}/member/{uid}", "GET")).get("displayName", "")
             except Exception:  # noqa: BLE001
                 name = ""
-        data = {"group": gid, "name": name, "text": event["message"]["text"][:600], "ts": event.get("timestamp")}
+        data = {"group": gid, "name": name, "text": event["message"]["text"][:600], "ts": event.get("timestamp"),
+                "mid": event["message"].get("id"), "qid": event["message"].get("quotedMessageId")}   # qid: 返信（引用）元の発言ID
         sb("POST", "deal_recordings", {"line_user_id": uid or gid, "storage_path": GROUP_MESSAGE, "status": "group_pending",
                                       "customer_name": json.dumps(data, ensure_ascii=False)})
     except Exception as e:  # noqa: BLE001
