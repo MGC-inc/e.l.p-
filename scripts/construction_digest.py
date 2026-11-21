@@ -169,13 +169,18 @@ def group_summary(today: dt.date, dry: bool) -> None:
             lines.append(f"案件に当てはまる発言はありませんでした（発言{counts[lab]}件）")
             continue
         for k, (q, i) in enumerate(mine, 1):
-            lines.append(f"{k}. {q['name']}：{q.get('summary') or q.get('note') or ''}")
+            lines += ["", f"{k}. {q['name']}：{q.get('summary') or q.get('note') or ''}"]
+            if q.get("by"):
+                lines.append(f"　連絡した人：{q['by']}")
             pt = _propose_text(q)
             if pt:
                 lines.append(f"　反映案：{pt}（No.{i}）")
         if newmine:
-            lines.append("▼新規の施工依頼")
-            lines += [f"・{n['name']}：{n['summary']}" for n in newmine]
+            lines += ["", "▼新規の施工依頼"]
+            for n in newmine:
+                lines += ["", f"・{n['name']}：{n['summary']}"]
+                if n.get("by"):
+                    lines.append(f"　投げた人：{n['by']}")
         rest = counts[lab] - len(mine) - len(newmine)
         if rest > 0:
             lines.append(f"（案件に関係しない発言 {rest}件は記録のみ）")
@@ -183,7 +188,7 @@ def group_summary(today: dt.date, dry: bool) -> None:
     if stray:
         lines += ["", "【施工連絡】"]
         for k, (q, i) in enumerate(stray, 1):
-            lines.append(f"{k}. {q['name']}：{q.get('summary') or q.get('note') or ''}")
+            lines += ["", f"{k}. {q['name']}：{q.get('summary') or q.get('note') or ''}"]
             pt = _propose_text(q)
             if pt:
                 lines.append(f"　反映案：{pt}（No.{i}）")

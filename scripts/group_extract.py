@@ -31,6 +31,7 @@ PROMPT = """あなたは、訪問営業会社の施工案件管理の補助で�
     {{
       "customer": "一覧にあるお客様名（例: 塚本邸）。一覧にない名前は入れない",
       "source": "その案件の発言があったグループ名（発言の「グループ」欄の文字をそのまま。複数のグループにまたがるときは、いちばん新しい発言のグループ）",
+      "from": "この案件について最後に連絡した人の発言者名（発言の「発言者」欄の文字をそのまま）",
       "summary": "この案件の要点を一文で（40字以内）。例: 12/3 9:00で施工が確定",
       "changes": {{
         "進捗": "{progress} のどれか（発言から明らかなときだけ。迷うなら入れない）",
@@ -44,6 +45,7 @@ PROMPT = """あなたは、訪問営業会社の施工案件管理の補助で�
     {{
       "customer": "一覧にないお客様名。同じ名前が複数あるときは、市区町村で見分けて別々に（例: 石川邸（安城市））",
       "source": "発言のあったグループ名（同上）",
+      "from": "その依頼を投げた（連絡した）人の発言者名（発言の「発言者」欄の文字をそのまま）",
       "summary": "日時と内容の要点を一文で（50字以内）。例: 11/30 9:00〜 浄水器・バブルの施工依頼"
     }}
   ]
@@ -53,7 +55,7 @@ PROMPT = """あなたは、訪問営業会社の施工案件管理の補助で�
 - 一覧にない案件、雑談、挨拶、案件と関係ない連絡は出さない。
 - 発言にないことを足さない。推測で日付や進捗を決めない。「明日」「来週」は、その発言の日付から計算する。
 - 同じ案件の発言が複数あるときは、いちばん新しい内容を優先し、1つにまとめる。
-- 住所・電話番号・金額・個人の氏名は、書かない（「お客様」「施工店」と書く）。
+- 住所・電話番号・金額・お客様の氏名は、書かない（「お客様」と書く）。発言者名は from にだけ、そのまま書く。
 - changes の項目は、発言で確定しているものだけ。1つもなければ空のオブジェクト {{}} にして、note だけ書く。
 - 該当がなければ、updates も new も空の配列 [] にする。
 - 完工・業者の入室や挨拶・日程調整のやりとりだけで施工の依頼がないものは、new に入れない。
@@ -162,7 +164,7 @@ def clean(prop: dict, consts: dict[str, dict], sources: set[str]) -> dict | None
     if not (changes or note):
         return None
     src = str(prop.get("source") or "").strip()
-    return {"cid": c["id"], "name": name, "shop": c["shop"], "src": src if src in sources else "", "summary": summary, "changes": changes, "note": note}
+    return {"cid": c["id"], "name": name, "shop": c["shop"], "src": src if src in sources else "", "summary": summary, "changes": changes, "note": note, "by": scrub(str(prop.get("from") or "")).strip()[:20]}
 
 
 def group_label(gid: str, labels: dict[str, str]) -> str:
@@ -199,5 +201,5 @@ def build_proposals(msgs: list[dict], today: dt.date, labels: dict[str, str]) ->
         if not name or name in consts:
             continue
         src = str(n.get("source") or "").strip()
-        new.append({"name": name, "src": src if src in sources else "", "summary": summ})
+        new.append({"name": name, "src": src if src in sources else "", "summary": summ, "by": scrub(str(n.get("from") or "")).strip()[:20]})
     return props, max(0, len(msgs) - len(props)), new
