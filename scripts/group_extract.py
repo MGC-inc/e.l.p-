@@ -24,21 +24,30 @@ PROGRESS = ["日程調整中", "施工予定", "施工中", "延期・再調整"
 SHIP = ["発送先確認中", "発送準備中", "一部発送", "発送済み", "到着確認済み", "要確認", "対象外"]
 
 PROMPT = """あなたは、訪問営業会社の施工案件管理の補助です。施工業者のLINEグループの発言（日付つき）と、いま施工中の案件の一覧を渡します。
-発言のうち、一覧にある案件（お客様名）について、施工の進み具合が分かるものだけを、案件ごとに1つの提案にまとめて、次のJSONの配列だけを出力してください（前後に文章やコードブロックは付けない）。
+発言のうち、(1) 一覧にある案件（お客様名）の施工の進み具合が分かるものは「updates」に、(2) 一覧にないお客様の新しい施工依頼や連絡は「new」に、次のJSONのオブジェクトだけを出力してください（前後に文章やコードブロックは付けない）。
 
-[
-  {{
-    "customer": "一覧にあるお客様名（例: 塚本邸）。一覧にない名前は出さない",
-    "source": "その案件の発言があったグループ名（発言の「グループ」欄の文字をそのまま。複数のグループにまたがるときは、いちばん新しい発言のグループ）",
-    "summary": "この案件の要点を一文で（40字以内）。例: 12/3 9:00で施工が確定",
-    "changes": {{
-      "進捗": "{progress} のどれか（発言から明らかなときだけ。迷うなら入れない）",
-      "施工日時": "YYYY-MM-DDTHH:MM:00+09:00（日付と時刻が発言で確定しているときだけ。時刻が不明なら入れない）",
-      "機器発送状況": "{ship} のどれか（発言から明らかなときだけ）"
-    }},
-    "note": "「次の確認」に残す一文（60字以内）。決まっていない点・確認が必要な点を書く。なければ空"
-  }}
-]
+{{
+  "updates": [
+    {{
+      "customer": "一覧にあるお客様名（例: 塚本邸）。一覧にない名前は入れない",
+      "source": "その案件の発言があったグループ名（発言の「グループ」欄の文字をそのまま。複数のグループにまたがるときは、いちばん新しい発言のグループ）",
+      "summary": "この案件の要点を一文で（40字以内）。例: 12/3 9:00で施工が確定",
+      "changes": {{
+        "進捗": "{progress} のどれか（発言から明らかなときだけ。迷うなら入れない）",
+        "施工日時": "YYYY-MM-DDTHH:MM:00+09:00（日付と時刻が発言で確定しているときだけ。時刻が不明なら入れない）",
+        "機器発送状況": "{ship} のどれか（発言から明らかなときだけ）"
+      }},
+      "note": "「次の確認」に残す一文（60字以内）。決まっていない点・確認が必要な点を書く。なければ空"
+    }}
+  ],
+  "new": [
+    {{
+      "customer": "一覧にないお客様名。同じ名前が複数あるときは、市区町村で見分けて別々に（例: 石川邸（安城市））",
+      "source": "発言のあったグループ名（同上）",
+      "summary": "日時と内容の要点を一文で（50字以内）。例: 11/30 9:00〜 浄水器・バブルの施工依頼"
+    }}
+  ]
+}}
 
 守ること:
 - 一覧にない案件、雑談、挨拶、案件と関係ない連絡は出さない。
@@ -46,7 +55,8 @@ PROMPT = """あなたは、訪問営業会社の施工案件管理の補助で�
 - 同じ案件の発言が複数あるときは、いちばん新しい内容を優先し、1つにまとめる。
 - 住所・電話番号・金額・個人の氏名は、書かない（「お客様」「施工店」と書く）。
 - changes の項目は、発言で確定しているものだけ。1つもなければ空のオブジェクト {{}} にして、note だけ書く。
-- 出力は、提案がなければ []。
+- 該当がなければ、updates も new も空の配列 [] にする。
+- 完工・業者の入室や挨拶・日程調整のやりとりだけで施工の依頼がないものは、new に入れない。
 
 今日の日付: {today}
 
@@ -108,7 +118,7 @@ def open_constructions() -> list[dict]:
     return [c for c in out if c["name"]]
 
 
-def gemini_json(prompt: str) -> list:
+def gemini_json(prompt: str):
     key = os.environ.get("GEMINI_API_KEY")
     if not key:
         raise RuntimeError("GEMINI_API_KEY がありません")
@@ -160,8 +170,8 @@ def group_label(gid: str, labels: dict[str, str]) -> str:
     return labels.get(gid) or f"未登録…{gid[-4:]}"
 
 
-def build_proposals(msgs: list[dict], today: dt.date, labels: dict[str, str]) -> tuple[list[dict], int]:
-    """発言（{group,name,text,ts}の配列）→ 提案の配列。戻り値: (提案, 案件が特定できなかった発言の数の目安)"""
+def build_proposals(msgs: list[dict], today: dt.date, labels: dict[str, str]) -> tuple[list[dict], int, list[dict]]:
+    """発言（{group,name,text,ts}の配列）→ (提案の配列, 案件に関係しない発言の数の目安, 一覧にない案件の連絡の配列)"""
     consts_list = open_constructions()
     consts = {c["name"]: c for c in consts_list}
     jst = dt.timezone(dt.timedelta(hours=9))
@@ -174,10 +184,20 @@ def build_proposals(msgs: list[dict], today: dt.date, labels: dict[str, str]) ->
                       for c in consts_list)
     raw = gemini_json(PROMPT.format(progress="、".join(PROGRESS), ship="、".join(SHIP), today=today.isoformat(), constructions=clist or "（なし）",
                                     messages="\n".join(lines)))
+    obj = raw if isinstance(raw, dict) else {"updates": raw if isinstance(raw, list) else [], "new": []}
+    sources = {group_label(m.get("group", ""), labels) for m in msgs}
     props, seen = [], set()
-    for p in raw if isinstance(raw, list) else []:
-        q = clean(p, consts, {group_label(m.get("group", ""), labels) for m in msgs})
+    for p in obj.get("updates") or []:
+        q = clean(p, consts, sources)
         if q and q["name"] not in seen:
             seen.add(q["name"])
             props.append(q)
-    return props, max(0, len(msgs) - len(props))
+    new = []
+    for n in obj.get("new") or []:
+        name = scrub(str(n.get("customer") or "")).strip()[:30]
+        summ = scrub(str(n.get("summary") or "")).strip()[:70]
+        if not name or name in consts:
+            continue
+        src = str(n.get("source") or "").strip()
+        new.append({"name": name, "src": src if src in sources else "", "summary": summ})
+    return props, max(0, len(msgs) - len(props)), new

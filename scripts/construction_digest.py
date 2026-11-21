@@ -133,7 +133,7 @@ def group_summary(today: dt.date, dry: bool) -> None:
         by_group[m.get("group", "")] = by_group.get(m.get("group", ""), 0) + 1
     import group_extract as GE
     try:
-        props, other = GE.build_proposals(msgs, today, labels)
+        props, other, newitems = GE.build_proposals(msgs, today, labels)
     except Exception as e:  # noqa: BLE001  失敗したら、発言は消さずに残して、次の実行でやり直す
         print(f"要点の作成に失敗しました（発言は残してあります。次の実行でやり直します）: {e}")
         return
@@ -163,8 +163,9 @@ def group_summary(today: dt.date, dry: bool) -> None:
     lines = [f"{today.month}/{today.day} 分（botは読むだけです）"]
     for lab in order:
         mine = [(q, i) for q, i in zip(props, ids) if (q.get("src") or "") == lab]
+        newmine = [n for n in newitems if (n.get("src") or "") == lab]
         lines += ["", title(lab)]
-        if not mine:
+        if not mine and not newmine:
             lines.append(f"案件に当てはまる発言はありませんでした（発言{counts[lab]}件）")
             continue
         for k, (q, i) in enumerate(mine, 1):
@@ -172,7 +173,10 @@ def group_summary(today: dt.date, dry: bool) -> None:
             pt = _propose_text(q)
             if pt:
                 lines.append(f"　反映案：{pt}（No.{i}）")
-        rest = counts[lab] - len(mine)
+        if newmine:
+            lines.append("▼施工案件一覧にない案件の連絡")
+            lines += [f"・{n['name']}：{n['summary']}" for n in newmine]
+        rest = counts[lab] - len(mine) - len(newmine)
         if rest > 0:
             lines.append(f"（案件に関係しない発言 {rest}件は記録のみ）")
     stray = [(q, i) for q, i in zip(props, ids) if (q.get("src") or "") not in counts]
