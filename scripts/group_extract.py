@@ -29,6 +29,7 @@ PROMPT = """あなたは、訪問営業会社の施工案件管理の補助で�
 [
   {{
     "customer": "一覧にあるお客様名（例: 塚本邸）。一覧にない名前は出さない",
+    "source": "その案件の発言があったグループ名（発言の「グループ」欄の文字をそのまま。複数のグループにまたがるときは、いちばん新しい発言のグループ）",
     "summary": "この案件の要点を一文で（40字以内）。例: 12/3 9:00で施工が確定",
     "changes": {{
       "進捗": "{progress} のどれか（発言から明らかなときだけ。迷うなら入れない）",
@@ -131,7 +132,7 @@ def gemini_json(prompt: str) -> list:
     raise RuntimeError(f"Gemini が応答しませんでした: {last}")
 
 
-def clean(prop: dict, consts: dict[str, dict]) -> dict | None:
+def clean(prop: dict, consts: dict[str, dict], sources: set[str]) -> dict | None:
     """Geminiの提案を、使ってよい形に整える（一覧にない案件・許されない値は捨てる）。"""
     name = str(prop.get("customer") or "").strip()
     c = consts.get(name)
@@ -150,7 +151,13 @@ def clean(prop: dict, consts: dict[str, dict]) -> dict | None:
     summary = scrub(str(prop.get("summary") or ""))[:60]
     if not (changes or note):
         return None
-    return {"cid": c["id"], "name": name, "shop": c["shop"], "summary": summary, "changes": changes, "note": note}
+    src = str(prop.get("source") or "").strip()
+    return {"cid": c["id"], "name": name, "shop": c["shop"], "src": src if src in sources else "", "summary": summary, "changes": changes, "note": note}
+
+
+def group_label(gid: str, labels: dict[str, str]) -> str:
+    """G.L／AZ。未登録のグループは「未登録…末尾4文字」（どのグループか見分けるため）。"""
+    return labels.get(gid) or f"未登録…{gid[-4:]}"
 
 
 def build_proposals(msgs: list[dict], today: dt.date, labels: dict[str, str]) -> tuple[list[dict], int]:
@@ -162,14 +169,14 @@ def build_proposals(msgs: list[dict], today: dt.date, labels: dict[str, str]) ->
     for m in msgs:
         ts = m.get("ts")
         when = dt.datetime.fromtimestamp(ts / 1000, jst).strftime("%m/%d %H:%M") if ts else ""
-        lines.append(f"{when}｜{labels.get(m.get('group', ''), 'グループ')}｜{m.get('name') or '不明'}｜{scrub((m.get('text') or '').replace(chr(10), ' '))[:300]}")
+        lines.append(f"{when}｜{group_label(m.get('group', ''), labels)}｜{m.get('name') or '不明'}｜{scrub((m.get('text') or '').replace(chr(10), ' '))[:300]}")
     clist = "\n".join(f"・{c['name']}（施工店:{c['shop'] or '未定'}／進捗:{c['progress']}／施工日時:{c['when'] or '未定'}／機器発送:{c['ship'] or '未入力'}）"
                       for c in consts_list)
     raw = gemini_json(PROMPT.format(progress="、".join(PROGRESS), ship="、".join(SHIP), today=today.isoformat(), constructions=clist or "（なし）",
                                     messages="\n".join(lines)))
     props, seen = [], set()
     for p in raw if isinstance(raw, list) else []:
-        q = clean(p, consts)
+        q = clean(p, consts, {group_label(m.get("group", ""), labels) for m in msgs})
         if q and q["name"] not in seen:
             seen.add(q["name"])
             props.append(q)

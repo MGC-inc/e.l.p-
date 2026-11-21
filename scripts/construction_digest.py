@@ -147,26 +147,44 @@ def group_summary(today: dt.date, dry: bool) -> None:
         made = sb("POST", "deal_recordings", {"line_user_id": admin_uid, "storage_path": "group_proposal", "status": "proposal_pending",
                                               "customer_name": json.dumps(q, ensure_ascii=False)})
         ids.append((made[0] if isinstance(made, list) else made)["id"])
-    heads = []
     unlabeled = []
-    for gid, n in sorted(by_group.items(), key=lambda kv: (labels.get(kv[0], "~"), kv[0])):
-        shop = labels.get(gid)
-        heads.append(f"{shop}のグループ{n}件" if shop else f"未登録（…{gid[-4:]}）{n}件")
-        if not shop:
+    counts: dict[str, int] = {}
+    for gid, n in by_group.items():
+        lab = GE.group_label(gid, labels)
+        counts[lab] = counts.get(lab, 0) + n
+        if not labels.get(gid):
             unlabeled.append(gid[-4:])
-    lines = [f"【施工グループの要点 {today.month}/{today.day}】", "（" + "、".join(heads) + "の発言から。botは読むだけです）"]
-    if props:
-        lines.append("")
-        for i, q in enumerate(props):
-            lines.append(f"{i + 1}. {q['name']}" + (f"（{q['shop']}）" if q.get("shop") else "") + f"：{q.get('summary') or q.get('note') or ''}")
+    # グループごとに「【G.L施工連絡】」「【AZ施工連絡】」の見出しをつけて、どの業者からの連絡か分かるようにする（今川さん指示 2026-11-21）
+    def title(lab: str) -> str:
+        if lab in ("G.L", "AZ"):
+            return f"【{lab}施工連絡】"
+        return f"【未登録グループ（…{lab[-4:]}）施工連絡】"
+    order = sorted(counts, key=lambda l: (0 if l == "G.L" else 1 if l == "AZ" else 2, l))
+    lines = [f"{today.month}/{today.day} 分（botは読むだけです）"]
+    for lab in order:
+        mine = [(q, i) for q, i in zip(props, ids) if (q.get("src") or "") == lab]
+        lines += ["", title(lab)]
+        if not mine:
+            lines.append(f"案件に当てはまる発言はありませんでした（発言{counts[lab]}件）")
+            continue
+        for k, (q, i) in enumerate(mine, 1):
+            lines.append(f"{k}. {q['name']}：{q.get('summary') or q.get('note') or ''}")
             pt = _propose_text(q)
             if pt:
-                lines.append(f"　反映案：{pt}（No.{ids[i]}）")
+                lines.append(f"　反映案：{pt}（No.{i}）")
+        rest = counts[lab] - len(mine)
+        if rest > 0:
+            lines.append(f"（案件に関係しない発言 {rest}件は記録のみ）")
+    stray = [(q, i) for q, i in zip(props, ids) if (q.get("src") or "") not in counts]
+    if stray:
+        lines += ["", "【施工連絡】"]
+        for k, (q, i) in enumerate(stray, 1):
+            lines.append(f"{k}. {q['name']}：{q.get('summary') or q.get('note') or ''}")
+            pt = _propose_text(q)
+            if pt:
+                lines.append(f"　反映案：{pt}（No.{i}）")
+    if props:
         lines += ["", "押すまでNotionは変わりません。反映してよいものを選んでください。"]
-    else:
-        lines += ["", "案件に当てはまる発言はありませんでした。"]
-    if other:
-        lines.append(f"案件に関係しない発言：{other}件（記録のみ）")
     if unlabeled:
         lines += ["", "※ 未登録のグループは、下のボタンでG.LかAZかを教えてください。"]
     text = "\n".join(lines)[:4800]
