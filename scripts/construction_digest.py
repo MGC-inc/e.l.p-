@@ -157,8 +157,8 @@ def group_summary(today: dt.date, dry: bool) -> None:
     # グループごとに「【G.L施工連絡】」「【AZ施工連絡】」の見出しをつけて、どの業者からの連絡か分かるようにする（今川さん指示 2026-11-21）
     def title(lab: str) -> str:
         if lab in ("G.L", "AZ"):
-            return f"【{lab}施工連絡】"
-        return f"【未登録グループ（…{lab[-4:]}）施工連絡】"
+            return f"【{lab} 施工連絡】"
+        return f"【未登録グループ（…{lab[-4:]}） 施工連絡】"
     order = sorted(counts, key=lambda l: (0 if l == "G.L" else 1 if l == "AZ" else 2, l))
     lines = [f"{today.month}/{today.day} 分（botは読むだけです）"]
     for lab in order:
