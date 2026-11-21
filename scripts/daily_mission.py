@@ -933,11 +933,16 @@ def main() -> int:
     if done and not sent and not failed:
         print("全員に配信済みでした（何も送っていません）")
         return 0
-    if admin and not args.dry_run and not args.only:
-        line_push(admin, [{"type": "text", "text": (
-            f"✅ 今日の任された数字カード: 配信前の数字確認OK\n・前日（{(today - dt.timedelta(days=1)).month}/{(today - dt.timedelta(days=1)).day}）までのNotion実績を読み込み\n"
-            f"・メンバー別のアポ数・売上を別の読み方で再計算 → 一致\n・商談一覧と実績DBを人別に突き合わせ → 一致\n"
-            f"・全社売上 {team_sales:,.1f}万／予算 {team_budget:,.1f}万\n送信 {len(sent)}名／失敗 {len(failed)}名／スキップ {len(skipped)}名")}])
+    if admin and not args.dry_run and not args.only and sent:
+        # 配信できたときは、今川さんに「できた」とはっきり知らせる（2026-11-21 今川さん指示）。結果コードも出力に残す
+        yday = today - dt.timedelta(days=1)
+        res_admin = line_push(admin, [{"type": "text", "text": (
+            f"✅ 今日の任された数字カードを配信しました（{today.month}/{today.day}）\n"
+            f"送信 {len(sent)}名／失敗 {len(failed)}名／スキップ {len(skipped)}名\n"
+            f"送った人: {'、'.join(sent)}\n\n"
+            f"【配信前の確認】前日（{yday.month}/{yday.day}）までの実績を、別の読み方で再計算 → 一致／商談一覧と実績DBを人別に突き合わせ → 一致\n"
+            f"全社売上 {team_sales:,.1f}万／予算 {team_budget:,.1f}万")[:4500]}])
+        print(f"今川さんへの配信完了の連絡: {res_admin}")
     print(f"送信 {len(sent)}名 / 失敗 {len(failed)}名 / スキップ {len(skipped)}名")
     for n_, why in skipped + failed:
         print(f"  ・{n_}: {why}")
