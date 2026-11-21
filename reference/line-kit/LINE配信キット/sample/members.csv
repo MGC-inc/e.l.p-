@@ -1,0 +1,11 @@
+name,line_user_id,role,agency,is_manager
+山田太郎,Uaaaa0001,closer,代理店A,yes
+佐藤花子,Uaaaa0002,appointer,代理店A,no
+鈴木一郎,Uaaaa0003,appointer,代理店A,no
+高橋健,Uaaaa0004,closer,代理店A,no
+田中美咲,Ubbbb0001,closer,代理店B,yes
+伊藤翔,Ubbbb0002,appointer,代理店B,no
+渡辺愛,Ubbbb0003,appointer,代理店B,no
+中村大輔,Ucccc0001,appointer,代理店C,yes
+小林優,Ucccc0002,appointer,代理店C,no
+加藤誠,Ucccc0003,closer,代理店C,no
