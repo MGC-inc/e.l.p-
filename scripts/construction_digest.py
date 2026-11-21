@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """施工案件の更新を、1日分まとめて夜に今川さんへ確認する（施工担当へは、承認されたときだけ送る）。
 
+  python3 scripts/construction_digest.py --group-only  # 施工グループの要点だけ（稼働日の毎晩20:30のRoutine。発言がない日は何も送らない）
   python3 scripts/construction_digest.py --dry-run     # まとめの文面だけ見る（誰にも送らない）
   python3 scripts/construction_digest.py               # 今川さんに「送る／見送り」の確認を送る
 
@@ -192,10 +193,31 @@ def group_summary(today: dt.date, dry: bool) -> None:
         sb("PATCH", f"deal_recordings?id=in.({','.join(str(r['id']) for r in rows)})", {"status": "group_digested"})
 
 
+def is_workday(d: dt.date) -> bool:
+    """水〜日と、祝日の月火（scripts/daily_mission.py と同じ）。"""
+    if d.weekday() >= 2:
+        return True
+    try:
+        import jpholiday
+        return bool(jpholiday.is_holiday(d))
+    except Exception:  # noqa: BLE001
+        return False
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--group-only", action="store_true",
+                    help="施工グループの要点だけを送る（稼働日の毎晩20:30。発言がない日は何も送らない）")
     args = ap.parse_args()
+    if args.group_only:
+        load_env()
+        today = dt.datetime.now(JST).date()
+        if not is_workday(today):
+            print(f"{today} は定休日（月火で祝日でない）なので送りません。発言は次の稼働日にまとめます。")
+            return
+        group_summary(today, args.dry_run)
+        return
     if not args.dry_run:
         from quiet_hours import in_quiet_hours
         if in_quiet_hours():   # 質問・確認は0:00にまとめて送る（0:30〜6:00は送らない。今川さん指示 2026-11-13）
@@ -204,7 +226,6 @@ def main() -> None:
     load_env()
     from quiet_hours import business_date
     today = business_date()   # 0:00に動くときは、いま終わった日を「その日」にする
-    group_summary(today, args.dry_run)
 
     rows = sb("GET", "deal_recordings?storage_path=eq.construction_event&status=eq.event_pending"
                      "&order=received_at.asc&select=id,customer_name") or []
