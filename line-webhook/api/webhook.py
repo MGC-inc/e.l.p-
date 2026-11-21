@@ -2707,6 +2707,70 @@ def handle_postcheck_date(event: dict, closer: dict) -> bool:
 GROUP_LABEL = "group_label"   # グループの名前付け（line_user_id＝グループID、customer_name＝{"shop": "G.L"|"AZ"}）
 
 
+GP_PROGRESS = ["日程調整中", "施工予定", "施工中", "延期・再調整", "完工", "中止"]
+GP_SHIP = ["発送先確認中", "発送準備中", "一部発送", "発送済み", "到着確認済み", "要確認", "対象外"]
+
+
+def apply_group_proposal(row: dict) -> str:
+    """施工グループの発言から作った提案を、施工案件一覧に反映する（今川さんが［反映］を押したときだけ呼ぶ）。戻り値: 結果の一文。"""
+    q = json.loads(row["customer_name"])
+    cid, name = q["cid"], q.get("name", "")
+    page = notion_call("GET", f"pages/{cid}", None, NOTION_VERSION_V2)
+    if plain(page, "進捗") in ("完工", "中止"):
+        return f"{name}：すでに「{plain(page, '進捗')}」のため、反映しませんでした"
+    ch = q.get("changes") or {}
+    props, done = {}, []
+    if ch.get("進捗") in GP_PROGRESS:
+        props["進捗"] = {"select": {"name": ch["進捗"]}}
+        done.append(f"進捗→{ch['進捗']}")
+    if re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\+09:00", str(ch.get("施工日時") or "")):
+        props["施工日時"] = {"date": {"start": ch["施工日時"]}}
+        done.append(f"施工日時→{pc_fmt_dt(ch['施工日時'])}")
+    if ch.get("機器発送状況") in GP_SHIP:
+        props["機器発送状況"] = {"select": {"name": ch["機器発送状況"]}}
+        done.append(f"機器発送→{ch['機器発送状況']}")
+    note = (q.get("note") or "").strip()
+    if note:
+        today = datetime.now(JST).date()
+        old = plain(page, "次の確認")
+        props["次の確認"] = {"rich_text": [{"type": "text", "text": {"content": ((old + "\n") if old else "") + f"[{today.month}/{today.day} グループ] {note}"}}]}
+        done.append("次の確認に追記")
+    if not props:
+        return f"{name}：反映する項目がありませんでした"
+    notion_call("PATCH", f"pages/{cid}", {"properties": props}, NOTION_VERSION_V2)
+    return f"{name}：" + "／".join(done)
+
+
+def handle_group_proposal(event: dict, closer: dict) -> bool:
+    """今川さんが、夜のまとめの［反映］［見送り］を押す。「施工反映 12」「施工反映 all」「施工見送り 12」「施工見送り all」。"""
+    m = re.match(r"^施工(反映|見送り)\s+(all|\d+)$", event["message"]["text"].strip())
+    if not m:
+        return False
+    if not is_admin(closer):
+        return True
+    reply, act, which = event["replyToken"], m.group(1), m.group(2)
+    q = "deal_recordings?storage_path=eq.group_proposal&status=eq.proposal_pending&order=received_at.asc&select=*"
+    rows = sb("GET", q if which == "all" else q + f"&id=eq.{int(which)}") or []
+    if not rows:
+        line_reply(reply, [{"type": "text", "text": "対象の提案が見つかりませんでした（反映済み・見送り済み、または保存期間が過ぎたかもしれません）。"}])
+        return True
+    results = []
+    for r in rows:
+        try:
+            if act == "反映":
+                results.append("✅ " + apply_group_proposal(r))
+                sb("PATCH", f"deal_recordings?id=eq.{r['id']}", {"status": "proposal_applied"})
+            else:
+                results.append("見送り：" + json.loads(r["customer_name"]).get("name", ""))
+                sb("PATCH", f"deal_recordings?id=eq.{r['id']}", {"status": "proposal_skipped"})
+        except Exception as e:  # noqa: BLE001
+            print(f"group proposal {act} failed (id={r['id']}): {e}")
+            results.append(f"⚠ {json.loads(r['customer_name']).get('name', '')}：うまくいきませんでした（Notionは変えていません）")
+    head = "施工案件に反映しました" if act == "反映" else "見送りました（Notionは変えていません）"
+    line_reply(reply, [{"type": "text", "text": (head + "\n" + "\n".join(results))[:4800]}])
+    return True
+
+
 def handle_group_register(event: dict, closer: dict) -> bool:
     """今川さんが、グループがG.LかAZかを教える。「グループ登録 a1b2 G.L」（a1b2＝夜のまとめに出るグループの末尾4文字）。"""
     m = re.match(r"^グループ登録\s+(\S+)\s+(G\.?L|AZ)$", event["message"]["text"].strip(), re.I)
@@ -3188,7 +3252,8 @@ def handle_new_menu(event: dict, closer: dict) -> bool:
     return (deferrable(handle_admin_answer)(event, closer) or handle_share_consent(event, closer) or handle_homework_check(event, closer)
             or handle_trouble(event, closer) or handle_homework(event, closer) or handle_talk_phase(event, closer)
             or handle_build_done(event, closer) or handle_postcheck_button(event, closer) or handle_postcheck_date(event, closer)
-            or deferrable(handle_construction_digest)(event, closer) or deferrable(handle_group_register)(event, closer))
+            or deferrable(handle_construction_digest)(event, closer) or deferrable(handle_group_register)(event, closer)
+            or deferrable(handle_group_proposal)(event, closer))
 
 
 # ---- アポ録音（30分以内の短い録音）の受付・ベスト録音ライブラリ・チケット（2026-11-18 今川さん指示） ----

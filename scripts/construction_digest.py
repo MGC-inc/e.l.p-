@@ -85,10 +85,41 @@ def build_text(events: list[dict], today: dt.date) -> str:
     return "\n".join(lines)
 
 
+RETENTION_DAYS = 45   # グループの発言の保存期間（今川さん了承 2026-11-21。30〜60日の中間）
+MAX_BUTTONS = 13
+
+
+def purge_old() -> None:
+    """保存期間を過ぎた、グループの発言・反映の提案を消す。"""
+    cutoff = (dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=RETENTION_DAYS)).isoformat()
+    for sp in ("group_message", "group_proposal"):
+        try:
+            sb("DELETE", f"deal_recordings?storage_path=eq.{sp}&received_at=lt.{urllib.parse.quote(cutoff)}")
+        except Exception as e:  # noqa: BLE001
+            print(f"古い記録の削除に失敗（{sp}）: {e}")
+
+
+def _propose_text(q: dict) -> str:
+    bits = []
+    ch = q.get("changes") or {}
+    if ch.get("進捗"):
+        bits.append(f"進捗→{ch['進捗']}")
+    if ch.get("施工日時"):
+        d = dt.datetime.fromisoformat(ch["施工日時"])
+        bits.append(f"施工日時→{d.month}/{d.day} {d:%H:%M}")
+    if ch.get("機器発送状況"):
+        bits.append(f"機器発送→{ch['機器発送状況']}")
+    if q.get("note"):
+        bits.append("次の確認に追記")
+    return "／".join(bits)
+
+
 def group_summary(today: dt.date, dry: bool) -> None:
-    """施工案件グループの発言を、今川さんだけに知らせる（施工担当へは送らない。確認用）。
-    グループがG.LかAZかは、今川さんが「グループ登録 xxxx G.L」と教える（未登録のグループは末尾4文字で見分ける）。
-    G.Lが全案件を見て、対応できない案件だけをAZに振る（G.L優先）。"""
+    """施工案件グループの発言を、案件ごとの要点にして、今川さんだけに知らせる（施工担当へは送らない）。
+    発言の全文は送らない（保存期間内はSupabaseに残る）。Notionへの反映は、［反映］を押したときだけ（webhook.py の handle_group_proposal）。
+    グループがG.LかAZかは、今川さんが「グループ登録 xxxx G.L」と教える（未登録のグループは末尾4文字で見分ける）。"""
+    if not dry:
+        purge_old()
     rows = sb("GET", "deal_recordings?storage_path=eq.group_message&status=eq.group_pending"
                      "&order=received_at.asc&select=id,customer_name") or []
     if not rows:
@@ -96,35 +127,67 @@ def group_summary(today: dt.date, dry: bool) -> None:
     labels = {r["line_user_id"]: json.loads(r["customer_name"]).get("shop", "")
               for r in (sb("GET", "deal_recordings?storage_path=eq.group_label&select=line_user_id,customer_name") or [])}
     msgs = [json.loads(r["customer_name"]) for r in rows]
-    by_group: dict[str, list] = {}
+    by_group: dict[str, int] = {}
     for m in msgs:
-        by_group.setdefault(m.get("group", ""), []).append(m)
-    lines = [f"【施工案件グループの発言 {today.month}/{today.day}】", f"（botは読むだけです。{len(msgs)}件）"]
+        by_group[m.get("group", "")] = by_group.get(m.get("group", ""), 0) + 1
+    import group_extract as GE
+    try:
+        props, other = GE.build_proposals(msgs, today, labels)
+    except Exception as e:  # noqa: BLE001  失敗したら、発言は消さずに残して、次の実行でやり直す
+        print(f"要点の作成に失敗しました（発言は残してあります。次の実行でやり直します）: {e}")
+        return
+    admin = sb("GET", f"closer_line_users?closer_name=eq.{urllib.parse.quote(ADMIN_NAME)}&select=line_user_id") or []
+    admin_uid = admin[0]["line_user_id"] if admin else ""
+    ids: list = []
+    for q in props:
+        if dry or not admin_uid:
+            ids.append("?")
+            continue
+        made = sb("POST", "deal_recordings", {"line_user_id": admin_uid, "storage_path": "group_proposal", "status": "proposal_pending",
+                                              "customer_name": json.dumps(q, ensure_ascii=False)})
+        ids.append((made[0] if isinstance(made, list) else made)["id"])
+    heads = []
     unlabeled = []
-    for gid, ms in sorted(by_group.items(), key=lambda kv: (labels.get(kv[0], "~") , kv[0])):
+    for gid, n in sorted(by_group.items(), key=lambda kv: (labels.get(kv[0], "~"), kv[0])):
         shop = labels.get(gid)
-        head = f"{shop}のグループ" if shop else f"未登録のグループ（…{gid[-4:]}）"
+        heads.append(f"{shop}のグループ{n}件" if shop else f"未登録（…{gid[-4:]}）{n}件")
         if not shop:
             unlabeled.append(gid[-4:])
-        lines += ["", f"■ {head}"]
-        lines += [f"・{m.get('name') or '（名前不明）'}：{(m.get('text') or '').replace(chr(10), ' ')[:200]}" for m in ms]
+    lines = [f"【施工グループの要点 {today.month}/{today.day}】", "（" + "、".join(heads) + "の発言から。botは読むだけです）"]
+    if props:
+        lines.append("")
+        for i, q in enumerate(props):
+            lines.append(f"{i + 1}. {q['name']}" + (f"（{q['shop']}）" if q.get("shop") else "") + f"：{q.get('summary') or q.get('note') or ''}")
+            pt = _propose_text(q)
+            if pt:
+                lines.append(f"　反映案：{pt}（No.{ids[i]}）")
+        lines += ["", "押すまでNotionは変わりません。反映してよいものを選んでください。"]
+    else:
+        lines += ["", "案件に当てはまる発言はありませんでした。"]
+    if other:
+        lines.append(f"案件に関係しない発言：{other}件（記録のみ）")
     if unlabeled:
         lines += ["", "※ 未登録のグループは、下のボタンでG.LかAZかを教えてください。"]
     text = "\n".join(lines)[:4800]
     if dry:
         print(text)
-        print(f"\n（グループの発言{len(msgs)}件。--dry-run のため送っていません）")
+        print(f"\n（発言{len(msgs)}件／提案{len(props)}件。--dry-run のため送っていません）")
         return
-    admin = sb("GET", f"closer_line_users?closer_name=eq.{urllib.parse.quote(ADMIN_NAME)}&select=line_user_id") or []
-    if not admin:
+    if not admin_uid:
         return
-    msg = {"type": "text", "text": text}
     items = [{"type": "action", "action": {"type": "message", "label": f"…{c} は{shop}", "text": f"グループ登録 {c} {shop}"}}
-             for c in unlabeled[:6] for shop in ("G.L", "AZ")]
+             for c in unlabeled[:3] for shop in ("G.L", "AZ")]
+    room = MAX_BUTTONS - len(items) - (2 if props else 0)
+    for q, i in list(zip(props, ids))[:max(0, room)]:
+        items.append({"type": "action", "action": {"type": "message", "label": f"反映 {q['name']}"[:20], "text": f"施工反映 {i}"}})
+    if props:
+        items += [{"type": "action", "action": {"type": "message", "label": "すべて反映", "text": "施工反映 all"}},
+                  {"type": "action", "action": {"type": "message", "label": "すべて見送り", "text": "施工見送り all"}}]
+    msg = {"type": "text", "text": text}
     if items:
         msg["quickReply"] = {"items": items}
-    res = line_push(admin[0]["line_user_id"], [msg])
-    print("グループの発言を今川さんへ送りました:", res)
+    res = line_push(admin_uid, [msg])
+    print("グループの要点を今川さんへ送りました:", res)
     if res == 200:
         sb("PATCH", f"deal_recordings?id=in.({','.join(str(r['id']) for r in rows)})", {"status": "group_digested"})
 
