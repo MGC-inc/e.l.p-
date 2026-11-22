@@ -4566,6 +4566,39 @@ def handle_team_numbers(event: dict, closer: dict) -> None:
 GROUP_MESSAGE = "group_message"   # グループの発言（読むだけ。status: group_pending → group_digested）
 
 
+def classify_report_group(text: str) -> str:
+    """発言の中身から、アポ報告グループか商談報告グループかを判断する（確かなときだけ。迷うときは空）。"""
+    t = re.sub(r"[\u200b\u202a-\u202e\ufe0f]", "", text or "")
+    apo = bool(re.search(r"💧\s*\d", t)) or ("訪問数" in t and "アポ数" in t)
+    shodan = ("入ります" in t and bool(re.search(r"\d{1,2}時", t))) or (
+        "邸" in t and bool(re.search(r"\d{1,2}時", t)) and bool(re.search(r"契約|保留|CLO", t)) and "施工" not in t and "@nobu" not in t)
+    if apo and not shodan:
+        return "アポ報告"
+    if shodan and not apo:
+        return "商談報告"
+    return ""
+
+
+def auto_label_group(gid: str, text: str) -> None:
+    """ラベルのないグループの発言が、アポ報告・商談報告のものと確かに分かれば、自動で登録して今川さんへ知らせる（今川さん指示 2026-11-22）。"""
+    try:
+        kind = classify_report_group(text)
+        if not kind:
+            return
+        if sb("GET", f"deal_recordings?storage_path=eq.{GROUP_LABEL}&line_user_id=eq.{urllib.parse.quote(gid)}&select=id&limit=1"):
+            return
+        sb("POST", "deal_recordings", {"line_user_id": gid, "storage_path": GROUP_LABEL, "status": "active",
+                                      "customer_name": json.dumps({"shop": kind}, ensure_ascii=False)})
+        other = "商談報告" if kind == "アポ報告" else "アポ報告"
+        adm = sb("GET", f"closer_line_users?closer_name=eq.{urllib.parse.quote(ADMIN_NAME)}&select=line_user_id") or []
+        if adm and not in_quiet_hours():
+            line_push(adm[0]["line_user_id"], [{"type": "text", "text": (
+                f"グループ（…{gid[-4:]}）の発言の中身から、「{kind}」のグループと判断して登録しました。\n"
+                f"違うときは、「グループ登録 {gid[-4:]} {other}」と送ってください。")}])
+    except Exception as e:  # noqa: BLE001
+        print(f"auto_label_group failed: {e}")
+
+
 def record_group_message(event: dict) -> None:
     """施工案件グループなどの文字の発言を、夜のまとめ用に記録する。グループへは何も返さない。失敗しても無視する。
     ELP_CONSTRUCTION_GROUP_ID が設定されていれば、そのグループの発言だけ記録する（未設定なら全グループ）。"""
@@ -4588,6 +4621,8 @@ def record_group_message(event: dict) -> None:
                 "mid": event["message"].get("id"), "qid": event["message"].get("quotedMessageId")}   # qid: 返信（引用）元の発言ID
         sb("POST", "deal_recordings", {"line_user_id": uid or gid, "storage_path": GROUP_MESSAGE, "status": "group_pending",
                                       "customer_name": json.dumps(data, ensure_ascii=False)})
+        if re.search(r"💧|訪問数|入ります|CLO|保留|契約", event["message"]["text"]):   # 迷う発言は調べない（問い合わせを減らす）
+            auto_label_group(gid, event["message"]["text"])
     except Exception as e:  # noqa: BLE001
         print(f"record_group_message failed: {e}")
 
