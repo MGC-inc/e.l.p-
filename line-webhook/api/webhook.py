@@ -2773,13 +2773,14 @@ def handle_group_proposal(event: dict, closer: dict) -> bool:
 
 def handle_group_register(event: dict, closer: dict) -> bool:
     """今川さんが、グループがG.LかAZかを教える。「グループ登録 a1b2 G.L」（a1b2＝夜のまとめに出るグループの末尾4文字）。"""
-    m = re.match(r"^グループ登録\s+(\S+)\s+(G\.?L|AZ)$", event["message"]["text"].strip(), re.I)
+    m = re.match(r"^グループ登録\s+(\S+)\s+(G\.?L|AZ|アポ報告|商談報告)$", event["message"]["text"].strip(), re.I)
     if not m:
         return False
     reply = event["replyToken"]
     if not is_admin(closer):
         return True
-    code, shop = m.group(1).lower(), ("AZ" if m.group(2).upper() == "AZ" else "G.L")
+    kind = m.group(2)
+    code, shop = m.group(1).lower(), (kind if kind in ("アポ報告", "商談報告") else "AZ" if kind.upper() == "AZ" else "G.L")
     rows = sb("GET", f"deal_recordings?storage_path=eq.{GROUP_MESSAGE}&order=received_at.desc&limit=500&select=customer_name") or []
     gids = {json.loads(r["customer_name"]).get("group", "") for r in rows}
     hit = [g for g in gids if g and g.lower().endswith(code)]
@@ -2790,6 +2791,10 @@ def handle_group_register(event: dict, closer: dict) -> bool:
     sb("DELETE", f"deal_recordings?storage_path=eq.{GROUP_LABEL}&line_user_id=eq.{urllib.parse.quote(gid)}")
     sb("POST", "deal_recordings", {"line_user_id": gid, "storage_path": GROUP_LABEL, "status": "active",
                                   "customer_name": json.dumps({"shop": shop}, ensure_ascii=False)})
+    if shop in ("アポ報告", "商談報告"):
+        line_reply(reply, [{"type": "text", "text": f"グループ（…{gid[-4:]}）を「{shop}のグループ」として登録しました。"
+                                                    "\n毎晩22:00に、この日の報告を整理して、今川さんだけにお送りします（Notionへの反映はまだしません）。"}])
+        return True
     line_reply(reply, [{"type": "text", "text": f"グループ（…{gid[-4:]}）を「{shop}の施工グループ」として登録しました。"
                                                 "\n今後のまとめでは、このグループの発言に「" + shop + "」と付けて知らせます。"}])
     return True
@@ -4591,6 +4596,16 @@ def handle_event(event: dict):
     global _DEFER_TO
     _DEFER_TO = None
     if event.get("source", {}).get("type") in ("group", "room"):
+        if event.get("type") == "unsend":   # 送信取り消し：集計に入れない
+            try:
+                mid = str((event.get("unsend") or {}).get("messageId") or "")
+                if mid:
+                    for r in sb("GET", f"deal_recordings?storage_path=eq.{GROUP_MESSAGE}&status=eq.group_pending&order=received_at.desc&limit=500&select=id,customer_name") or []:
+                        if str(json.loads(r["customer_name"]).get("mid") or "") == mid:
+                            sb("PATCH", f"deal_recordings?id=eq.{r['id']}", {"status": "group_unsent"})
+            except Exception as e:  # noqa: BLE001
+                print(f"unsend handling failed: {e}")
+            return
         record_group_message(event)   # グループは読むだけ（記録して夜に今川さんへ知らせる）。返信・送信は一切しない
         return
     if event.get("type") != "message":

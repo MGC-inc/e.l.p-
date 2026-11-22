@@ -128,6 +128,11 @@ def group_summary(today: dt.date, dry: bool) -> None:
     labels = {r["line_user_id"]: json.loads(r["customer_name"]).get("shop", "")
               for r in (sb("GET", "deal_recordings?storage_path=eq.group_label&select=line_user_id,customer_name") or [])}
     msgs = [json.loads(r["customer_name"]) for r in rows]
+    # アポ報告・商談報告のグループの発言は、施工の要点には混ぜない（scripts/report_digest.py が扱う）
+    keep = [i for i, m in enumerate(msgs) if labels.get(m.get("group", "")) not in ("アポ報告", "商談報告")]
+    rows, msgs = [rows[i] for i in keep], [msgs[i] for i in keep]
+    if not rows:
+        return
     # 返信（引用）の元の発言を探す（保存期間内の過去の発言も含む）。画像・動画は記録していないので「記録なし」になる
     if any(m.get("qid") for m in msgs):
         past = {}
