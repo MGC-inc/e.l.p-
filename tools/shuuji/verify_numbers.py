@@ -97,7 +97,13 @@ def periods(today: datetime.date) -> list[tuple[str, datetime.date, datetime.dat
     week_start = today - datetime.timedelta(days=today.weekday() + 7)
     week_end = week_start + datetime.timedelta(days=6)
     month_start = week_end.replace(day=1)
-    return [("先週", week_start, week_end), ("今月", month_start, week_end)]
+    through = os.environ.get("ELP_MONTH_THROUGH", "").strip()   # 月の数字を後ろにのばす（今川さん指示 2026-11-25）
+    m_end = week_end
+    if through:
+        d = datetime.date.fromisoformat(through)
+        if d >= week_end and d.replace(day=1) == month_start:
+            m_end = d
+    return [("先週", week_start, week_end), ("今月", month_start, m_end)]
 
 
 def main() -> int:

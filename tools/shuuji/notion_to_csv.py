@@ -416,6 +416,16 @@ def build_weekly_sales(last_monday: datetime.date, members: dict[str, dict]) -> 
             for (k, w), v in acc.items()]
 
 
+def month_through(week_end: datetime.date) -> datetime.date:
+    """月の数字の締め日。通常は対象週の日曜。環境変数 ELP_MONTH_THROUGH（YYYY-MM-DD）で、同じ月の中なら後ろにのばせる
+    （今川さん指示 2026-11-25: 月曜に出た契約まで、火曜の分までを月の数字に入れて再出力）。週の数字は変えない。"""
+    v = os.environ.get("ELP_MONTH_THROUGH", "").strip()
+    if not v:
+        return week_end
+    d = datetime.date.fromisoformat(v)
+    return d if (d >= week_end and d.replace(day=1) == week_end.replace(day=1)) else week_end
+
+
 def build_closer_deals(last_monday: datetime.date, members: dict[str, dict]) -> list[dict]:
     """クローザーごとの商談を1件1行で（先週と、その前のHISTORY_WEEKS週）。自アポ（アポインター＝本人）か他アポか、
     結果（契約・保留・失注…）、お客様名を持つ。資料の「クローザー結果（自アポ・他アポ別）」ページが、先週と直近の週を比べるために使う
@@ -451,6 +461,7 @@ def build_budget_status(now: datetime.date, week_end: datetime.date, members: di
     sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "scripts"))
     from monthly_budget_floor import KPI_DB, NOTION_VERSION_V1, avg_contract_price, prop_num, prop_text, query_all
     month_start = week_end.replace(day=1)
+    week_end = month_through(week_end)   # 月の数字の締め日（通常は対象週の日曜）
     month = month_start.strftime("%Y-%m")
     month_end = (month_start.replace(day=28) + datetime.timedelta(days=4)).replace(day=1) - datetime.timedelta(days=1)
     rows = notion_query_all(PERFORMANCE_DB, {"and": [
@@ -481,6 +492,8 @@ def build_config(members: dict[str, dict], budget_by_name: dict[str, float], now
     """月の数字は「対象週の日曜が属する月の1日〜その日曜」で数える（週の数字と同じ締め日にそろえる）。"""
     week_end = week_start + datetime.timedelta(days=6)
     month_start = week_end.replace(day=1)
+    days_in_week = sum(1 for i in range(7) if (week_start + datetime.timedelta(days=i)).month == week_end.month)
+    week_end = month_through(week_end)   # 月の数字の締め日（通常は対象週の日曜）
     ndays = calendar.monthrange(week_end.year, week_end.month)[1]
     month = month_start.strftime("%Y-%m")
     deal_rows_month = notion_query_all(DEAL_DB, {"and": [
@@ -503,9 +516,9 @@ def build_config(members: dict[str, dict], budget_by_name: dict[str, float], now
     from monthly_budget_floor import avg_contract_price
     _, avg_price = avg_contract_price(month)
     target_contracts = round(target_sales / (avg_price or YEN_PER_CONTRACT_MAN))
-    days_in_week = sum(1 for i in range(7) if (week_start + datetime.timedelta(days=i)).month == week_end.month)
     return {
         "data_week_start": week_start.isoformat(),
+        "month_through": week_end.isoformat(),
         "month_label": f"{week_end.month}月（{month_start.month}/{month_start.day}〜{week_end.month}/{week_end.day}）",
         "month_elapsed": str(round(week_end.day / ndays, 4)),
         "target_contracts": str(target_contracts),

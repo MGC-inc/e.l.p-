@@ -114,9 +114,10 @@ def main() -> int:
         check(f"代理店の合計＝全社 {lab}", sum(v[k] for a, v in totals.items() if a != "全社"), t[k])
 
     # ---- 月 ----
-    mrows = perf(ms, we)
-    mdeals = deals(ms, we)
-    check(f"月 契約（{ms.month}/{ms.day}〜{we.month}/{we.day}・商談一覧）", float(cfg["actual_contracts"]),
+    me = datetime.date.fromisoformat(cfg["month_through"]) if cfg.get("month_through") else we   # 月の締め日
+    mrows = perf(ms, me)
+    mdeals = deals(ms, me)
+    check(f"月 契約（{ms.month}/{ms.day}〜{me.month}/{me.day}・商談一覧）", float(cfg["actual_contracts"]),
           sum(1 for d in mdeals if prop_text(d, "結果") == "契約"))
     check("月 契約（実績DBの契約−クーリン−審査落）", float(cfg["actual_contracts"]), net_contracts(mrows))
     check("月 売上", float(cfg["actual_sales"]), round(sum(prop_num(r, "実質売上（万円）") or 0 for r in mrows), 1))

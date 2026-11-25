@@ -16,6 +16,10 @@ on:
         type: choice
         options: [test, production]
         default: test
+      month_through:
+        description: "月の数字（月累計・予算の達成状況）の締め日（YYYY-MM-DD。対象週の日曜より後・同じ月のときだけ有効。空欄＝対象週の日曜まで）"
+        type: string
+        default: ""
       allow_thin_week:
         description: "true=対象週に日報の反映が薄い日があっても続行する（確認のうえ手動で実行するときだけ）"
         type: boolean
@@ -48,6 +52,8 @@ jobs:
     needs: guard
     if: needs.guard.outputs.skip != 'true'
     runs-on: ubuntu-latest
+    env:
+      ELP_MONTH_THROUGH: ${{ inputs.month_through }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
