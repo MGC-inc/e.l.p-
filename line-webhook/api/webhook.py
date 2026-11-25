@@ -2126,7 +2126,7 @@ def handle_homework(event: dict, closer: dict) -> bool:
         return True
     step, d = row.get("result"), flow_data(row)
     choices = d.get("choices") or choices
-    long_ok = step in ("what_free", "learn") or (step == "what" and d.get("source_text"))
+    long_ok = step in ("what", "what_free", "learn")   # 「ボタンから選ぶ」段階で長文を貼る人が多い（2026-11-25）。宣言として受け取る
     if len(text) > (300 if long_ok else 30):
         hw_log_unhandled(uid, f"too_long_at_{step}", text)
         return False   # 長い文章は別の用件（日報など）なので横取りしない
@@ -2136,7 +2136,7 @@ def handle_homework(event: dict, closer: dict) -> bool:
             flow_update(row, step="what_free")
             line_reply(reply, [{"type": "text", "text": "宣言の内容を、そのまま送ってください。"}])
             return True
-        if text not in choices and not d.get("source_text"):   # 文面から始まった人は、宣言も文面で受け取る
+        if text not in choices and len(text) <= 30 and not d.get("source_text"):   # 文面から始まった人・長文は、宣言も文面で受け取る
             line_reply(reply, [{"type": "text", "text": "ボタンから選んでください。", "quickReply": quick_reply(choices)}])
             return True
         d["what"] = (d.get("ex") or {}).get(text, text)   # 例のボタンを選んだら、詳細（具体的な行動）を宣言として登録する
