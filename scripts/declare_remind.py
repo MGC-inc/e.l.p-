@@ -66,8 +66,9 @@ def main() -> None:
                and u["line_user_id"] not in marked and (not only or u["closer_name"] in only)]
     print(f"今週の宣言: 登録済み{len(registered)}人 / Bot登録の対象{len([u for u in users if u['closer_name'] not in skip])}人 / 催促する{len(targets)}人")
     monday = today - dt.timedelta(days=today.weekday())
-    text = ("📝 今週の宣言が、まだ登録されていません\n\n"
-            "週次MTで決めた「宣言」と「数字の目標」を、下のボタンから登録してください。\n"
+    text = ("⚠️⚠️ 今週の宣言が、まだ登録されていません ⚠️⚠️\n\n"
+            "週次MTで決めた「宣言」と「数字の目標」を、⚠️今すぐ⚠️ 登録してください。\n"
+            "下のボタンを押すと、すぐ始められます。\n"
             "（ボタンが消えたときは、「宣言を登録する」と送っても始められます）")
     for u in targets:
         if args.dry_run:
