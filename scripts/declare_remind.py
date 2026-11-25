@@ -45,6 +45,8 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--only", default="")
+    ap.add_argument("--again", action="store_true", help="今日すでに催促した人にも、もう一度送る")
+    ap.add_argument("--exclude", default="", help="カンマ区切りの名前は送らない")
     args = ap.parse_args()
     DM.load_env()
     today = dt.datetime.now(DM.JST).date()
@@ -63,7 +65,8 @@ def main() -> None:
     marked = {r["line_user_id"] for r in (sb("GET", f"deal_recordings?storage_path=eq.declare_remind&customer_name=eq.{today.isoformat()}&select=line_user_id&limit=1000") or [])}
     only = {x.strip() for x in args.only.split(",") if x.strip()}
     targets = [u for u in users if u["closer_name"] not in skip and u["closer_name"] not in registered
-               and u["line_user_id"] not in marked and (not only or u["closer_name"] in only)]
+               and (args.again or u["line_user_id"] not in marked) and (not only or u["closer_name"] in only)
+               and u["closer_name"] not in {x.strip() for x in args.exclude.split(",") if x.strip()}]
     print(f"今週の宣言: 登録済み{len(registered)}人 / Bot登録の対象{len([u for u in users if u['closer_name'] not in skip])}人 / 催促する{len(targets)}人")
     monday = today - dt.timedelta(days=today.weekday())
     text = ("⚠️⚠️ 今週の宣言が、まだ登録されていません ⚠️⚠️\n\n"
