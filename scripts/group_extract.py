@@ -62,6 +62,7 @@ PROMPT = """あなたは、訪問営業会社の施工案件管理の補助で�
 - changes の項目は、発言で確定しているものだけ。1つもなければ空のオブジェクト {{}} にして、note だけ書く。
 - 該当がなければ、updates も new も空の配列 [] にする。
 - 完工・業者の入室や挨拶・日程調整のやりとりだけで施工の依頼がないものは、new に入れない。
+- 「入室しました」「退室しました」だけの短い連絡は、別の処理（時刻の突き合わせ）で扱うので、updates に入れない。案件名つきの入室・退室（例: 髙橋邸 退室しました）も別処理なので入れない。
 
 今日の日付: {today}
 
@@ -175,6 +176,69 @@ def group_label(gid: str, labels: dict[str, str]) -> str:
     return labels.get(gid) or f"未登録…{gid[-4:]}"
 
 
+UNMATCHED: list[dict] = []   # 案件が特定できなかった入室・退室の連絡（build_proposals のたびに作り直す。送る側が読む）
+ENTRY_RE = re.compile(r"入室|退室")
+JST = dt.timezone(dt.timedelta(hours=9))
+
+
+def _stem(name: str) -> str:
+    return re.split(r"[（(]", name)[0].replace("邸", "").strip()
+
+
+def entry_exit_proposals(msgs: list[dict], consts_list: list[dict], labels: dict[str, str]) -> list[dict]:
+    """施工側の「入室しました」「退室しました」を、案件に結びつけて提案にする（2026-11-27 今川さん指示）。
+    入室→進捗「施工中」、退室→進捗「完工」（施工側の連絡のみ。今川さんの発言は対象外）。
+    案件の決め方: ①案件名が本文にある ②返信先の本文に案件名がある ③同じ施工店の、その日の施工日時との時刻の突き合わせ。
+    ③で1件に決まらないときは候補を全部出し（group_key が同じ）、1つ反映すると残りは見送りになる。"""
+    UNMATCHED.clear()
+    out: list[dict] = []
+    stems = [(c, _stem(c["name"])) for c in consts_list]
+    for m in msgs:
+        text = (m.get("text") or "").replace("\n", " ")
+        if not ENTRY_RE.search(text) or len(text) > 80 or "今川" in (m.get("name") or "") or not m.get("ts"):
+            continue
+        done = "退室" in text
+        prog = "完工" if done else "施工中"
+        when = dt.datetime.fromtimestamp(m["ts"] / 1000, JST)
+        lab = group_label(m.get("group", ""), labels)
+        base = {"src": lab, "by": scrub(m.get("name") or "")[:20], "at": when.strftime("%m/%d %H:%M"),
+                "kind": "退室" if done else "入室", "done_date": when.date().isoformat()}
+        def mk(c: dict, basis: str, gkey: str = "") -> dict:
+            q = dict(base, cid=c["id"], name=c["name"], shop=c["shop"], basis=basis,
+                     summary=f"{base['at']} {base['kind']}の連絡（{base['by']}）", changes={"進捗": prog}, note="")
+            if gkey:
+                q["group_key"] = gkey
+            return q
+        hit = [c for c, st in stems if len(st) >= 2 and st in text]
+        basis = "案件名"
+        if not hit and m.get("reply_to"):
+            hit = [c for c, st in stems if len(st) >= 2 and st in m["reply_to"]]
+            basis = "返信先"
+        if len(hit) == 1:
+            out.append(mk(hit[0], basis))
+            continue
+        # 時刻の突き合わせ（施工店が同じ・その日の予定・前後の時間内）
+        cands = []
+        for c in consts_list:
+            if lab in ("G.L", "AZ") and c["shop"] != lab:
+                continue
+            if len(c["when"]) < 16 or c["when"][:10] != when.date().isoformat() or c["progress"] in ("完工", "中止"):
+                continue
+            sched = dt.datetime.fromisoformat(c["when"] + ":00+09:00")
+            diff = (when - sched).total_seconds() / 60
+            if (done and 0 <= diff <= 480) or (not done and -90 <= diff <= 150):
+                cands.append((abs(diff), c))
+        cands.sort(key=lambda x: x[0])
+        if len(cands) == 1:
+            out.append(mk(cands[0][1], "時刻突合"))
+        elif cands:
+            key = f"{m['ts']}"
+            out += [mk(c, "候補", key) for _, c in cands]
+        else:
+            UNMATCHED.append(dict(base, text=text[:40]))
+    return out
+
+
 def build_proposals(msgs: list[dict], today: dt.date, labels: dict[str, str]) -> tuple[list[dict], int, list[dict]]:
     """発言（{group,name,text,ts}の配列）→ (提案の配列, 案件に関係しない発言の数の目安, 一覧にない案件の連絡の配列)"""
     consts_list = open_constructions()
@@ -204,6 +268,15 @@ def build_proposals(msgs: list[dict], today: dt.date, labels: dict[str, str]) ->
         if q and q["name"] not in seen:
             seen.add(q["name"])
             props.append(q)
+    ee = entry_exit_proposals(msgs, consts_list, labels)
+    by_cid = {q["cid"]: q for q in props}
+    for e in ee:
+        old = by_cid.get(e["cid"])
+        if old and e.get("basis") != "候補":
+            old["changes"]["進捗"] = e["changes"]["進捗"]
+            old.update({k: e[k] for k in ("basis", "kind", "at", "done_date")})
+        else:
+            props.append(e)
     new = []
     for n in obj.get("new") or []:
         name = scrub(str(n.get("customer") or "")).strip()[:30]

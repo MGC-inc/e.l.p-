@@ -115,6 +115,34 @@ def _propose_text(q: dict) -> str:
     return "／".join(bits)
 
 
+def _entry_cards(cards: list[tuple[dict, object]]) -> list[dict]:
+    """入室・退室の提案を、1通のカルーセル（1通に最大12枚）にする。ボタンは［反映する］［違う］。"""
+    bubbles = []
+    for q, i in cards:
+        done = q.get("kind") == "退室"
+        color = "#2E7D32" if done else "#1565C0"
+        basis = {"案件名": "案件名あり", "返信先": "返信先の案件", "時刻突合": "時刻の突き合わせ", "候補": "候補（時刻が近い順）"}.get(q.get("basis"), "")
+        body = [{"type": "text", "text": q["name"], "weight": "bold", "size": "lg", "wrap": True},
+                {"type": "text", "text": f"{q.get('at', '')} {q.get('kind', '')}の連絡", "size": "sm", "wrap": True, "margin": "sm"},
+                {"type": "text", "text": f"連絡した人：{q.get('by') or '不明'}／{q.get('src') or ''}", "size": "xs", "color": "#666666", "wrap": True},
+                {"type": "text", "text": f"根拠：{basis}", "size": "xs", "color": "#666666", "wrap": True}]
+        if q.get("basis") == "候補":
+            body.append({"type": "text", "text": "※ どれか1つを反映すると、他の候補は見送りになります", "size": "xs", "color": "#B26A00", "wrap": True, "margin": "sm"})
+        bubbles.append({"type": "bubble", "size": "kilo",
+                        "header": {"type": "box", "layout": "vertical", "backgroundColor": color, "paddingAll": "10px",
+                                   "contents": [{"type": "text", "text": ("退室 → 完工" if done else "入室 → 施工中"), "color": "#FFFFFF", "weight": "bold", "size": "sm"}]},
+                        "body": {"type": "box", "layout": "vertical", "spacing": "xs", "contents": body},
+                        "footer": {"type": "box", "layout": "horizontal", "spacing": "sm", "contents": [
+                            {"type": "button", "style": "primary", "height": "sm", "color": color,
+                             "action": {"type": "message", "label": "反映する", "text": f"施工反映 {i}"}},
+                            {"type": "button", "style": "secondary", "height": "sm",
+                             "action": {"type": "message", "label": "違う", "text": f"施工見送り {i}"}}]}})
+    msgs = []
+    for k in range(0, len(bubbles), 12):
+        msgs.append({"type": "flex", "altText": "🏗 施工グループの入室・退室の確認カード", "contents": {"type": "carousel", "contents": bubbles[k:k + 12]}})
+    return msgs
+
+
 def group_summary(today: dt.date, dry: bool) -> None:
     """施工案件グループの発言を、案件ごとの要点にして、今川さんだけに知らせる（施工担当へは送らない）。
     発言の全文は送らない（保存期間内はSupabaseに残る）。Notionへの反映は、［反映］を押したときだけ（webhook.py の handle_group_proposal）。
@@ -163,6 +191,10 @@ def group_summary(today: dt.date, dry: bool) -> None:
         made = sb("POST", "deal_recordings", {"line_user_id": admin_uid, "storage_path": "group_proposal", "status": "proposal_pending",
                                               "customer_name": json.dumps(q, ensure_ascii=False)})
         ids.append((made[0] if isinstance(made, list) else made)["id"])
+    cards = [(q, i) for q, i in zip(props, ids) if q.get("basis")]
+    props_ids = [(q, i) for q, i in zip(props, ids) if not q.get("basis")]
+    props = [q for q, _ in props_ids]
+    ids = [i for _, i in props_ids]
     unlabeled = []
     counts: dict[str, int] = {}
     for gid, n in by_group.items():
@@ -182,7 +214,10 @@ def group_summary(today: dt.date, dry: bool) -> None:
         newmine = [n for n in newitems if (n.get("src") or "") == lab]
         lines += ["", title(lab)]
         if not mine and not newmine:
-            lines.append(f"案件に当てはまる発言はありませんでした（発言{counts[lab]}件）")
+            if any((q.get("src") or "") == lab for q, _ in cards):
+                lines.append("入室・退室の連絡があります（下のカードで確認）")
+            else:
+                lines.append(f"案件に当てはまる発言はありませんでした（発言{counts[lab]}件）")
             continue
         for k, (q, i) in enumerate(mine, 1):
             lines += ["", f"{k}. {q['name']}：{q.get('summary') or q.get('note') or ''}"]
@@ -200,6 +235,12 @@ def group_summary(today: dt.date, dry: bool) -> None:
         rest = counts[lab] - len(mine) - len(newmine)
         if rest > 0:
             lines.append(f"（案件に関係しない発言 {rest}件は記録のみ）")
+    if GE.UNMATCHED:
+        lines += ["", "▼案件が特定できない入室・退室"]
+        for u in GE.UNMATCHED:
+            lines.append(f"・{u['at']} {u['kind']}（{u['by']}／{u['src'] or '未登録グループ'}）：該当する予定の案件が見つかりません")
+    if cards:
+        lines += ["", f"入室・退室の確認カードを{len(cards)}枚、下に送ります。"]
     stray = [(q, i) for q, i in zip(props, ids) if (q.get("src") or "") not in counts]
     if stray:
         lines += ["", "【施工連絡】"]
@@ -215,7 +256,9 @@ def group_summary(today: dt.date, dry: bool) -> None:
     text = "\n".join(lines)[:4800]
     if dry:
         print(text)
-        print(f"\n（発言{len(msgs)}件／提案{len(props)}件。--dry-run のため送っていません）")
+        for q, _ in cards:
+            print(f"[カード] {q['name']}：{q.get('at')} {q.get('kind')} → {q['changes'].get('進捗')}（根拠：{q.get('basis')}／{q.get('by')}）")
+        print(f"\n（発言{len(msgs)}件／提案{len(props) + len(cards)}件。--dry-run のため送っていません）")
         return
     if not admin_uid:
         return
@@ -230,7 +273,8 @@ def group_summary(today: dt.date, dry: bool) -> None:
     msg = {"type": "text", "text": text}
     if items:
         msg["quickReply"] = {"items": items}
-    res = line_push(admin_uid, [msg])
+    card_msgs = _entry_cards(cards)
+    res = line_push(admin_uid, [msg] + card_msgs[:4])   # 1回の送信は5通まで。カードは12枚で1通
     print("グループの要点を今川さんへ送りました:", res)
     if res == 200:
         sb("PATCH", f"deal_recordings?id=in.({','.join(str(r['id']) for r in rows)})", {"status": "group_digested"})

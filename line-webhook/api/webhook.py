@@ -2738,6 +2738,16 @@ def apply_group_proposal(row: dict) -> str:
     if not props:
         return f"{name}：反映する項目がありませんでした"
     notion_call("PATCH", f"pages/{cid}", {"properties": props}, NOTION_VERSION_V2)
+    if ch.get("進捗") == "完工":   # 完工にしたら、紐づく商談案件にも完工日を入れる（施工側の退室の連絡の日）
+        try:
+            deal = [x["id"] for x in ((page.get("properties") or {}).get("商談案件") or {}).get("relation") or []]
+            if deal:
+                d = str(q.get("done_date") or datetime.now(JST).date().isoformat())
+                notion_call("PATCH", f"pages/{deal[0]}", {"properties": {"完工日": {"date": {"start": d}}, "完工確認済み": {"checkbox": True}}}, NOTION_VERSION_V2)
+                done.append(f"商談案件の完工日→{d}")
+        except Exception as e:  # noqa: BLE001
+            print(f"group proposal: 完工日の反映に失敗（{name}）: {e}")
+            done.append("商談案件の完工日は未反映（要確認）")
     return f"{name}：" + "／".join(done)
 
 
@@ -2757,9 +2767,17 @@ def handle_group_proposal(event: dict, closer: dict) -> bool:
     results = []
     for r in rows:
         try:
+            if act == "反映" and which == "all" and json.loads(r["customer_name"]).get("group_key"):
+                results.append("⏭ " + json.loads(r["customer_name"]).get("name", "") + "：候補が複数あるため「すべて反映」では反映しません（個別に選んでください）")
+                continue
             if act == "反映":
                 results.append("✅ " + apply_group_proposal(r))
                 sb("PATCH", f"deal_recordings?id=eq.{r['id']}", {"status": "proposal_applied"})
+                gk = json.loads(r["customer_name"]).get("group_key")
+                if gk:   # 時刻の突き合わせで候補が複数だったときは、1つ反映したら残りは見送りにする
+                    for o in sb("GET", "deal_recordings?storage_path=eq.group_proposal&status=eq.proposal_pending&select=id,customer_name") or []:
+                        if o["id"] != r["id"] and json.loads(o["customer_name"]).get("group_key") == gk:
+                            sb("PATCH", f"deal_recordings?id=eq.{o['id']}", {"status": "proposal_skipped"})
             else:
                 results.append("見送り：" + json.loads(r["customer_name"]).get("name", ""))
                 sb("PATCH", f"deal_recordings?id=eq.{r['id']}", {"status": "proposal_skipped"})
